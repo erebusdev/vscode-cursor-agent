@@ -85,8 +85,8 @@ export function Header() {
         <ChangesChip />
         <span class="header-actions">
           {canReconnect && <IconButton icon="refresh" label="Reconnect agent" onClick={() => post({ type: "session.reconnect" })} />}
-          <UsageButton />
           <IconButton icon="add" label="New session" onClick={() => post({ type: "session.new" })} />
+          <UsageButton />
           <HistoryButton />
           <SettingsGear />
         </span>
