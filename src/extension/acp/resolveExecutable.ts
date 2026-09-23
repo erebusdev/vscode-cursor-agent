@@ -19,8 +19,12 @@ const LOGIN_SHELL_TIMEOUT_MS = 5000;
 const PATH_MARKER = "__CURSOR_ACP_PATH__";
 const ANSI_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
-/** Command names tried, in order, when no executable is configured. */
-export const DEFAULT_AGENT_COMMANDS: ReadonlyArray<string> = ["agent", "cursor-agent"];
+/**
+ * Command names tried, in order, when no executable is configured. The
+ * specific name goes first: a bare `agent` on PATH may belong to another
+ * vendor's CLI (e.g. ~/.grok/bin/agent), while `cursor-agent` is unambiguous.
+ */
+export const DEFAULT_AGENT_COMMANDS: ReadonlyArray<string> = ["cursor-agent", "agent"];
 
 /** Human-readable form of DEFAULT_AGENT_COMMANDS for error messages: `"agent" or "cursor-agent"`. */
 export function describeDefaultAgentCommands(): string {

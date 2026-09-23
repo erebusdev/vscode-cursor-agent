@@ -53,7 +53,7 @@ describe.skipIf(process.platform === "win32")("resolveExecutable", () => {
 });
 
 describe.skipIf(process.platform === "win32")("resolveAgentExecutable", () => {
-  it("prefers a configured value and otherwise tries agent then cursor-agent", async () => {
+  it("prefers a configured value and otherwise tries cursor-agent then agent", async () => {
     const dir = mkdtempSync(join(tmpdir(), "resolve-agent-"));
     dirs.push(dir);
     const bin = join(dir, "bin");
@@ -69,10 +69,11 @@ describe.skipIf(process.platform === "win32")("resolveAgentExecutable", () => {
     writeFileSync(shell, "#!/bin/sh\nexit 0\n");
     chmodSync(shell, 0o755);
     const env = { PATH: bin, HOME: dir, SHELL: shell };
-    const cursorAgent = make("cursor-agent");
-    expect(await resolveAgentExecutable("", env)).toEqual({ command: "cursor-agent", path: cursorAgent });
     const agent = make("agent");
     expect(await resolveAgentExecutable("", env)).toEqual({ command: "agent", path: agent });
+    // The vendor-specific name wins over a generic `agent` that may belong to another CLI.
+    const cursorAgent = make("cursor-agent");
+    expect(await resolveAgentExecutable("", env)).toEqual({ command: "cursor-agent", path: cursorAgent });
     const custom = make("my-wrapper");
     expect(await resolveAgentExecutable(custom, env)).toEqual({ command: custom, path: custom });
     // A configured value that does not exist is not silently replaced by a default.
