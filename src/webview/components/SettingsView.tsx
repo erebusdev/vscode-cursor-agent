@@ -110,12 +110,19 @@ interface TextInputProps {
 /** Text input that commits on blur / Enter and reverts on Escape. */
 export function CommitInput({ id, value, placeholder, mono, ariaLabel, onCommit }: TextInputProps) {
   const [draft, setDraft] = useState(value);
+  // Latest draft, readable synchronously from event handlers (state may lag a render).
+  const draftRef = useRef(value);
   const focused = useRef(false);
+  const set = (v: string) => {
+    draftRef.current = v;
+    setDraft(v);
+  };
   useEffect(() => {
-    if (!focused.current) setDraft(value);
+    if (!focused.current) set(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   const commit = () => {
-    if (draft !== value) onCommit(draft);
+    if (draftRef.current !== value) onCommit(draftRef.current);
   };
   return (
     <input
@@ -127,7 +134,7 @@ export function CommitInput({ id, value, placeholder, mono, ariaLabel, onCommit 
       aria-label={ariaLabel}
       spellcheck={false}
       onFocus={() => (focused.current = true)}
-      onInput={(e) => setDraft((e.currentTarget as HTMLInputElement).value)}
+      onInput={(e) => set((e.currentTarget as HTMLInputElement).value)}
       onBlur={() => {
         focused.current = false;
         commit();
@@ -136,9 +143,9 @@ export function CommitInput({ id, value, placeholder, mono, ariaLabel, onCommit 
         if (e.key === "Enter") {
           e.preventDefault();
           commit();
-        } else if (e.key === "Escape" && draft !== value) {
+        } else if (e.key === "Escape" && draftRef.current !== value) {
           e.stopPropagation();
-          setDraft(value);
+          set(value);
         }
       }}
     />
@@ -221,26 +228,31 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
   type Row = { key: string; value: string; id: number };
   const seq = useRef(0);
   const toRows = (rec: Readonly<Record<string, string>>): Row[] => Object.entries(rec).map(([k, v]) => ({ key: k, value: v, id: ++seq.current }));
-  const [rows, setRows] = useState<Row[]>(() => toRows(value));
+  const [rows, setRowsState] = useState<Row[]>(() => toRows(value));
+  // Latest rows, readable synchronously from blur handlers.
+  const rowsRef = useRef(rows);
+  const setRows = (next: Row[]) => {
+    rowsRef.current = next;
+    setRowsState(next);
+  };
   const editing = useRef(false);
   useEffect(() => {
     if (!editing.current) setRows(toRows(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  const commit = (next: Row[]) => {
+  const commit = () => {
     const rec: Record<string, string> = {};
-    for (const r of next) {
+    for (const r of rowsRef.current) {
       const k = r.key.trim();
       if (k) rec[k] = r.value;
     }
     if (!sameRecord(rec, value)) onCommit(rec);
   };
-  const patch = (id: number, field: "key" | "value", v: string) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, [field]: v } : r)));
+  const patch = (id: number, field: "key" | "value", v: string) => setRows(rowsRef.current.map((r) => (r.id === id ? { ...r, [field]: v } : r)));
   const remove = (id: number) => {
-    const next = rows.filter((r) => r.id !== id);
-    setRows(next);
-    commit(next);
+    setRows(rowsRef.current.filter((r) => r.id !== id));
+    commit();
   };
 
   return (
@@ -258,7 +270,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
             onInput={(e) => patch(r.id, "key", (e.currentTarget as HTMLInputElement).value)}
             onBlur={() => {
               editing.current = false;
-              commit(rows);
+              commit();
             }}
             onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
           />
@@ -276,7 +288,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
             onInput={(e) => patch(r.id, "value", (e.currentTarget as HTMLInputElement).value)}
             onBlur={() => {
               editing.current = false;
-              commit(rows);
+              commit();
             }}
             onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
           />
@@ -288,7 +300,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
         class="link-button env-add"
         onClick={() => {
           const id = ++seq.current;
-          setRows((rs) => [...rs, { key: "", value: "", id }]);
+          setRows([...rowsRef.current, { key: "", value: "", id }]);
           requestAnimationFrame(() => {
             const inputs = document.querySelectorAll<HTMLInputElement>(".env-editor .env-row input");
             inputs[inputs.length - 2]?.focus();

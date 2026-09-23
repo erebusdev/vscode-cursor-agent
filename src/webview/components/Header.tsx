@@ -29,9 +29,7 @@ function ChangesChip() {
     <>
       <button ref={anchor} type="button" class="chip changes-chip" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)} title={`${changed.length} changed file(s)`}>
         <Icon name="git-commit" />
-        <span class="chip-label">
-          {changed.length} {changed.length === 1 ? "change" : "changes"}
-        </span>
+        <span class="chip-label">{`${changed.length} ${changed.length === 1 ? "change" : "changes"}`}</span>
         <ChangeCounts additions={adds} deletions={dels} />
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Changed files" align="end" minWidth={240} class="changes-popover">
@@ -75,8 +73,9 @@ export function Header() {
         {session.workspaceName && (
           <span class="workspace" title={session.cwd}>
             {session.remoteName && (
-              <span class="remote-badge">
-                <Icon name="remote" /> {session.remoteName}
+              <span class="remote-badge" title={session.remoteName}>
+                <Icon name="remote" />
+                <span class="remote-badge-text">{session.remoteName}</span>
               </span>
             )}
             <Icon name="folder" />

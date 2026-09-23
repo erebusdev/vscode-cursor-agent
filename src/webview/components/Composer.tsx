@@ -8,6 +8,15 @@ import { Icon, IconButton, Spinner } from "./ui";
 const MAX_ROWS = 10;
 const HISTORY_LIMIT = 50;
 const DRAFT_DEBOUNCE = 500;
+const MENTION_DEBOUNCE = 120;
+
+/** `@token` directly before the caret (at the start of the text or after whitespace). */
+function mentionAt(text: string, caret: number): { start: number; query: string } | null {
+  const before = text.slice(0, caret);
+  const m = /(^|\s)@(\S*)$/.exec(before);
+  if (!m) return null;
+  return { start: before.length - m[2]!.length - 1, query: m[2]! };
+}
 
 // ---------------------------------------------------------------------------
 // Attachment chips
@@ -234,6 +243,12 @@ export function Composer() {
   const historyStash = useRef("");
   const [slashIdx, setSlashIdx] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
+  const [mentionDismissed, setMentionDismissed] = useState(false);
+  const mentionTimer = useRef<number | undefined>(undefined);
+  const mentionSeq = useRef(0);
+  const fileResults = useSelector((s) => s.fileResults);
 
   const setText = (next: string) => {
     textRef.current = next;
@@ -314,6 +329,47 @@ export function Composer() {
     setSlashDismissed(false);
   }, [slashQuery]);
 
+  /** Recompute the @-mention token from the textarea caret. */
+  const refreshMention = (ta: HTMLTextAreaElement | null) => {
+    if (!ta) return;
+    const next = mentionAt(ta.value, ta.selectionStart ?? ta.value.length);
+    setMention((prev) => (prev?.start === next?.start && prev?.query === next?.query ? prev : next));
+  };
+
+  // Debounced file search whenever the mention token changes.
+  useEffect(() => {
+    setMentionIdx(0);
+    setMentionDismissed(false);
+    window.clearTimeout(mentionTimer.current);
+    if (!mention) return;
+    mentionTimer.current = window.setTimeout(() => {
+      const requestId = ++mentionSeq.current;
+      post({ type: "files.search", query: mention.query, requestId });
+    }, MENTION_DEBOUNCE);
+    return () => window.clearTimeout(mentionTimer.current);
+  }, [mention?.start, mention?.query]);
+
+  const mentionFiles = mention && fileResults && fileResults.requestId === mentionSeq.current ? fileResults.files : [];
+  const mentionOpen = !!mention && !slashOpen && !mentionDismissed && mentionFiles.length > 0;
+
+  const completeMention = (file: { path: string; name: string }) => {
+    if (!mention) return;
+    const ta = taRef.current;
+    const cur = textRef.current;
+    const caret = ta?.selectionStart ?? cur.length;
+    const insert = `@${file.path} `;
+    const next = cur.slice(0, mention.start) + insert + cur.slice(caret);
+    setText(next);
+    addAttachment({ kind: "file", label: file.name, path: file.path });
+    setMention(null);
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      const pos = mention.start + insert.length;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
   const completeSlash = (name: string) => {
     setText(`/${name} `);
     requestAnimationFrame(() => taRef.current?.focus());
@@ -330,6 +386,7 @@ export function Composer() {
     }
     historyIdx.current = null;
     setText("");
+    setMention(null);
     if (draftTimer.current) window.clearTimeout(draftTimer.current);
     post({ type: "draft", text: "" });
     clearAttachments();
@@ -338,6 +395,30 @@ export function Composer() {
 
   const onKeyDown = (e: KeyboardEvent) => {
     const ta = e.currentTarget as HTMLTextAreaElement;
+
+    if (mentionOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIdx((i) => (i + 1) % mentionFiles.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIdx((i) => (i - 1 + mentionFiles.length) % mentionFiles.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        const pick = mentionFiles[mentionIdx] ?? mentionFiles[0];
+        if (pick) completeMention(pick);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionDismissed(true);
+        return;
+      }
+    }
 
     if (slashOpen) {
       if (e.key === "ArrowDown") {
@@ -435,6 +516,10 @@ export function Composer() {
   useEffect(() => {
     slashRef.current?.querySelector<HTMLElement>(".selected")?.scrollIntoView({ block: "nearest" });
   }, [slashIdx, slashOpen]);
+  const mentionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    mentionRef.current?.querySelector<HTMLElement>(".selected")?.scrollIntoView({ block: "nearest" });
+  }, [mentionIdx, mentionOpen]);
 
   const sendDisabled = !canSend || (!text.trim() && attachments.length === 0);
 
@@ -461,6 +546,28 @@ export function Composer() {
           ))}
         </div>
       )}
+      {mentionOpen && (
+        <div ref={mentionRef} class="slash-popup mention-popup" role="listbox" aria-label="Files" id="mention-listbox">
+          {mentionFiles.map((f, i) => (
+            <button
+              key={f.path}
+              type="button"
+              role="option"
+              id={`mention-${i}`}
+              aria-selected={i === mentionIdx}
+              class={`slash-item mention-item${i === mentionIdx ? " selected" : ""}`}
+              tabIndex={-1}
+              title={f.path}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => completeMention(f)}
+            >
+              <Icon name="file" />
+              <span class="mention-name">{f.name}</span>
+              <span class="mention-path">{f.path}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div class={`composer-box${running ? " running" : ""}`}>
         <AttachmentChips />
         <textarea
@@ -471,11 +578,19 @@ export function Composer() {
           placeholder={placeholder}
           aria-label="Message"
           aria-autocomplete="list"
-          aria-controls={slashOpen ? "slash-listbox" : undefined}
-          aria-activedescendant={slashOpen ? `slash-${slashMatches[slashIdx]?.name ?? ""}` : undefined}
+          aria-controls={slashOpen ? "slash-listbox" : mentionOpen ? "mention-listbox" : undefined}
+          aria-activedescendant={slashOpen ? `slash-${slashMatches[slashIdx]?.name ?? ""}` : mentionOpen ? `mention-${mentionIdx}` : undefined}
           spellcheck
-          onInput={(e) => setText((e.currentTarget as HTMLTextAreaElement).value)}
+          onInput={(e) => {
+            const ta = e.currentTarget as HTMLTextAreaElement;
+            setText(ta.value);
+            refreshMention(ta);
+          }}
           onKeyDown={onKeyDown}
+          onKeyUp={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") refreshMention(e.currentTarget as HTMLTextAreaElement);
+          }}
+          onClick={(e) => refreshMention(e.currentTarget as HTMLTextAreaElement)}
           onPaste={onPaste}
         />
         <div class="composer-toolbar">

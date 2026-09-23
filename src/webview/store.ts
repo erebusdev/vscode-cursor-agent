@@ -27,6 +27,12 @@ export interface UsageState {
   readonly loading: boolean;
 }
 
+export interface FileResults {
+  readonly requestId: number;
+  readonly query: string;
+  readonly files: ReadonlyArray<{ readonly path: string; readonly name: string }>;
+}
+
 export interface Toast {
   readonly id: number;
   readonly level: "info" | "warning" | "error";
@@ -50,6 +56,8 @@ export interface StoreState {
   probe: AgentProbe | undefined;
   /** Whether the settings view is shown in place of the transcript. */
   settingsOpen: boolean;
+  /** Latest @-mention file search results. */
+  fileResults: FileResults | undefined;
   toasts: ReadonlyArray<Toast>;
   attachments: ReadonlyArray<PromptAttachmentInput>;
   /** Draft restored by the host (snapshot). */
@@ -80,6 +88,7 @@ const state: StoreState = {
   extSettings: undefined,
   probe: undefined,
   settingsOpen: false,
+  fileResults: undefined,
   toasts: [],
   attachments: getPersisted().attachments ?? [],
   hostDraft: undefined,
@@ -287,6 +296,10 @@ export function handleMessage(msg: ExtensionToWebview): void {
     }
     case "agentProbe": {
       state.probe = msg.probe;
+      break;
+    }
+    case "files.results": {
+      state.fileResults = { requestId: msg.requestId, query: msg.query, files: msg.files };
       break;
     }
     case "showSettings": {
