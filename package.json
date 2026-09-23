@@ -1,7 +1,7 @@
 {
-  "name": "cursor-acp-chat",
-  "displayName": "Cursor Agent Chat (ACP)",
-  "description": "A native VS Code chat sidebar for the Cursor Agent CLI, using Cursor's Agent Client Protocol (ACP) mode.",
+  "name": "cursor-agent",
+  "displayName": "Cursor Agent",
+  "description": "The Cursor Agent CLI inside VS Code: streaming chat, tool calls, diffs, permissions, sessions.",
   "version": "0.1.0",
   "publisher": "flexnet",
   "license": "MIT",

@@ -1,4 +1,4 @@
-# Cursor Agent Chat (ACP) for VS Code
+# Cursor Agent for VS Code
 
 A native-feeling chat sidebar for the **Cursor Agent CLI**, built on Cursor's
 [Agent Client Protocol](https://cursor.com/docs/cli/acp) mode (`agent acp`).
@@ -105,7 +105,7 @@ npm run build          # bundles extension + webview into dist/
 npm run typecheck
 npm test               # unit + fake-agent runtime tests
 CURSOR_ACP_E2E=1 npm run test:e2e   # real agent (uses Cursor usage)
-npm run package        # produces cursor-acp-chat-<version>.vsix
+npm run package        # produces cursor-agent-<version>.vsix
 ```
 
 Press F5 in VS Code to launch an Extension Development Host.
