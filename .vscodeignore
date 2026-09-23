@@ -11,3 +11,4 @@ vitest.config.ts
 .gitignore
 .github/**
 *.vsix
+build/**

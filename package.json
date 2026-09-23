@@ -172,7 +172,7 @@
     "test": "vitest run",
     "test:e2e": "CURSOR_ACP_E2E=1 vitest run test/e2e",
     "lint": "npm run typecheck",
-    "package": "npm run build && vsce package --no-dependencies",
+    "package": "npm run build && mkdir -p build && vsce package --no-dependencies --out build/",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

@@ -106,7 +106,25 @@ npm run build          # bundles extension + webview into dist/
 npm run typecheck
 npm test               # unit + fake-agent runtime tests
 CURSOR_ACP_E2E=1 npm run test:e2e   # real agent (uses Cursor usage)
-npm run package        # produces cursor-agent-<version>.vsix
+npm run package        # writes build/cursor-agent-<version>.vsix
 ```
 
 Press F5 in VS Code to launch an Extension Development Host.
+
+### Packaging and installing
+
+`npm run package` runs the esbuild bundle (extension host code to
+`dist/extension.js`, webview to `dist/webview/`), then `vsce package` zips
+`package.json`, `dist/`, `media/`, `README.md`, `CHANGELOG.md` and `LICENSE`
+into a `.vsix` under the gitignored `build/` directory. `.vscodeignore`
+keeps sources, tests and maps out of the archive, and `--no-dependencies`
+skips `node_modules` because everything is bundled.
+
+Install the result with the CLI (`--profile` targets a specific VS Code
+profile):
+
+```
+code --install-extension build/cursor-agent-0.1.0.vsix --profile "Flexnet"
+```
+
+or from the Extensions view: `…` menu → **Install from VSIX…**.
