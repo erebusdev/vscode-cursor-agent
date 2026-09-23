@@ -50,6 +50,9 @@
         { "command": "cursorAcp.openSettings", "when": "view == cursorAcp.chat", "group": "2_config@1" },
         { "command": "cursorAcp.showLogs", "when": "view == cursorAcp.chat", "group": "2_config@2" }
       ],
+      "editor/title": [
+        { "command": "cursorAcp.focus", "when": "config.cursorAcp.editorTitleButton", "group": "navigation@9" }
+      ],
       "editor/context": [
         { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection", "group": "cursorAcp@1" }
       ],
@@ -122,6 +125,11 @@
           "default": "",
           "scope": "machine-overridable",
           "markdownDescription": "Cursor CLI config directory containing `auth.json` (used only for the usage panel). Leave empty to auto-detect from `CURSOR_CONFIG_DIR`, a wrapper script that exports it, or `~/.cursor`."
+        },
+        "cursorAcp.editorTitleButton": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a Cursor Agent button in the editor title bar for quick access to the chat."
         },
         "cursorAcp.resumeLastSession": {
           "type": "boolean",

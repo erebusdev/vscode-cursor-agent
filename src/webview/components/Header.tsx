@@ -1,7 +1,7 @@
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../../shared/protocol";
 import { relativeTime } from "../format";
-import { useSelector } from "../store";
+import { setSettingsOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Popover } from "./Popover";
 import { UsageButton } from "./Usage";
@@ -89,10 +89,26 @@ export function Header() {
           <UsageButton />
           <IconButton icon="add" label="New session" onClick={() => post({ type: "session.new" })} />
           <HistoryButton />
+          <SettingsGear />
         </span>
       </div>
     </header>
   );
+}
+
+function SettingsGear() {
+  const open = useSelector((s) => s.settingsOpen);
+  const ref = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(open);
+  // Return focus to the gear when the panel closes.
+  useEffect(() => {
+    if (wasOpen.current && !open) {
+      const active = document.activeElement;
+      if (!active || active === document.body) ref.current?.focus({ preventScroll: true });
+    }
+    wasOpen.current = open;
+  }, [open]);
+  return <IconButton ref={ref} icon="settings-gear" label="Settings" class={open ? "active" : ""} aria-pressed={open} onClick={() => setSettingsOpen(!open)} />;
 }
 
 function HistoryButton() {

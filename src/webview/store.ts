@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useRef } from "preact/hooks";
 import type {
+  AgentProbe,
+  ExtensionSettings,
   ExtensionToWebview,
   PromptAttachmentInput,
   SessionState,
@@ -42,6 +44,12 @@ export interface StoreState {
   items: Map<string, ThreadItem>;
   sessions: SessionsState;
   usage: UsageState;
+  /** Full extension settings (for the in-app settings panel). */
+  extSettings: ExtensionSettings | undefined;
+  /** Last agent executable probe. */
+  probe: AgentProbe | undefined;
+  /** Whether the settings view is shown in place of the transcript. */
+  settingsOpen: boolean;
   toasts: ReadonlyArray<Toast>;
   attachments: ReadonlyArray<PromptAttachmentInput>;
   /** Draft restored by the host (snapshot). */
@@ -69,6 +77,9 @@ const state: StoreState = {
   items: new Map(),
   sessions: { list: [], loading: false },
   usage: { summary: undefined, loading: false },
+  extSettings: undefined,
+  probe: undefined,
+  settingsOpen: false,
   toasts: [],
   attachments: getPersisted().attachments ?? [],
   hostDraft: undefined,
@@ -203,6 +214,12 @@ export function clearAttachments(): void {
   setAttachments([]);
 }
 
+export function setSettingsOpen(open: boolean): void {
+  if (state.settingsOpen === open) return;
+  state.settingsOpen = open;
+  notify();
+}
+
 // ---------------------------------------------------------------------------
 // Reducer for host messages
 // ---------------------------------------------------------------------------
@@ -262,6 +279,18 @@ export function handleMessage(msg: ExtensionToWebview): void {
     }
     case "sessions": {
       state.sessions = { list: msg.sessions, loading: msg.loading, error: msg.error };
+      break;
+    }
+    case "extensionSettings": {
+      state.extSettings = msg.settings;
+      break;
+    }
+    case "agentProbe": {
+      state.probe = msg.probe;
+      break;
+    }
+    case "showSettings": {
+      state.settingsOpen = true;
       break;
     }
     case "usage": {

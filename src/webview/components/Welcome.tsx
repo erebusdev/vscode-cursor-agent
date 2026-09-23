@@ -1,6 +1,7 @@
 import { relativeTime } from "../format";
 import { useSelector } from "../store";
 import { post } from "../vscode";
+import { SetupCard, useNeedsSetup } from "./SetupCard";
 import { Icon, Spinner, useNow } from "./ui";
 
 export function Welcome() {
@@ -11,9 +12,11 @@ export function Welcome() {
   const isMac = /Mac/i.test(navigator.platform);
   const sendKey = useSelector((s) => s.settings.sendWithCtrlEnter) ? (isMac ? "⌘↩" : "Ctrl+↩") : "↩";
   const newlineKey = useSelector((s) => s.settings.sendWithCtrlEnter) ? "↩" : "⇧↩";
+  const needsSetup = useNeedsSetup();
 
   return (
     <div class="welcome">
+      {needsSetup && <SetupCard />}
       <div class="welcome-hero">
         <span class="welcome-logo">
           <Icon name="sparkle" />
@@ -27,7 +30,7 @@ export function Welcome() {
             <Spinner /> {connection === "starting" ? "Starting agent…" : "Loading history…"}
           </p>
         )}
-        {(connection === "error" || connection === "disconnected") && (
+        {!needsSetup && (connection === "error" || connection === "disconnected") && (
           <p class="welcome-status error">
             <Icon name="error" /> {lastError ?? (connection === "error" ? "The agent failed to start." : "The agent disconnected.")}{" "}
             <button type="button" class="link-button" onClick={() => post({ type: "session.reconnect" })}>
