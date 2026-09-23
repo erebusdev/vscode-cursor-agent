@@ -35,12 +35,12 @@
       ]
     },
     "commands": [
-      { "command": "cursorAcp.focus", "title": "Focus Chat", "category": "Cursor Agent", "icon": { "light": "media/cursor-light.svg", "dark": "media/cursor-dark.svg" } },
+      { "command": "cursorAcp.focus", "title": "Focus Cursor", "category": "Cursor Agent", "icon": { "light": "media/cursor-light.svg", "dark": "media/cursor-dark.svg" } },
       { "command": "cursorAcp.newSession", "title": "New Session", "category": "Cursor Agent", "icon": "$(add)" },
       { "command": "cursorAcp.showHistory", "title": "Session History…", "category": "Cursor Agent", "icon": "$(history)" },
-      { "command": "cursorAcp.openInEditor", "title": "Open Chat in Editor", "category": "Cursor Agent", "icon": "$(link-external)" },
-      { "command": "cursorAcp.addSelectionToChat", "title": "Add Selection to Chat", "category": "Cursor Agent", "icon": "$(insert)" },
-      { "command": "cursorAcp.addFileToChat", "title": "Add File to Chat", "category": "Cursor Agent" },
+      { "command": "cursorAcp.openInEditor", "title": "Open Cursor in Editor", "category": "Cursor Agent", "icon": "$(link-external)" },
+      { "command": "cursorAcp.addSelectionToChat", "title": "Add Selection to Cursor", "category": "Cursor Agent", "icon": "$(insert)" },
+      { "command": "cursorAcp.addFileToChat", "title": "Add File to Cursor", "category": "Cursor Agent" },
       { "command": "cursorAcp.stop", "title": "Stop Current Turn", "category": "Cursor Agent", "icon": "$(debug-stop)" },
       { "command": "cursorAcp.reconnect", "title": "Reconnect Agent", "category": "Cursor Agent", "icon": "$(refresh)" },
       { "command": "cursorAcp.showLogs", "title": "Show Logs", "category": "Cursor Agent", "icon": "$(output)" },

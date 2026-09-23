@@ -59,11 +59,11 @@ hosts your workspace.
 
 | Command | Default key |
 | --- | --- |
-| Cursor Agent: Focus Chat | `Cmd+Alt+C` / `Ctrl+Alt+C` |
-| Cursor Agent: Add Selection to Chat | `Cmd+Alt+A` / `Ctrl+Alt+A` |
+| Cursor Agent: Focus Cursor | `Cmd+Alt+C` / `Ctrl+Alt+C` |
+| Cursor Agent: Add Selection to Cursor | `Cmd+Alt+A` / `Ctrl+Alt+A` |
 | Cursor Agent: New Session | `Cmd+Alt+N` (when the chat is focused) |
 | Cursor Agent: Session History… | |
-| Cursor Agent: Open Chat in Editor | |
+| Cursor Agent: Open Cursor in Editor | |
 | Cursor Agent: Stop Current Turn / Reconnect Agent / Show Logs | |
 
 In the chat: `Enter` sends, `Shift+Enter` inserts a newline, `Esc` stops the
