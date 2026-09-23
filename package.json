@@ -35,7 +35,7 @@
       ]
     },
     "commands": [
-      { "command": "cursorAcp.focus", "title": "Focus Cursor", "category": "Cursor Agent", "icon": { "light": "media/cursor-light.svg", "dark": "media/cursor-dark.svg" } },
+      { "command": "cursorAcp.focus", "title": "Open Cursor", "category": "Cursor Agent", "icon": { "light": "media/cursor-light.svg", "dark": "media/cursor-dark.svg" } },
       { "command": "cursorAcp.newSession", "title": "New Session", "category": "Cursor Agent", "icon": "$(add)" },
       { "command": "cursorAcp.showHistory", "title": "Session History…", "category": "Cursor Agent", "icon": "$(history)" },
       { "command": "cursorAcp.openInEditor", "title": "Open Cursor in Editor", "category": "Cursor Agent", "icon": "$(link-external)" },

@@ -59,7 +59,7 @@ hosts your workspace.
 
 | Command | Default key |
 | --- | --- |
-| Cursor Agent: Focus Cursor | `Cmd+Alt+C` / `Ctrl+Alt+C` |
+| Cursor Agent: Open Cursor | `Cmd+Alt+C` / `Ctrl+Alt+C` |
 | Cursor Agent: Add Selection to Cursor | `Cmd+Alt+A` / `Ctrl+Alt+A` |
 | Cursor Agent: New Session | `Cmd+Alt+N` (when the chat is focused) |
 | Cursor Agent: Session History… | |
