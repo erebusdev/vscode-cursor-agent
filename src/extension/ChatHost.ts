@@ -155,7 +155,7 @@ export class ChatHost implements vscode.Disposable {
 
   private panelTitle(): string {
     const title = this.runtime.state.title;
-    return title ? `Cursor: ${title}` : "Cursor";
+    return title ? `Cursor: ${title}` : "Cursor Agent";
   }
 
   private attach(webview: vscode.Webview, isVisible: () => boolean, reveal: () => void): Attached {
@@ -546,7 +546,7 @@ export class ChatHost implements vscode.Disposable {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${codicons}">
 <link rel="stylesheet" href="${style}">
-<title>Cursor</title>
+<title>Cursor Agent</title>
 </head>
 <body>
 <div id="root"></div>

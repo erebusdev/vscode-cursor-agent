@@ -20,12 +20,12 @@
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "cursorAcp", "title": "Cursor", "icon": "media/cursor-activity.svg" }
+        { "id": "cursorAcp", "title": "Cursor Agent", "icon": "media/cursor-activity.svg" }
       ]
     },
     "views": {
       "cursorAcp": [
-        { "type": "webview", "id": "cursorAcp.chat", "name": "Cursor", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor" }
+        { "type": "webview", "id": "cursorAcp.chat", "name": "Cursor Agent", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor Agent" }
       ]
     },
     "commands": [

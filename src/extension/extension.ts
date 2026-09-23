@@ -103,7 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const openPanel = () => {
-    const panel = vscode.window.createWebviewPanel(PANEL_TYPE, "Cursor", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }, { retainContextWhenHidden: true });
+    const panel = vscode.window.createWebviewPanel(PANEL_TYPE, "Cursor Agent", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }, { retainContextWhenHidden: true });
     panel.iconPath = vscode.Uri.joinPath(context.extensionUri, "media", "cursor-activity.svg");
     host?.attachPanel(panel);
     ensureStarted();
