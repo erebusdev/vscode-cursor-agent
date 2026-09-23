@@ -1,0 +1,150 @@
+{
+  "name": "cursor-acp-chat",
+  "displayName": "Cursor Agent Chat (ACP)",
+  "description": "A native VS Code chat sidebar for the Cursor Agent CLI, using Cursor's Agent Client Protocol (ACP) mode.",
+  "version": "0.1.0",
+  "publisher": "flexnet",
+  "license": "MIT",
+  "private": true,
+  "engines": { "vscode": "^1.94.0" },
+  "categories": ["AI", "Chat", "Programming Languages"],
+  "keywords": ["cursor", "agent", "acp", "chat", "ai"],
+  "icon": "media/icon.png",
+  "main": "./dist/extension.js",
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onStartupFinished"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false, "description": "The Cursor agent runs commands and edits files in the workspace." },
+    "virtualWorkspaces": { "supported": false, "description": "The Cursor agent needs a real folder on disk." }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "cursorAcp", "title": "Cursor Agent", "icon": "media/cursor-activity.svg" }
+      ]
+    },
+    "views": {
+      "cursorAcp": [
+        { "type": "webview", "id": "cursorAcp.chat", "name": "Cursor Agent", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor Agent" }
+      ]
+    },
+    "commands": [
+      { "command": "cursorAcp.focus", "title": "Focus Chat", "category": "Cursor Agent", "icon": "$(comment-discussion)" },
+      { "command": "cursorAcp.newSession", "title": "New Session", "category": "Cursor Agent", "icon": "$(add)" },
+      { "command": "cursorAcp.showHistory", "title": "Session History…", "category": "Cursor Agent", "icon": "$(history)" },
+      { "command": "cursorAcp.openInEditor", "title": "Open Chat in Editor", "category": "Cursor Agent", "icon": "$(link-external)" },
+      { "command": "cursorAcp.addSelectionToChat", "title": "Add Selection to Chat", "category": "Cursor Agent", "icon": "$(insert)" },
+      { "command": "cursorAcp.addFileToChat", "title": "Add File to Chat", "category": "Cursor Agent" },
+      { "command": "cursorAcp.stop", "title": "Stop Current Turn", "category": "Cursor Agent", "icon": "$(debug-stop)" },
+      { "command": "cursorAcp.reconnect", "title": "Reconnect Agent", "category": "Cursor Agent", "icon": "$(refresh)" },
+      { "command": "cursorAcp.showLogs", "title": "Show Logs", "category": "Cursor Agent", "icon": "$(output)" },
+      { "command": "cursorAcp.openSettings", "title": "Open Settings", "category": "Cursor Agent", "icon": "$(gear)" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "cursorAcp.newSession", "when": "view == cursorAcp.chat", "group": "navigation@1" },
+        { "command": "cursorAcp.showHistory", "when": "view == cursorAcp.chat", "group": "navigation@2" },
+        { "command": "cursorAcp.openInEditor", "when": "view == cursorAcp.chat", "group": "navigation@3" },
+        { "command": "cursorAcp.reconnect", "when": "view == cursorAcp.chat", "group": "1_session@1" },
+        { "command": "cursorAcp.showLogs", "when": "view == cursorAcp.chat", "group": "2_debug@1" },
+        { "command": "cursorAcp.openSettings", "when": "view == cursorAcp.chat", "group": "2_debug@2" }
+      ],
+      "editor/context": [
+        { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection", "group": "cursorAcp@1" }
+      ],
+      "explorer/context": [
+        { "command": "cursorAcp.addFileToChat", "when": "!explorerResourceIsFolder", "group": "cursorAcp@1" }
+      ],
+      "commandPalette": [
+        { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection" }
+      ]
+    },
+    "keybindings": [
+      { "command": "cursorAcp.focus", "key": "ctrl+alt+c", "mac": "cmd+alt+c" },
+      { "command": "cursorAcp.addSelectionToChat", "key": "ctrl+alt+a", "mac": "cmd+alt+a", "when": "editorHasSelection" },
+      { "command": "cursorAcp.newSession", "key": "ctrl+alt+n", "mac": "cmd+alt+n", "when": "cursorAcp.viewFocused" }
+    ],
+    "configuration": {
+      "title": "Cursor Agent Chat",
+      "properties": {
+        "cursorAcp.agentPath": {
+          "type": "string",
+          "default": "agent",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the Cursor Agent CLI executable (or a wrapper script) that supports `acp`. The extension runs `<agentPath> [agentArgs...] acp`. Example: `/Users/me/.local/bin/cursor-flexnet`. Resolved on the machine that hosts the workspace (the remote host when using Remote SSH)."
+        },
+        "cursorAcp.agentArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Extra arguments passed to the executable **before** `acp` (for example `[\"-e\", \"https://api2.cursor.sh\"]`)."
+        },
+        "cursorAcp.environment": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "scope": "machine-overridable",
+          "markdownDescription": "Extra environment variables for the agent process. Values override the extension host environment."
+        },
+        "cursorAcp.configDir": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Cursor CLI config directory containing `auth.json` (used only for the usage panel). Leave empty to auto-detect from `CURSOR_CONFIG_DIR`, a wrapper script that exports it, or `~/.cursor`."
+        },
+        "cursorAcp.resumeLastSession": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Automatically resume the last session for this workspace when the chat opens."
+        },
+        "cursorAcp.sendWithCtrlEnter": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use Ctrl/Cmd+Enter to send instead of Enter (Enter then inserts a newline)."
+        },
+        "cursorAcp.showThoughts": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the agent's thinking/reasoning blocks in the transcript."
+        },
+        "cursorAcp.notifyWhenHidden": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a VS Code notification when the agent needs permission or finishes a turn while the chat view is not visible."
+        },
+        "cursorAcp.protocolLogging": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log every ACP JSON-RPC message to the *Cursor Agent* output channel (useful for debugging)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/webview/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "CURSOR_ACP_E2E=1 vitest run test/e2e",
+    "lint": "npm run typecheck",
+    "package": "npm run build && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@agentclientprotocol/sdk": "^1.5.0",
+    "@types/diff": "^7.0.2",
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.94.0",
+    "@vscode/codicons": "^0.0.36",
+    "@vscode/vsce": "^3.3.0",
+    "diff": "^8.0.2",
+    "dompurify": "^3.2.4",
+    "esbuild": "^0.25.0",
+    "marked": "^15.0.7",
+    "preact": "^10.26.4",
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1"
+  }
+}
