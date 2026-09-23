@@ -28,6 +28,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
       permissionRequested: (t) => events.push(`permission:${t}`),
       turnFinished: (r) => events.push(`finished:${r}`),
       questionAsked: (t) => events.push(`question:${t}`),
+      agentUnavailable: (e) => events.push(`unavailable:${e}`),
     },
   });
   return { runtime, messages, events, getLastSession: () => lastSession, getPrefs: () => prefs };
@@ -223,7 +224,7 @@ describe("SessionRuntime against a fake ACP agent", () => {
   });
 
   it("shows a useful error when the executable cannot be found", async () => {
-    const { runtime } = makeRuntime();
+    const { runtime, events } = makeRuntime();
     active.push(runtime);
     (runtime as unknown as { options: { getLaunchConfig: () => unknown } }).options.getLaunchConfig = () => ({
       command: "/definitely/not/here/agent",
@@ -233,19 +234,23 @@ describe("SessionRuntime against a fake ACP agent", () => {
     });
     await runtime.start();
     expect(runtime.state.connection).toBe("error");
-    const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>;
-    expect(notice.text).toContain("not found");
-    expect(notice.detail).toContain("cursorAcp.agentPath");
+    // A fresh view shows the setup card (driven by the agentUnavailable event) instead of a notice.
+    expect(items(runtime).some((i) => i.type === "notice")).toBe(false);
+    expect(runtime.state.lastError).toContain("not found");
+    expect(events.some((e) => e.startsWith("unavailable:") && e.includes("not found"))).toBe(true);
   });
 
   it("reports authentication failures with a login hint", async () => {
-    const { runtime } = makeRuntime({ FAKE_AGENT_AUTH_FAIL: "1" });
+    const { runtime, events } = makeRuntime({ FAKE_AGENT_AUTH_FAIL: "1" });
     active.push(runtime);
     await runtime.start();
     expect(runtime.state.connection).toBe("error");
-    const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>;
-    expect(notice.text).toContain("authentication failed");
-    expect(notice.detail).toContain("agent login");
+    expect(runtime.state.lastError).toContain("authentication failed");
+    expect(events.some((e) => e.startsWith("unavailable:") && e.includes("authentication failed"))).toBe(true);
+    // Once the transcript has content, failures are reported inline as notices.
+    await runtime.prompt("hello", []);
+    const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }> | undefined;
+    expect(notice?.text ?? runtime.state.lastError).toContain("authentication failed");
   });
 
   it("switches mode and model, persisting model preferences", async () => {

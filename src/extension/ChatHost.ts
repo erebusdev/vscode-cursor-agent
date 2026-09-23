@@ -427,7 +427,9 @@ export class ChatHost implements vscode.Disposable {
       this.send({ type: "sessions", sessions, loading: false });
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      this.send({ type: "sessions", sessions: [], loading: false, error: text });
+      // When the agent itself cannot start, the setup card already explains it; keep the list quiet.
+      const agentDown = this.runtime.state.connection === "error";
+      this.send({ type: "sessions", sessions: [], loading: false, ...(agentDown ? {} : { error: text }) });
     }
   }
 
