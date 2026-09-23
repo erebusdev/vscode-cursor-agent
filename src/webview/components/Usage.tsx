@@ -199,7 +199,7 @@ export function UsageButton() {
       <IconButton
         ref={anchor}
         icon="pulse"
-        label={warn ? `Cursor usage (${Math.round(maxPct)}% used)` : "Cursor usage"}
+        label={warn ? `Usage (${Math.round(maxPct)}% used)` : "Usage"}
         title={undefined}
         class={`usage-button${paneOpen ? " active" : ""}`}
         aria-pressed={paneOpen}
@@ -211,9 +211,9 @@ export function UsageButton() {
       >
         {warn && <span class={`usage-warning-dot${maxPct >= OVER_AT ? " critical" : ""}`} aria-hidden="true" />}
       </IconButton>
-      <Popover anchor={anchor} open={shown} onClose={() => setHover(false)} label="Cursor usage overview" align="end" class="usage-popover" manageFocus={false}>
+      <Popover anchor={anchor} open={shown} onClose={() => setHover(false)} label="Usage overview" align="end" class="usage-popover" manageFocus={false}>
         <div class="usage-hover" onMouseEnter={hold} onMouseLeave={hide}>
-          <div class="popover-heading">Cursor usage</div>
+          <div class="popover-heading">Usage</div>
           <div class="usage-body">
             {usage.loading && !usage.summary && (
               <div class="usage-loading">
@@ -317,10 +317,10 @@ function UsageDetail({ s, now }: { s: UsageSummary; now: number }) {
       {s.autoModels && s.autoModels.length > 0 && (
         <section class="pane-section" aria-labelledby="usage-auto">
           <h3 id="usage-auto" class="pane-heading">
-            Auto models
+            Cursor models
           </h3>
           <details class="usage-models">
-            <summary>{pluralize(s.autoModels.length, "model")} count toward the Auto window</summary>
+            <summary>{pluralize(s.autoModels.length, "model")} count as Cursor usage</summary>
             <ul class="usage-model-list">
               {s.autoModels.map((m) => (
                 <li key={m}>
@@ -358,10 +358,10 @@ export function UsageView() {
 
   const s = usage.summary;
   return (
-    <div class="pane usage-view" role="region" aria-label="Cursor usage">
+    <div class="pane usage-view" role="region" aria-label="Usage">
       <div class="pane-top">
         <IconButton ref={backRef} icon="arrow-left" label="Back to chat" onClick={() => setUsageOpen(false)} />
-        <h2 class="pane-title">Cursor usage</h2>
+        <h2 class="pane-title">Usage</h2>
         <span class="pane-top-actions">
           {usage.loading ? <Spinner class="section-spinner" /> : <IconButton icon="refresh" label="Refresh usage" onClick={() => post({ type: "usage.refresh" })} />}
         </span>

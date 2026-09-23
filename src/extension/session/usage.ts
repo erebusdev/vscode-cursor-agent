@@ -95,8 +95,8 @@ export function mapUsage(raw: RawUsage, checkedAt: number): UsageSummary {
   if (plan) {
     for (const [key, label] of [
       ["totalPercentUsed", "Included"],
-      ["autoPercentUsed", "Auto models"],
-      ["apiPercentUsed", "Named models"],
+      ["autoPercentUsed", "Cursor usage"],
+      ["apiPercentUsed", "API usage"],
     ] as const) {
       const value = plan[key];
       if (typeof value === "number" && Number.isFinite(value)) windows.push({ id: key, label, usedPercent: clamp(value) });

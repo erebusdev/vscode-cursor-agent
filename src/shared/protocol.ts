@@ -372,7 +372,7 @@ export interface UsageSummary {
     readonly pooledUsd?: number;
     readonly limitType?: string;
   };
-  /** Model ids that count toward the "Auto models" window. */
+  /** Cursor's first-party model ids (the "Cursor usage" pool). */
   readonly autoModels?: ReadonlyArray<string>;
   readonly error?: string;
 }
