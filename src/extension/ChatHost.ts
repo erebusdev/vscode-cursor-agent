@@ -95,7 +95,11 @@ export class ChatHost implements vscode.Disposable {
   /** Called by the runtime for every UI message. */
   onRuntimeMessage(message: ExtensionToWebview): void {
     this.batcher.push(message);
-    if (message.type === "session") this.updateBadge(message.session.pendingPermissions);
+    if (message.type === "session") {
+      this.updateBadge(message.session.pendingPermissions);
+      const title = this.panelTitle();
+      for (const panel of this.panels) if (panel.title !== title) panel.title = title;
+    }
   }
 
   onPermissionRequested(title: string): void {
@@ -137,9 +141,21 @@ export class ChatHost implements vscode.Disposable {
     });
   }
 
+  private readonly panels = new Set<vscode.WebviewPanel>();
+
   attachPanel(panel: vscode.WebviewPanel): void {
     const attached = this.attach(panel.webview, () => panel.visible, () => panel.reveal());
-    panel.onDidDispose(() => this.attached.delete(attached));
+    this.panels.add(panel);
+    panel.title = this.panelTitle();
+    panel.onDidDispose(() => {
+      this.attached.delete(attached);
+      this.panels.delete(panel);
+    });
+  }
+
+  private panelTitle(): string {
+    const title = this.runtime.state.title;
+    return title ? `Cursor: ${title}` : "Cursor Agent";
   }
 
   private attach(webview: vscode.Webview, isVisible: () => boolean, reveal: () => void): Attached {
