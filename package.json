@@ -42,12 +42,13 @@
     ],
     "menus": {
       "view/title": [
-        { "command": "cursorAcp.newSession", "when": "view == cursorAcp.chat", "group": "navigation@1" },
-        { "command": "cursorAcp.showHistory", "when": "view == cursorAcp.chat", "group": "navigation@2" },
-        { "command": "cursorAcp.openInEditor", "when": "view == cursorAcp.chat", "group": "navigation@3" },
-        { "command": "cursorAcp.reconnect", "when": "view == cursorAcp.chat", "group": "1_session@1" },
-        { "command": "cursorAcp.showLogs", "when": "view == cursorAcp.chat", "group": "2_debug@1" },
-        { "command": "cursorAcp.openSettings", "when": "view == cursorAcp.chat", "group": "2_debug@2" }
+        { "command": "cursorAcp.openInEditor", "when": "view == cursorAcp.chat", "group": "navigation@1" },
+        { "command": "cursorAcp.newSession", "when": "view == cursorAcp.chat", "group": "1_session@1" },
+        { "command": "cursorAcp.showHistory", "when": "view == cursorAcp.chat", "group": "1_session@2" },
+        { "command": "cursorAcp.reconnect", "when": "view == cursorAcp.chat", "group": "1_session@3" },
+        { "command": "cursorAcp.stop", "when": "view == cursorAcp.chat", "group": "1_session@4" },
+        { "command": "cursorAcp.openSettings", "when": "view == cursorAcp.chat", "group": "2_config@1" },
+        { "command": "cursorAcp.showLogs", "when": "view == cursorAcp.chat", "group": "2_config@2" }
       ],
       "editor/context": [
         { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection", "group": "cursorAcp@1" }

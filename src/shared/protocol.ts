@@ -365,6 +365,34 @@ export interface UiSettings {
   readonly showThoughts: boolean;
 }
 
+/** Full extension configuration, mirrored from VS Code settings for the in-app settings panel. */
+export interface ExtensionSettings {
+  readonly agentPath: string;
+  readonly agentArgs: ReadonlyArray<string>;
+  readonly environment: Readonly<Record<string, string>>;
+  readonly configDir: string;
+  readonly resumeLastSession: boolean;
+  readonly sendWithCtrlEnter: boolean;
+  readonly showThoughts: boolean;
+  readonly notifyWhenHidden: boolean;
+  readonly protocolLogging: boolean;
+  /** Where the effective values come from, per key: "default" | "user" | "workspace" | "remote". */
+  readonly sources: Readonly<Record<string, "default" | "user" | "workspace" | "remote">>;
+}
+
+export type SettingsKey = keyof Omit<ExtensionSettings, "sources">;
+
+/** Result of probing the configured executable (resolve on disk + `--version`). */
+export interface AgentProbe {
+  readonly state: "checking" | "ok" | "notFound" | "failed";
+  readonly configuredPath: string;
+  readonly resolvedPath?: string;
+  readonly version?: string;
+  readonly error?: string;
+  readonly hint?: string;
+  readonly checkedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // Messages: webview -> extension
 // ---------------------------------------------------------------------------
@@ -406,7 +434,12 @@ export type WebviewToExtension =
   | { readonly type: "attachActiveFile" }
   | { readonly type: "pickFiles" }
   | { readonly type: "draft"; readonly text: string }
-  | { readonly type: "usage.refresh" };
+  | { readonly type: "usage.refresh" }
+  | { readonly type: "settings.get" }
+  | { readonly type: "settings.update"; readonly key: SettingsKey; readonly value: string | boolean | ReadonlyArray<string> | Readonly<Record<string, string>> }
+  | { readonly type: "settings.probe" }
+  | { readonly type: "settings.browseAgent" }
+  | { readonly type: "settings.reset"; readonly key: SettingsKey };
 
 // ---------------------------------------------------------------------------
 // Messages: extension -> webview
@@ -424,4 +457,7 @@ export type ExtensionToWebview =
   | { readonly type: "composer.attach"; readonly attachment: PromptAttachmentInput }
   | { readonly type: "composer.focus" }
   | { readonly type: "usage"; readonly usage: UsageSummary | undefined; readonly loading: boolean }
+  | { readonly type: "extensionSettings"; readonly settings: ExtensionSettings }
+  | { readonly type: "agentProbe"; readonly probe: AgentProbe }
+  | { readonly type: "showSettings" }
   | { readonly type: "toast"; readonly level: "info" | "warning" | "error"; readonly text: string };

@@ -10,6 +10,7 @@ import type { ExtensionToWebview, PromptAttachmentInput, UiSettings, WebviewToEx
 import type { SessionRuntime } from "./session/SessionRuntime";
 import { DiffContentProvider } from "./DiffContentProvider";
 import { fetchCursorUsage } from "./session/usage";
+import { probeAgent, readExtensionSettings, resetExtensionSetting, updateExtensionSetting } from "./settings";
 
 interface Attached {
   readonly webview: vscode.Webview;
@@ -71,6 +72,10 @@ export class ChatHost implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration("cursorAcp")) {
           this.send({ type: "settings", settings: this.uiSettings() });
+          this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+          if (event.affectsConfiguration("cursorAcp.agentPath") || event.affectsConfiguration("cursorAcp.environment")) {
+            void this.probe();
+          }
         }
       }),
     );
@@ -278,6 +283,30 @@ export class ChatHost implements vscode.Disposable {
         case "usage.refresh":
           await this.refreshUsage();
           return;
+        case "settings.get":
+          this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+          return;
+        case "settings.update":
+          await updateExtensionSetting(message.key, message.value);
+          this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+          return;
+        case "settings.reset":
+          await resetExtensionSetting(message.key);
+          this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+          return;
+        case "settings.probe":
+          await this.probe();
+          return;
+        case "settings.browseAgent": {
+          const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFolders: false, openLabel: "Use as Cursor Agent executable", title: "Select the Cursor Agent CLI (or a wrapper script)" });
+          const uri = picked?.[0];
+          if (uri) {
+            await updateExtensionSetting("agentPath", uri.fsPath);
+            this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+            await this.probe();
+          }
+          return;
+        }
         default:
           return;
       }
@@ -289,6 +318,21 @@ export class ChatHost implements vscode.Disposable {
   }
 
   private usageInFlight: Promise<void> | undefined;
+
+  /** Resolves the configured executable and reads its version; results go to the settings panel. */
+  async probe(): Promise<void> {
+    const settings = readExtensionSettings();
+    this.send({ type: "agentProbe", probe: { state: "checking", configuredPath: settings.agentPath, checkedAt: Date.now() } });
+    const env: NodeJS.ProcessEnv = { ...process.env, ...settings.environment };
+    const probe = await probeAgent(settings.agentPath, env);
+    this.log.info(`Agent probe: ${probe.state}${probe.resolvedPath ? ` (${probe.resolvedPath}${probe.version ? `, ${probe.version}` : ""})` : ""}${probe.error ? ` – ${probe.error}` : ""}`);
+    this.send({ type: "agentProbe", probe });
+  }
+
+  /** Asks the UI to open the settings panel (e.g. when the executable is missing). */
+  showSettings(): void {
+    this.send({ type: "showSettings" });
+  }
 
   async refreshUsage(): Promise<void> {
     if (this.usageInFlight) return this.usageInFlight;

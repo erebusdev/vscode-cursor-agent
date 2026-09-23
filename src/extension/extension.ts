@@ -66,6 +66,10 @@ export function activate(context: vscode.ExtensionContext): void {
       permissionRequested: (title) => host?.onPermissionRequested(title),
       turnFinished: (reason) => host?.onTurnFinished(reason),
       questionAsked: (title) => host?.onQuestionAsked(title),
+      agentUnavailable: () => {
+        host?.showSettings();
+        void host?.probe();
+      },
     },
   });
   // Capture full before/after texts for the native diff editor.

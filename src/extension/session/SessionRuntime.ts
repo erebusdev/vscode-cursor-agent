@@ -53,6 +53,8 @@ export interface RuntimeLogger {
 export interface RuntimeEvents {
   /** Any message for attached webviews. */
   message(message: ExtensionToWebview): void;
+  /** The configured executable could not be launched (missing / not executable). */
+  agentUnavailable?(error: string): void;
   permissionRequested(title: string): void;
   turnFinished(stopReason: string): void;
   questionAsked(title: string): void;
@@ -382,6 +384,7 @@ export class SessionRuntime {
       this.model.addNotice("error", text, detail ?? this.process?.stderr.trim() ?? undefined, ["reconnect", "openSettings", "openLogs"]);
       this.sessionId = undefined;
       this.setConnectionState(this.connection && !this.connection.isClosed ? "idle" : "error");
+      if (error instanceof AgentProcessError) this.options.events.agentUnavailable?.(text);
     }
   }
 
