@@ -18,10 +18,11 @@ function labelFor(o: PermissionOption): string {
   }
 }
 
+/** Allow is primary, Always allow secondary, Reject/Always reject tertiary (quiet). */
 function classFor(o: PermissionOption): string {
   if (o.kind === "allow_once") return "button primary";
-  if (o.kind === "reject_once" || o.kind === "reject_always") return "button danger";
-  return "button secondary";
+  if (o.kind === "allow_always") return "button secondary";
+  return "button tertiary";
 }
 
 export function respondToPermission(perm: PermissionState, kind: PermissionOption["kind"]): boolean {

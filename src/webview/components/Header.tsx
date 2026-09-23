@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../../shared/protocol";
-import { relativeTime } from "../format";
+import { pluralize, relativeTime } from "../format";
 import { setSettingsOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Popover } from "./Popover";
@@ -27,9 +27,9 @@ function ChangesChip() {
   const dels = changed.reduce((n, f) => n + f.deletions, 0);
   return (
     <>
-      <button ref={anchor} type="button" class="chip changes-chip" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)} title={`${changed.length} changed file(s)`}>
+      <button ref={anchor} type="button" class="chip changes-chip" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)} title={pluralize(changed.length, "changed file")}>
         <Icon name="git-commit" />
-        <span class="chip-label">{`${changed.length} ${changed.length === 1 ? "change" : "changes"}`}</span>
+        <span class="chip-label">{pluralize(changed.length, "change")}</span>
         <ChangeCounts additions={adds} deletions={dels} />
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Changed files" align="end" minWidth={240} class="changes-popover">
@@ -64,9 +64,9 @@ export function Header() {
         <span class="header-title" title={title}>
           {title}
         </span>
-        <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]}>
+        <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]} role="status" aria-label={STATUS_LABEL[c]}>
           {busy ? <Spinner class="status-spinner" /> : <span class="status-dot" />}
-          <span class="status-label">{STATUS_LABEL[c]}</span>
+          {c !== "ready" && c !== "running" && <span class="status-label">{STATUS_LABEL[c]}</span>}
         </span>
       </div>
       <div class="header-side">

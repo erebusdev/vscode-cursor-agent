@@ -1,5 +1,5 @@
 import { memo } from "preact/compat";
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import type { DiffLine, FileDiff } from "../../../shared/protocol";
 import { post } from "../../vscode";
 import { ChangeCounts, Icon, IconButton } from "../ui";
@@ -27,7 +27,7 @@ interface Props {
 export const FileDiffView = memo(function FileDiffView({ diff, itemId, defaultOpen = true }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const [showAll, setShowAll] = useState(false);
-  const rows = flatten(diff);
+  const rows = useMemo(() => flatten(diff), [diff]);
   const tooLong = rows.length > COLLAPSE_AT;
   const visible = tooLong && !showAll ? rows.slice(0, COLLAPSE_AT) : rows;
 

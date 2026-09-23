@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
 import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, useSelector } from "../store";
 import { getPersisted, persist, post } from "../vscode";
@@ -7,7 +7,9 @@ import { Icon, IconButton, Spinner } from "./ui";
 
 const MAX_ROWS = 10;
 const HISTORY_LIMIT = 50;
-const DRAFT_DEBOUNCE = 500;
+const DRAFT_DEBOUNCE = 300;
+/** Auto-grow is done in CSS where `field-sizing` exists (Chromium 123+); the JS fallback measures once per edit. */
+const CSS_FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
 const MENTION_DEBOUNCE = 120;
 
 /** `@token` directly before the caret (at the start of the text or after whitespace). */
@@ -262,13 +264,37 @@ export function Composer() {
   const mentionSeq = useRef(0);
   const fileResults = useSelector((s) => s.fileResults);
 
+  const draftDirty = useRef(false);
+
+  /** Write the draft to webview state and the host (debounced; flushed on send/hide/unmount). */
+  const flushDraft = () => {
+    if (draftTimer.current) {
+      window.clearTimeout(draftTimer.current);
+      draftTimer.current = undefined;
+    }
+    if (!draftDirty.current) return;
+    draftDirty.current = false;
+    persist({ draft: textRef.current });
+    post({ type: "draft", text: textRef.current });
+  };
   const setText = (next: string) => {
     textRef.current = next;
     setTextState(next);
-    persist({ draft: next });
+    draftDirty.current = true;
     if (draftTimer.current) window.clearTimeout(draftTimer.current);
-    draftTimer.current = window.setTimeout(() => post({ type: "draft", text: next }), DRAFT_DEBOUNCE);
+    draftTimer.current = window.setTimeout(flushDraft, DRAFT_DEBOUNCE);
   };
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushDraft();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      flushDraft();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Restore the host's draft once if we have nothing local.
   useEffect(() => {
@@ -276,16 +302,18 @@ export function Composer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostDraft]);
 
-  // Auto-grow.
-  useEffect(() => {
+  // Auto-grow fallback: one write, one read (forced layout), one write.
+  const lineHeightRef = useRef(0);
+  useLayoutEffect(() => {
+    if (CSS_FIELD_SIZING) return;
     const ta = taRef.current;
     if (!ta) return;
+    if (!lineHeightRef.current) lineHeightRef.current = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+    const max = lineHeightRef.current * MAX_ROWS + 12;
     ta.style.height = "auto";
-    const line = parseFloat(getComputedStyle(ta).lineHeight) || 18;
-    const pad = 12;
-    const max = line * MAX_ROWS + pad;
-    ta.style.height = `${Math.min(ta.scrollHeight, max)}px`;
-    ta.style.overflowY = ta.scrollHeight > max ? "auto" : "hidden";
+    const h = ta.scrollHeight;
+    ta.style.height = `${Math.min(h, max)}px`;
+    ta.style.overflowY = h > max ? "auto" : "hidden";
   }, [text]);
 
   // Host-driven insert / focus.
@@ -398,9 +426,8 @@ export function Composer() {
     }
     historyIdx.current = null;
     setText("");
+    flushDraft();
     setMention(null);
-    if (draftTimer.current) window.clearTimeout(draftTimer.current);
-    post({ type: "draft", text: "" });
     clearAttachments();
     requestAnimationFrame(() => taRef.current?.focus());
   };

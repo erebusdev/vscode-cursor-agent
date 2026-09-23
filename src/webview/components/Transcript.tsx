@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { findPendingPermission, getState, useSelector } from "../store";
+import { findPendingPermission, getState, subscribe, useSelector, type StoreState } from "../store";
 import { ItemView } from "./items/ItemView";
 import { respondToPermission } from "./items/Permission";
-import { Icon } from "./ui";
+import { Icon, prefersReducedMotion } from "./ui";
 import { Welcome } from "./Welcome";
 
 type Group = { key: string; kind: "user" | "agent" | "solo"; ids: string[] };
@@ -34,6 +34,11 @@ function groupIds(ids: ReadonlyArray<string>): Group[] {
 
 const BOTTOM_THRESHOLD = 48;
 
+/** The last item in the transcript (its object identity changes on every append/upsert). */
+function tailOf(s: StoreState) {
+  return s.items.get(s.ids[s.ids.length - 1] ?? "");
+}
+
 export function Transcript() {
   const ids = useSelector((s) => s.ids);
   const resetSeq = useSelector((s) => s.resetSeq);
@@ -48,7 +53,7 @@ export function Transcript() {
   const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior });
+    el.scrollTo({ top: el.scrollHeight, behavior: behavior === "smooth" && prefersReducedMotion() ? "auto" : behavior });
     atBottomRef.current = true;
     setShowPill(false);
   };
@@ -67,14 +72,23 @@ export function Transcript() {
     const el = scrollRef.current;
     if (!content || !el) return;
     const ro = new ResizeObserver(() => {
-      if (atBottomRef.current) {
-        el.scrollTop = el.scrollHeight;
-      } else if (el.scrollHeight > el.clientHeight) {
-        setShowPill(true);
-      }
+      if (atBottomRef.current) el.scrollTop = el.scrollHeight;
     });
     ro.observe(content);
     return () => ro.disconnect();
+  }, []);
+
+  // "New messages" only when the tail of the transcript changes while the user
+  // is scrolled up. Expanding a card above the fold grows the content too, but
+  // that is not news. Subscribed directly so the list itself never re-renders.
+  useEffect(() => {
+    let lastTail = tailOf(getState());
+    return subscribe(() => {
+      const tail = tailOf(getState());
+      if (tail === lastTail) return;
+      lastTail = tail;
+      if (!atBottomRef.current) setShowPill(true);
+    });
   }, []);
 
   // Jump to the bottom after a full reload and after the user sends a prompt.

@@ -49,8 +49,15 @@ function LocationChips({ locations }: { locations: ReadonlyArray<ToolLocation> }
   );
 }
 
+/** The header shows the command; the body repeats it only when the header would truncate it. */
+function commandNeedsBody(item: ToolItem): boolean {
+  return !!item.command && (item.command.includes("\n") || item.command.length > 72);
+}
+
+/** Anything worth expanding for. A pending permission prompt is rendered outside the body, so it does not count. */
 function hasBody(item: ToolItem): boolean {
-  return !!(item.command || item.output || item.diffs.length || item.locations.length || item.fileContent || item.inputText || item.permission);
+  const resolvedPermission = !!item.permission && item.permission.state !== "pending";
+  return !!(commandNeedsBody(item) || item.output || item.diffs.length || item.locations.length || item.fileContent || item.inputText || resolvedPermission);
 }
 
 export const ToolCard = memo(function ToolCard({ item }: { item: ToolItem }) {
@@ -95,16 +102,16 @@ export const ToolCard = memo(function ToolCard({ item }: { item: ToolItem }) {
 
           {isExec && (
             <>
-              {item.command && (
+              {commandNeedsBody(item) && (
                 <pre class="command-pre">
                   <span class="prompt-sign">$ </span>
                   {item.command}
                 </pre>
               )}
-              {(item.output || running) && <AutoScrollPre content={item.output || (running ? "" : "")} follow={running} maxHeight={300} class={running ? "running" : ""} />}
-              {item.exitCode !== undefined && (
+              {(item.output || running) && <AutoScrollPre content={item.output} follow={running} maxHeight={300} class={running ? "running" : ""} />}
+              {item.exitCode !== undefined && item.exitCode !== 0 && (
                 <div class="tool-footer">
-                  <Badge class={item.exitCode === 0 ? "ok" : "fail"}>exit {item.exitCode}</Badge>
+                  <Badge class="fail">exit {item.exitCode}</Badge>
                 </div>
               )}
             </>

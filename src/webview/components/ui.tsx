@@ -1,6 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
 import { forwardRef } from "preact/compat";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { getExpandedOverride, setExpandedOverride } from "../store";
 
 export function Spinner({ class: cls }: { class?: string }) {
@@ -92,14 +92,31 @@ export function ChangeCounts({ additions, deletions }: { additions: number; dele
   );
 }
 
-/** Scrolls itself to the bottom whenever `content` grows while `follow` is set. */
+/** True when the user prefers reduced motion (checked lazily; cheap to call). */
+export function prefersReducedMotion(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+const PRE_PIN_THRESHOLD = 8;
+
+/**
+ * Output <pre> that follows appended content while `follow` is set, unless the
+ * user has scrolled up inside it. Layout is contained (see `.output-pre`) so
+ * a large, growing output does not re-layout the transcript around it.
+ */
 export function AutoScrollPre({ content, follow, class: cls, maxHeight }: { content: string; follow: boolean; class?: string; maxHeight?: number }) {
-  const [el, setEl] = useState<HTMLPreElement | null>(null);
-  useEffect(() => {
-    if (el && follow) el.scrollTop = el.scrollHeight;
-  }, [el, content, follow]);
+  const ref = useRef<HTMLPreElement>(null);
+  const pinned = useRef(true);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && follow && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [content, follow]);
+  const onScroll = () => {
+    const el = ref.current;
+    if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PRE_PIN_THRESHOLD;
+  };
   return (
-    <pre ref={setEl} class={`output-pre${cls ? ` ${cls}` : ""}`} style={maxHeight ? { maxHeight } : undefined} tabIndex={0}>
+    <pre ref={ref} class={`output-pre${cls ? ` ${cls}` : ""}`} style={maxHeight ? { maxHeight } : undefined} tabIndex={0} onScroll={follow ? onScroll : undefined}>
       {content}
     </pre>
   );
