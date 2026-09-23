@@ -5,8 +5,19 @@ import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences } from ".
 import { ThreadModel } from "./session/ThreadModel";
 import type { WebviewToExtension } from "../shared/protocol";
 
-const VIEW_ID = "cursorAcp.chat";
 const PANEL_TYPE = "cursorAcp.panel";
+
+/**
+ * The chat lives in the secondary (right-hand) sidebar, where the other AI
+ * chat extensions sit, when VS Code supports secondary-sidebar view containers
+ * (1.100+). Older versions get an activity-bar container instead.
+ */
+function supportsSecondarySidebar(): boolean {
+  const [major = 0, minor = 0] = vscode.version.split(".").map((part) => Number.parseInt(part, 10));
+  return major > 1 || (major === 1 && minor >= 100);
+}
+const VIEW_ID = supportsSecondarySidebar() ? "cursorAcp.chat" : "cursorAcp.chatLeft";
+const ALL_VIEW_IDS = ["cursorAcp.chat", "cursorAcp.chatLeft"] as const;
 
 let host: ChatHost | undefined;
 let runtime: SessionRuntime | undefined;
@@ -30,6 +41,7 @@ function workspaceInfo(): { cwd: string; name: string } | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  void vscode.commands.executeCommand("setContext", "cursorAcp.noSecondarySidebar", !supportsSecondarySidebar());
   const log = vscode.window.createOutputChannel("Cursor Agent", { log: true });
   context.subscriptions.push(log);
   const diffs = new DiffContentProvider();
@@ -89,18 +101,20 @@ export function activate(context: vscode.ExtensionContext): void {
     void runtime.start(last);
   };
 
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      VIEW_ID,
-      {
-        resolveWebviewView(view) {
-          host?.attachView(view);
-          ensureStarted();
+  for (const viewId of ALL_VIEW_IDS) {
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        viewId,
+        {
+          resolveWebviewView(view) {
+            host?.attachView(view);
+            ensureStarted();
+          },
         },
-      },
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-  );
+        { webviewOptions: { retainContextWhenHidden: true } },
+      ),
+    );
+  }
 
   const openPanel = () => {
     const panel = vscode.window.createWebviewPanel(PANEL_TYPE, "Cursor", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }, { retainContextWhenHidden: true });

@@ -19,13 +19,19 @@
   },
   "contributes": {
     "viewsContainers": {
+      "secondarySidebar": [
+        { "id": "cursorAcp", "title": "Cursor", "icon": "media/cursor-activity.svg", "when": "!cursorAcp.noSecondarySidebar" }
+      ],
       "activitybar": [
-        { "id": "cursorAcp", "title": "Cursor", "icon": "media/cursor-activity.svg" }
+        { "id": "cursorAcpLeft", "title": "Cursor", "icon": "media/cursor-activity.svg", "when": "cursorAcp.noSecondarySidebar" }
       ]
     },
     "views": {
       "cursorAcp": [
-        { "type": "webview", "id": "cursorAcp.chat", "name": "Cursor", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor" }
+        { "type": "webview", "id": "cursorAcp.chat", "name": "Cursor", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor", "when": "!cursorAcp.noSecondarySidebar" }
+      ],
+      "cursorAcpLeft": [
+        { "type": "webview", "id": "cursorAcp.chatLeft", "name": "Cursor", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor", "when": "cursorAcp.noSecondarySidebar" }
       ]
     },
     "commands": [
@@ -42,13 +48,13 @@
     ],
     "menus": {
       "view/title": [
-        { "command": "cursorAcp.openInEditor", "when": "view == cursorAcp.chat", "group": "navigation@1" },
-        { "command": "cursorAcp.newSession", "when": "view == cursorAcp.chat", "group": "1_session@1" },
-        { "command": "cursorAcp.showHistory", "when": "view == cursorAcp.chat", "group": "1_session@2" },
-        { "command": "cursorAcp.reconnect", "when": "view == cursorAcp.chat", "group": "1_session@3" },
-        { "command": "cursorAcp.stop", "when": "view == cursorAcp.chat", "group": "1_session@4" },
-        { "command": "cursorAcp.openSettings", "when": "view == cursorAcp.chat", "group": "2_config@1" },
-        { "command": "cursorAcp.showLogs", "when": "view == cursorAcp.chat", "group": "2_config@2" }
+        { "command": "cursorAcp.openInEditor", "when": "view =~ /^cursorAcp\\.chat/", "group": "navigation@1" },
+        { "command": "cursorAcp.newSession", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@1" },
+        { "command": "cursorAcp.showHistory", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@2" },
+        { "command": "cursorAcp.reconnect", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@3" },
+        { "command": "cursorAcp.stop", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@4" },
+        { "command": "cursorAcp.openSettings", "when": "view =~ /^cursorAcp\\.chat/", "group": "2_config@1" },
+        { "command": "cursorAcp.showLogs", "when": "view =~ /^cursorAcp\\.chat/", "group": "2_config@2" }
       ],
       "editor/title": [
         { "command": "cursorAcp.focus", "when": "config.cursorAcp.editorTitleButton", "group": "navigation@9" }

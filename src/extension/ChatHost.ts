@@ -200,7 +200,7 @@ export class ChatHost implements vscode.Disposable {
   reveal(): void {
     const first = this.attached.values().next().value as Attached | undefined;
     if (first) first.reveal();
-    else void vscode.commands.executeCommand("cursorAcp.chat.focus");
+    else void vscode.commands.executeCommand("cursorAcp.focus");
   }
 
   focusComposer(): void {
