@@ -1575,24 +1575,25 @@ button.chip:disabled {
 .notice-text {
   white-space: pre-wrap;
   word-break: break-word;
+  color: var(--vscode-foreground);
 }
 .notice.level-info {
-  border-color: var(--vscode-inputValidation-infoBorder, var(--border));
-  background: var(--vscode-inputValidation-infoBackground, var(--card-bg));
+  border-color: color-mix(in srgb, var(--vscode-notificationsInfoIcon-foreground, var(--vscode-textLink-foreground)) 40%, var(--border));
+  background: color-mix(in srgb, var(--vscode-notificationsInfoIcon-foreground, var(--vscode-textLink-foreground)) 10%, var(--card-bg));
 }
 .notice.level-info .notice-icon {
   color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-textLink-foreground));
 }
 .notice.level-warning {
-  border-color: var(--vscode-inputValidation-warningBorder, var(--yellow));
-  background: var(--vscode-inputValidation-warningBackground, var(--card-bg));
+  border-color: color-mix(in srgb, var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground, var(--yellow))) 40%, var(--border));
+  background: color-mix(in srgb, var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground, var(--yellow))) 10%, var(--card-bg));
 }
 .notice.level-warning .notice-icon {
   color: var(--vscode-notificationsWarningIcon-foreground, var(--yellow));
 }
 .notice.level-error {
-  border-color: var(--vscode-inputValidation-errorBorder, var(--red));
-  background: var(--vscode-inputValidation-errorBackground, var(--card-bg));
+  border-color: color-mix(in srgb, var(--vscode-notificationsErrorIcon-foreground, var(--vscode-editorError-foreground, var(--red))) 40%, var(--border));
+  background: color-mix(in srgb, var(--vscode-notificationsErrorIcon-foreground, var(--vscode-editorError-foreground, var(--red))) 10%, var(--card-bg));
 }
 .notice.level-error .notice-icon {
   color: var(--vscode-notificationsErrorIcon-foreground, var(--red));
@@ -2501,8 +2502,8 @@ button.chip:disabled {
   margin-top: 12px;
   padding: 8px 10px;
   border-radius: var(--radius);
-  border: 1px solid var(--vscode-inputValidation-infoBorder, var(--border));
-  background: var(--vscode-inputValidation-infoBackground, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--vscode-notificationsInfoIcon-foreground, var(--vscode-textLink-foreground)) 40%, var(--border));
+  background: color-mix(in srgb, var(--vscode-notificationsInfoIcon-foreground, var(--vscode-textLink-foreground)) 10%, var(--card-bg));
   display: flex;
   flex-wrap: wrap;
   align-items: center;
