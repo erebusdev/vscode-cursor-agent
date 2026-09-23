@@ -112,6 +112,21 @@ function describeError(error: unknown): { text: string; detail?: string } {
   return { text: String(error) };
 }
 
+/**
+ * Cursor encodes model parameters in the model id: `grok-4.7[context=256k,reasoning_effort=high,fast=true]`.
+ * Split it into the base id and the parameter map (which mirrors the per-model config options).
+ */
+export function parseCursorModelId(raw: string): { modelId: string; params: Record<string, string> } {
+  const match = /^([^[]+)\[(.*)\]$/.exec(raw.trim());
+  if (!match) return { modelId: raw.trim(), params: {} };
+  const params: Record<string, string> = {};
+  for (const part of match[2]!.split(",")) {
+    const eq = part.indexOf("=");
+    if (eq > 0) params[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+  }
+  return { modelId: match[1]!.trim(), params };
+}
+
 function toConfigOption(option: acp.SessionConfigOption): ConfigOption {
   const options: ConfigOption["options"] =
     option.type === "select"
@@ -222,7 +237,7 @@ export class SessionRuntime {
     return fromCatalog.map((option) => {
       const live = this.configOptions.find((c) => c.id === option.id);
       const override = overrides[option.id];
-      return live ? { ...option, currentValue: live.currentValue } : override !== undefined ? { ...option, currentValue: override } : option;
+      return override !== undefined ? { ...option, currentValue: override } : live ? { ...option, currentValue: live.currentValue } : option;
     });
   }
 
@@ -381,8 +396,14 @@ export class SessionRuntime {
       const { text, detail } = describeError(error);
       this.options.log.error(`Failed to start session: ${text}${detail ? `\n${detail}` : ""}`);
       this.lastError = text;
-      this.model.addNotice("error", text, detail ?? this.process?.stderr.trim() ?? undefined, ["reconnect", "openSettings", "openLogs"]);
       this.sessionId = undefined;
+      if (error instanceof AgentProcessError && this.model.getItems().length === 0) {
+        // Missing executable / not logged in on a fresh view: the UI shows a setup card instead of a notice.
+        this.setConnectionState("error");
+        this.options.events.agentUnavailable?.(text);
+        return;
+      }
+      this.model.addNotice("error", text, detail ?? this.process?.stderr.trim() ?? undefined, ["reconnect", "openSettings", "openLogs"]);
       this.setConnectionState(this.connection && !this.connection.isClosed ? "idle" : "error");
       if (error instanceof AgentProcessError) this.options.events.agentUnavailable?.(text);
     }
@@ -478,10 +499,12 @@ export class SessionRuntime {
         (m): m is { modelId: string; name: string; description?: string } =>
           isRecord(m) && typeof m.modelId === "string" && typeof m.name === "string",
       );
+      const parsed = parseCursorModelId(models.currentModelId);
       this.models = {
-        currentModelId: models.currentModelId,
+        currentModelId: parsed.modelId,
         availableModels: available.map((m) => ({ modelId: m.modelId, name: m.name, ...(m.description ? { description: m.description } : {}) })),
       };
+      this.rememberModelParams(parsed);
     }
     if (response.configOptions) {
       this.applyConfigOptions(response.configOptions);
@@ -499,11 +522,21 @@ export class SessionRuntime {
     }
     const model = this.configOptions.find((o) => o.id === "model" || o.category === "model");
     if (model && typeof model.currentValue === "string") {
+      const parsed = parseCursorModelId(model.currentValue);
       this.models = {
-        currentModelId: model.currentValue,
+        currentModelId: parsed.modelId,
         availableModels: model.options.length > 0 ? model.options.map((o) => ({ modelId: o.value, name: o.name, ...(o.description ? { description: o.description } : {}) })) : (this.models?.availableModels ?? []),
       };
+      this.rememberModelParams(parsed);
     }
+    // The "model" selector itself is never a per-model option; drop its parameterised currentValue from the live list.
+    this.configOptions = this.configOptions.map((o) => (o.id === "model" && typeof o.currentValue === "string" ? { ...o, currentValue: parseCursorModelId(o.currentValue).modelId } : o));
+  }
+
+  /** Parameters embedded in the model id are the authoritative current values of the model options. */
+  private rememberModelParams(parsed: { modelId: string; params: Record<string, string> }): void {
+    if (Object.keys(parsed.params).length === 0) return;
+    this.modelOptionOverrides.set(parsed.modelId, { ...(this.modelOptionOverrides.get(parsed.modelId) ?? {}), ...parsed.params });
   }
 
   private async refreshModelCatalog(): Promise<void> {

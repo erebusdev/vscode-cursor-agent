@@ -101,12 +101,19 @@ describe.skipIf(!enabled)("real Cursor agent", () => {
     const end = [...runtime.model.getItems()].reverse().find((i) => i.type === "turn_end") as Extract<ThreadItem, { type: "turn_end" }>;
     expect(end.stopReason).toBe("cancelled");
 
-    // 5) mode/model switching round-trips
+    // 5) mode/model switching round-trips. Cursor persists the selected model globally for the
+    //    CLI profile, so restore the original afterwards.
     await runtime.setMode("ask");
     expect(runtime.state.modes?.currentModeId).toBe("ask");
     await runtime.setMode("agent");
-    const other = runtime.state.models!.availableModels.find((m) => m.modelId !== runtime.state.models!.currentModelId)!;
-    await runtime.setModel(other.modelId);
-    expect(runtime.state.models?.currentModelId).toBe(other.modelId);
+    const original = runtime.state.models!.currentModelId;
+    const other = runtime.state.models!.availableModels.find((m) => m.modelId !== original)!;
+    try {
+      await runtime.setModel(other.modelId, false);
+      expect(runtime.state.models?.currentModelId).toBe(other.modelId);
+    } finally {
+      await runtime.setModel(original, false);
+    }
+    expect(runtime.state.models?.currentModelId).toBe(original);
   }, 300_000);
 });

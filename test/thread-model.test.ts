@@ -3,6 +3,7 @@ import type * as acp from "@agentclientprotocol/sdk";
 import type { ExtensionToWebview, ThreadItem, ToolItem } from "../src/shared/protocol";
 import { ThreadModel } from "../src/extension/session/ThreadModel";
 import { buildFileDiff, normalizeCursorDiff } from "../src/extension/session/diff";
+import { parseCursorModelId } from "../src/extension/session/SessionRuntime";
 
 function make() {
   const messages: ExtensionToWebview[] = [];
@@ -177,5 +178,12 @@ describe("diffs", () => {
     expect(del?.oldLine).toBe(5);
     expect(add?.newLine).toBe(5);
     expect(add?.text).toBe("five");
+  });
+});
+
+describe("parseCursorModelId", () => {
+  it("splits Cursor's parameterised model ids", () => {
+    expect(parseCursorModelId("grok-4.7[context=256k,reasoning_effort=high,fast=true]")).toEqual({ modelId: "grok-4.7", params: { context: "256k", reasoning_effort: "high", fast: "true" } });
+    expect(parseCursorModelId("auto-smart")).toEqual({ modelId: "auto-smart", params: {} });
   });
 });

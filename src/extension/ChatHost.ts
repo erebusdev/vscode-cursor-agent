@@ -6,7 +6,7 @@
 import * as vscode from "vscode";
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
-import type { ExtensionToWebview, PromptAttachmentInput, UiSettings, WebviewToExtension } from "../shared/protocol";
+import type { AgentProbe, ExtensionToWebview, PromptAttachmentInput, UiSettings, WebviewToExtension } from "../shared/protocol";
 import type { SessionRuntime } from "./session/SessionRuntime";
 import { DiffContentProvider } from "./DiffContentProvider";
 import { fetchCursorUsage } from "./session/usage";
@@ -177,6 +177,10 @@ export class ChatHost implements vscode.Disposable {
           settings: this.uiSettings(),
           draft: this.draft,
         } satisfies ExtensionToWebview);
+        // One-off messages sent before this webview existed were not delivered; replay the essentials.
+        void webview.postMessage({ type: "extensionSettings", settings: readExtensionSettings() } satisfies ExtensionToWebview);
+        if (this.lastProbe) void webview.postMessage({ type: "agentProbe", probe: this.lastProbe } satisfies ExtensionToWebview);
+        else if (this.runtime.state.connection === "error") void this.probe();
         if (!this.firstReadyFired) {
           this.firstReadyFired = true;
           this.onFirstReady?.();
@@ -379,12 +383,15 @@ export class ChatHost implements vscode.Disposable {
     this.send({ type: "files.results", requestId, query, files: scored });
   }
 
+  private lastProbe: AgentProbe | undefined;
+
   /** Resolves the configured executable and reads its version; results go to the settings panel. */
   async probe(): Promise<void> {
     const settings = readExtensionSettings();
     this.send({ type: "agentProbe", probe: { state: "checking", configuredPath: settings.agentPath, checkedAt: Date.now() } });
     const env: NodeJS.ProcessEnv = { ...process.env, ...settings.environment };
     const probe = await probeAgent(settings.agentPath, env);
+    this.lastProbe = probe;
     this.log.info(`Agent probe: ${probe.state}${probe.resolvedPath ? ` (${probe.resolvedPath}${probe.version ? `, ${probe.version}` : ""})` : ""}${probe.error ? ` – ${probe.error}` : ""}`);
     this.send({ type: "agentProbe", probe });
   }

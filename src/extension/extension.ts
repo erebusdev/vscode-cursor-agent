@@ -66,10 +66,8 @@ export function activate(context: vscode.ExtensionContext): void {
       permissionRequested: (title) => host?.onPermissionRequested(title),
       turnFinished: (reason) => host?.onTurnFinished(reason),
       questionAsked: (title) => host?.onQuestionAsked(title),
-      agentUnavailable: () => {
-        host?.showSettings();
-        void host?.probe();
-      },
+      // The UI shows a setup card with the probe result; no need to force the settings panel open.
+      agentUnavailable: () => void host?.probe(),
     },
   });
   // Capture full before/after texts for the native diff editor.

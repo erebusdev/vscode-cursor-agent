@@ -158,6 +158,12 @@ function optionValueLabel(o: ConfigOption): string {
   return match?.name ?? String(o.currentValue);
 }
 
+/** "Fast: Fast" reads badly; when the selected value's name repeats the option name, show it alone. */
+function optionPillLabel(o: ConfigOption): { name: string; value: string } | { name: string } {
+  const value = optionValueLabel(o);
+  return value.trim().toLowerCase() === o.name.trim().toLowerCase() ? { name: o.name } : { name: o.name, value };
+}
+
 function OptionPill({ option }: { option: ConfigOption }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -180,7 +186,13 @@ function OptionPill({ option }: { option: ConfigOption }) {
   return (
     <>
       <button ref={anchor} type="button" class="picker pill" aria-haspopup={isSelect || isBool ? "listbox" : "dialog"} aria-expanded={open} onClick={() => setOpen(!open)} title={option.description ?? option.name}>
-        <span class="pill-name">{option.name}:</span> <span class="picker-label">{optionValueLabel(option)}</span>
+        {"value" in optionPillLabel(option) ? (
+          <>
+            <span class="pill-name">{option.name}:</span> <span class="picker-label">{optionValueLabel(option)}</span>
+          </>
+        ) : (
+          <span class="picker-label">{option.name}</span>
+        )}
       </button>
       <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label={option.name} role={isSelect || isBool ? "listbox" : "dialog"} minWidth={180}>
         {isSelect || isBool ? (
