@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "erebuslabs",
   "license": "MIT",
-  "author": { "name": "Melissa Choy" },
+  "author": { "name": "Erebus Labs" },
   "repository": { "type": "git", "url": "https://github.com/erebusdev/vscode-cursor-agent.git" },
   "homepage": "https://github.com/erebusdev/vscode-cursor-agent#readme",
   "bugs": { "url": "https://github.com/erebusdev/vscode-cursor-agent/issues" },
