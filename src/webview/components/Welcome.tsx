@@ -2,7 +2,7 @@ import { relativeTime } from "../format";
 import { useSelector } from "../store";
 import { post } from "../vscode";
 import { SetupCard, useNeedsSetup } from "./SetupCard";
-import { Icon, Spinner, useNow } from "./ui";
+import { CursorMark, Icon, Spinner, useNow } from "./ui";
 
 export function Welcome() {
   const sessions = useSelector((s) => s.sessions);
@@ -19,7 +19,7 @@ export function Welcome() {
       {needsSetup && <SetupCard />}
       <div class="welcome-hero">
         <span class="welcome-logo">
-          <Icon name="sparkle" />
+          <CursorMark size={22} />
         </span>
         <h2>Cursor Agent</h2>
         <p class="welcome-hint">

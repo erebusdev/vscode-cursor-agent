@@ -121,3 +121,12 @@ export function AutoScrollPre({ content, follow, class: cls, maxHeight }: { cont
     </pre>
   );
 }
+
+/** Cursor's cube mark, inline so it follows the current text colour. */
+export function CursorMark({ size = 22, class: cls }: { size?: number; class?: string }) {
+  return (
+    <svg class={cls} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="currentColor" fill-rule="evenodd" d="M12 2 L20.66 7 L20.66 17 L12 22 L3.34 17 L3.34 7 Z M3.34 7 L20.66 7 L12 22 L12 12 Z" />
+    </svg>
+  );
+}

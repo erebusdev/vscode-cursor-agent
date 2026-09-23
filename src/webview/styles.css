@@ -636,6 +636,9 @@ button.chip:disabled {
 .turn-avatar .codicon {
   font-size: 12px;
 }
+.turn-avatar svg {
+  display: block;
+}
 .turn-rule {
   flex: 1 1 auto;
   width: 1px;
@@ -697,6 +700,9 @@ button.chip:disabled {
 }
 .welcome-logo .codicon {
   font-size: 22px;
+}
+.welcome-logo svg {
+  display: block;
 }
 .welcome h2 {
   margin: 0 0 4px;
