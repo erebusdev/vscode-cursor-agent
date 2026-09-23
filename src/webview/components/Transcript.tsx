@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/ho
 import { findPendingPermission, getState, subscribe, useSelector, type StoreState } from "../store";
 import { ItemView } from "./items/ItemView";
 import { respondToPermission } from "./items/Permission";
-import { CursorMark, Icon, prefersReducedMotion } from "./ui";
+import { Icon, prefersReducedMotion } from "./ui";
 import { Welcome } from "./Welcome";
 
 type Group = { key: string; kind: "user" | "agent" | "solo"; ids: string[] };
@@ -153,7 +153,7 @@ export function Transcript() {
                 <div key={g.key} class="turn agent-turn">
                   <div class="turn-gutter" aria-hidden="true">
                     <span class="turn-avatar">
-                      <CursorMark size={12} />
+                      <Icon name="sparkle" />
                     </span>
                     <span class="turn-rule" />
                   </div>
