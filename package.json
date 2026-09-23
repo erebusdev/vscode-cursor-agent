@@ -3,7 +3,7 @@
   "displayName": "Cursor Agent",
   "description": "The Cursor Agent CLI inside VS Code: streaming chat, tool calls, diffs, permissions, sessions.",
   "version": "0.1.0",
-  "publisher": "flexnet",
+  "publisher": "melchoy",
   "license": "MIT",
   "private": true,
   "engines": { "vscode": "^1.94.0" },
