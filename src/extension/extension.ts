@@ -219,7 +219,7 @@ export function activate(context: vscode.ExtensionContext): void {
     };
   }
 
-  log.info(`Cursor Agent Chat activated (workspace: ${cwd}${vscode.env.remoteName ? `, remote: ${vscode.env.remoteName}` : ""}).`);
+  log.info(`Cursor Agent activated (workspace: ${cwd}${vscode.env.remoteName ? `, remote: ${vscode.env.remoteName}` : ""}).`);
 }
 
 function attachDiffCapture(model: ThreadModel, diffs: DiffContentProvider): void {

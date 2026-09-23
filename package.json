@@ -77,7 +77,7 @@
     "walkthroughs": [
       {
         "id": "cursorAcp.gettingStarted",
-        "title": "Get started with Cursor Agent Chat",
+        "title": "Get started with Cursor Agent",
         "description": "Chat with the Cursor Agent CLI inside VS Code.",
         "steps": [
           {
@@ -104,7 +104,7 @@
       }
     ],
     "configuration": {
-      "title": "Cursor Agent Chat",
+      "title": "Cursor Agent",
       "properties": {
         "cursorAcp.agentPath": {
           "type": "string",

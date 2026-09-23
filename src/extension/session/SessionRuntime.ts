@@ -330,7 +330,7 @@ export class SessionRuntime {
             terminal: false,
             _meta: { parameterizedModelPicker: true },
           },
-          clientInfo: { name: "vscode-cursor-acp", title: "Cursor Agent Chat for VS Code", version: "0.1.0" },
+          clientInfo: { name: "vscode-cursor-acp", title: "Cursor Agent for VS Code", version: "0.1.0" },
         }),
         STARTUP_TIMEOUT_MS,
         "The agent did not answer `initialize` within 60s.",
