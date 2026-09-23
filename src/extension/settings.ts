@@ -2,7 +2,7 @@
  * Bridges VS Code configuration to the in-app settings panel.
  */
 import * as vscode from "vscode";
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 import type { AgentProbe, ExtensionSettings, SettingsKey } from "../shared/protocol";
 import { resolveExecutable } from "./acp/resolveExecutable";
 
@@ -76,20 +76,34 @@ export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv)
     };
   }
   return new Promise<AgentProbe>((resolve) => {
-    execFile(resolved, ["--version"], { env, timeout: 15_000, windowsHide: true }, (error, stdout, stderr) => {
+    const child = execFile(resolved, ["--version"], { env, timeout: PROBE_TIMEOUT_MS, maxBuffer: 256 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (error) {
         resolve({
           state: "failed",
           configuredPath,
           resolvedPath: resolved,
-          error: `Could not run "${resolved} --version": ${error.message}`,
+          error: `Could not run "${resolved} --version": ${describeExecError(error)}`,
           hint: (stderr || "").trim().slice(0, 300) || "Check that the file is executable and that the wrapper forwards arguments.",
           checkedAt,
         });
         return;
       }
-      const version = (stdout || "").trim().split("\n").pop()?.trim();
+      // Some CLIs print their version to stderr; take the last non-empty line of whichever has output.
+      const lastLine = (text: string) => text.trim().split("\n").map((l) => l.trim()).filter(Boolean).pop();
+      const version = lastLine(stdout || "") ?? lastLine(stderr || "");
       resolve({ state: "ok", configuredPath, resolvedPath: resolved, ...(version ? { version } : {}), checkedAt });
     });
+    // A wrapper that waits on stdin must not hang the probe.
+    child.stdin?.end();
   });
+}
+
+const PROBE_TIMEOUT_MS = 15_000;
+
+function describeExecError(error: ExecFileException): string {
+  if (error.killed && error.signal) return `it did not finish within ${PROBE_TIMEOUT_MS / 1000}s and was stopped (${error.signal}).`;
+  if (error.code === "ENOENT") return "the file does not exist.";
+  if (error.code === "EACCES") return "the file is not executable (chmod +x).";
+  if (typeof error.code === "number") return `it exited with code ${error.code}.`;
+  return error.message;
 }

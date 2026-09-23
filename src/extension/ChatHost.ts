@@ -9,6 +9,7 @@ import { basename } from "node:path";
 import type { AgentProbe, ExtensionToWebview, PromptAttachmentInput, UiSettings, WebviewToExtension } from "../shared/protocol";
 import type { SessionRuntime } from "./session/SessionRuntime";
 import { DiffContentProvider } from "./DiffContentProvider";
+import { MessageBatcher } from "./MessageBatcher";
 import { fetchCursorUsage } from "./session/usage";
 import { probeAgent, readExtensionSettings, resetExtensionSetting, updateExtensionSetting } from "./settings";
 
@@ -28,43 +29,22 @@ interface Attached {
   ready: boolean;
 }
 
-/** Coalesces streaming appends so the webview receives at most ~60 messages/s. */
-class MessageBatcher {
-  private queue: ExtensionToWebview[] = [];
-  private timer: ReturnType<typeof setTimeout> | undefined;
+/** Hidden-view notifications of one kind arriving within this window are shown as a single message. */
+const NOTIFICATION_COALESCE_MS = 750;
 
-  constructor(private readonly flush: (messages: ReadonlyArray<ExtensionToWebview>) => void) {}
+type NotificationKind = "permission" | "question" | "turn";
 
-  push(message: ExtensionToWebview): void {
-    const last = this.queue[this.queue.length - 1];
-    if (message.type === "item.append" && last?.type === "item.append" && last.id === message.id && last.field === message.field) {
-      this.queue[this.queue.length - 1] = { ...last, text: last.text + message.text };
-    } else if (message.type === "session" && last?.type === "session") {
-      this.queue[this.queue.length - 1] = message;
-    } else {
-      this.queue.push(message);
-    }
-    if (!this.timer) {
-      this.timer = setTimeout(() => this.drain(), 16);
-    }
-  }
-
-  drain(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
-    if (this.queue.length === 0) return;
-    const messages = this.queue;
-    this.queue = [];
-    this.flush(messages);
-  }
+interface PendingNotification {
+  timer: ReturnType<typeof setTimeout>;
+  first: string;
+  count: number;
 }
 
 export class ChatHost implements vscode.Disposable {
   private readonly attached = new Set<Attached>();
   private readonly batcher = new MessageBatcher((messages) => this.broadcast(messages));
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly pendingNotifications = new Map<NotificationKind, PendingNotification>();
   private draft = "";
   private view: vscode.WebviewView | undefined;
   /** Fires once, the first time a webview reports ready (used by the dev script hook). */
@@ -97,33 +77,67 @@ export class ChatHost implements vscode.Disposable {
     this.batcher.push(message);
     if (message.type === "session") {
       this.updateBadge(message.session.pendingPermissions);
-      const title = this.panelTitle();
+      const title = panelTitle(message.session.title);
       for (const panel of this.panels) if (panel.title !== title) panel.title = title;
+    } else if (message.type === "items.reset") {
+      // The transcript was replaced (new / resumed session); its before/after texts are unreachable now.
+      this.diffs.clearTexts();
     }
   }
 
   onPermissionRequested(title: string): void {
-    if (!this.anyVisible() && this.notifyWhenHidden()) {
-      void vscode.window.showWarningMessage(`Cursor Agent needs permission: ${title}`, "Review").then((choice) => {
-        if (choice === "Review") this.reveal();
-      });
-    }
+    this.notifyHidden("permission", title);
   }
 
   onQuestionAsked(title: string): void {
-    if (!this.anyVisible() && this.notifyWhenHidden()) {
-      void vscode.window.showInformationMessage(`Cursor Agent: ${title}`, "Open").then((choice) => {
-        if (choice === "Open") this.reveal();
-      });
-    }
+    this.notifyHidden("question", title);
   }
 
   onTurnFinished(stopReason: string): void {
-    if (!this.anyVisible() && this.notifyWhenHidden()) {
-      const text = stopReason === "end_turn" ? "Cursor Agent finished." : `Cursor Agent stopped (${stopReason.replace(/_/g, " ")}).`;
-      void vscode.window.showInformationMessage(text, "Open").then((choice) => {
-        if (choice === "Open") this.reveal();
-      });
+    this.notifyHidden("turn", stopReason);
+  }
+
+  /**
+   * Shows one OS-style notification per kind for events that arrive while no
+   * chat view is visible. Several events of the same kind within a short
+   * window (e.g. a burst of permission requests) become a single message.
+   */
+  private notifyHidden(kind: NotificationKind, detail: string): void {
+    if (this.anyVisible() || !this.notifyWhenHidden()) return;
+    const pending = this.pendingNotifications.get(kind);
+    if (pending) {
+      pending.count += 1;
+      return;
+    }
+    const timer = setTimeout(() => {
+      const entry = this.pendingNotifications.get(kind);
+      this.pendingNotifications.delete(kind);
+      if (!entry || this.anyVisible()) return;
+      this.showHiddenNotification(kind, entry.first, entry.count);
+    }, NOTIFICATION_COALESCE_MS);
+    this.pendingNotifications.set(kind, { timer, first: detail, count: 1 });
+  }
+
+  private showHiddenNotification(kind: NotificationKind, first: string, count: number): void {
+    const open = (choice: string | undefined, expected: string) => {
+      if (choice === expected) this.reveal();
+    };
+    switch (kind) {
+      case "permission": {
+        const text = count > 1 ? `Cursor Agent needs permission (${count} requests).` : `Cursor Agent needs permission: ${first}`;
+        void vscode.window.showWarningMessage(text, "Review").then((choice) => open(choice, "Review"));
+        return;
+      }
+      case "question": {
+        const text = count > 1 ? `Cursor Agent has ${count} questions.` : `Cursor Agent: ${first}`;
+        void vscode.window.showInformationMessage(text, "Open").then((choice) => open(choice, "Open"));
+        return;
+      }
+      case "turn": {
+        const text = first === "end_turn" ? "Cursor Agent finished." : `Cursor Agent stopped (${first.replace(/_/g, " ")}).`;
+        void vscode.window.showInformationMessage(text, "Open").then((choice) => open(choice, "Open"));
+        return;
+      }
     }
   }
 
@@ -146,16 +160,11 @@ export class ChatHost implements vscode.Disposable {
   attachPanel(panel: vscode.WebviewPanel): void {
     const attached = this.attach(panel.webview, () => panel.visible, () => panel.reveal());
     this.panels.add(panel);
-    panel.title = this.panelTitle();
+    panel.title = panelTitle(this.runtime.state.title);
     panel.onDidDispose(() => {
       this.attached.delete(attached);
       this.panels.delete(panel);
     });
-  }
-
-  private panelTitle(): string {
-    const title = this.runtime.state.title;
-    return title ? `Cursor: ${title}` : "Cursor";
   }
 
   private attach(webview: vscode.Webview, isVisible: () => boolean, reveal: () => void): Attached {
@@ -455,6 +464,7 @@ export class ChatHost implements vscode.Disposable {
     await vscode.window.showTextDocument(uri, options);
   }
 
+  /** Opens the native diff editor for an edit; an empty `itemId` means the latest edit of `path`. */
   private async openDiff(itemId: string, path: string): Promise<void> {
     const items = this.runtime.model.getItems();
     let found: { oldText: string; newText: string } | undefined;
@@ -556,6 +566,13 @@ export class ChatHost implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.batcher.dispose();
+    for (const pending of this.pendingNotifications.values()) clearTimeout(pending.timer);
+    this.pendingNotifications.clear();
     for (const d of this.disposables) d.dispose();
   }
+}
+
+function panelTitle(sessionTitle: string | undefined): string {
+  return sessionTitle ? `Cursor: ${sessionTitle}` : "Cursor";
 }

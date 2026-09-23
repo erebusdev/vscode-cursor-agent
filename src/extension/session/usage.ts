@@ -6,7 +6,7 @@
  * `DashboardService/GetCurrentPeriodUsage` returns percentages for the
  * current billing cycle. Read-only.
  */
-import { readFile } from "node:fs/promises";
+import { open, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { UsageSummary, UsageWindow } from "../../shared/protocol";
@@ -32,14 +32,10 @@ export async function resolveCursorConfigDir(options: UsageSourceOptions): Promi
   if (options.configDir?.trim()) return expandHome(options.configDir.trim(), env);
   if (env.CURSOR_CONFIG_DIR?.trim()) return expandHome(env.CURSOR_CONFIG_DIR.trim(), env);
   if (options.agentPath) {
-    try {
-      const text = await readFile(options.agentPath, "utf8");
-      if (text.startsWith("#!") && text.length < 64_000) {
-        const match = /CURSOR_CONFIG_DIR=["']?([^"'\n]+)["']?/.exec(text);
-        if (match?.[1]) return expandHome(match[1].trim(), env);
-      }
-    } catch {
-      // not a readable script (binary or missing) – fall through
+    const text = await readScriptHead(options.agentPath);
+    if (text?.startsWith("#!")) {
+      const match = /CURSOR_CONFIG_DIR=["']?([^"'\n]+)["']?/.exec(text);
+      if (match?.[1]) return expandHome(match[1].trim(), env);
     }
   }
   if (process.platform === "win32") {
@@ -47,6 +43,27 @@ export async function resolveCursorConfigDir(options: UsageSourceOptions): Promi
   }
   if (process.platform === "darwin") return join(env.HOME || homedir(), ".cursor");
   return join(env.XDG_CONFIG_HOME || join(env.HOME || homedir(), ".config"), "cursor");
+}
+
+const SCRIPT_HEAD_BYTES = 64 * 1024;
+
+/**
+ * Reads at most the first 64KB of the configured executable. The real agent
+ * is a large native binary; reading it whole on every usage refresh would be
+ * wasteful, and a wrapper script's exports are near the top anyway.
+ */
+async function readScriptHead(path: string): Promise<string | undefined> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(path, "r");
+    const buffer = Buffer.alloc(SCRIPT_HEAD_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, SCRIPT_HEAD_BYTES, 0);
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } catch {
+    return undefined; // missing / unreadable – fall through to the defaults
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
 }
 
 interface RawUsage {

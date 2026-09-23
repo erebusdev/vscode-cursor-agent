@@ -45,7 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const log = vscode.window.createOutputChannel("Cursor Agent", { log: true });
   context.subscriptions.push(log);
   const diffs = new DiffContentProvider();
-  context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs));
+  context.subscriptions.push(diffs, vscode.workspace.registerTextDocumentContentProvider(DIFF_SCHEME, diffs));
 
   const workspace = workspaceInfo();
   const cwd = workspace?.cwd ?? process.cwd();
@@ -223,13 +223,17 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 function attachDiffCapture(model: ThreadModel, diffs: DiffContentProvider): void {
-  // ThreadModel takes the callback in its constructor; SessionRuntime constructs it, so
-  // we register through the small hook the runtime exposes on the model.
+  // SessionRuntime constructs the ThreadModel, so the capture hook is registered afterwards.
   model.setDiffListener((itemId, path, oldText, newText) => diffs.remember(itemId, path, oldText, newText));
 }
 
+/**
+ * Stops the agent process (SIGTERM, then SIGKILL after a short grace period).
+ * `context.subscriptions` (host, diff provider, views) are disposed by VS Code.
+ */
 export async function deactivate(): Promise<void> {
-  await runtime?.dispose();
+  const current = runtime;
   runtime = undefined;
   host = undefined;
+  await current?.dispose();
 }

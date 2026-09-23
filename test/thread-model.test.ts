@@ -84,6 +84,56 @@ describe("ThreadModel grouping", () => {
     expect(model.changedFiles()).toEqual([{ path: "/work/project/a.txt", displayPath: "a.txt", additions: 1, deletions: 1 }]);
   });
 
+  it("reuses the diff and forwards the full texts once when identical diff content is resent", () => {
+    const { model } = make();
+    const captured: string[] = [];
+    model.setDiffListener((_id, path) => captured.push(path));
+    const content: acp.ToolCallContent[] = [{ type: "diff", path: "/work/project/a.txt", oldText: "a\nb\n", newText: "a\nc\n" }];
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "e", title: "Edit", kind: "edit", status: "pending" });
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "in_progress", content });
+    const first = (model.getItems()[0] as ToolItem).diffs[0];
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "in_progress", content: [{ ...content[0]! }] });
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "completed", content: [{ ...content[0]! }] });
+    expect((model.getItems()[0] as ToolItem).diffs[0]).toBe(first);
+    expect(captured).toEqual(["/work/project/a.txt"]);
+    // Changed content is diffed again and forwarded again.
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "completed", content: [{ type: "diff", path: "/work/project/a.txt", oldText: "a\nb\n", newText: "a\nc\nd\n" }] });
+    expect((model.getItems()[0] as ToolItem).diffs[0]).not.toBe(first);
+    expect(captured).toHaveLength(2);
+  });
+
+  it("does not double count changed files when a finished tool is updated again", () => {
+    const { model } = make();
+    const content: acp.ToolCallContent[] = [{ type: "diff", path: "/work/project/a.txt", oldText: "a\nb\n", newText: "a\nc\n" }];
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "e", title: "Edit", kind: "edit", status: "pending" });
+    expect(model.changedFilesVersion).toBe(0);
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "completed", content });
+    const version = model.changedFilesVersion;
+    const before = model.changedFiles();
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "completed", content });
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "e", status: "completed" });
+    expect(model.changedFilesVersion).toBe(version);
+    expect(model.changedFiles()).toBe(before); // memoised
+    expect(before).toEqual([{ path: "/work/project/a.txt", displayPath: "a.txt", additions: 1, deletions: 1 }]);
+    // A second tool touching the same file adds to the totals; a corrected diff replaces that tool's share.
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "f", title: "Edit", kind: "edit", status: "completed", content: [{ type: "diff", path: "/work/project/a.txt", oldText: "x\n", newText: "x\ny\nz\n" }] });
+    expect(model.changedFiles()[0]).toMatchObject({ additions: 3, deletions: 1 });
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "f", status: "completed", content: [{ type: "diff", path: "/work/project/a.txt", oldText: "x\n", newText: "x\ny\n" }] });
+    expect(model.changedFiles()[0]).toMatchObject({ additions: 2, deletions: 1 });
+    model.reset();
+    expect(model.changedFiles()).toEqual([]);
+  });
+
+  it("bounds file contents and pretty-printed inputs sent to the UI", () => {
+    const { model } = make();
+    const big = "z".repeat(300_000);
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "r", title: "Read", kind: "read", status: "completed", rawInput: { path: "/x", big }, rawOutput: { content: big } });
+    const tool = model.getItems()[0] as ToolItem;
+    expect(tool.fileContent!.length).toBeLessThan(200_100);
+    expect(tool.fileContent!.endsWith("[… truncated]")).toBe(true);
+    expect(tool.inputText!.length).toBeLessThan(50_100);
+  });
+
   it("shortens bare workspace paths in titles", () => {
     const { model } = make();
     model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "r", title: "Read /work/project/src/a.ts", kind: "read", status: "completed", rawInput: { path: "/work/project/src/a.ts" } });
@@ -118,6 +168,7 @@ describe("ThreadModel grouping", () => {
     let tool = model.getItems()[0] as ToolItem;
     expect(tool.permission?.state).toBe("pending");
     expect(tool.permission?.reason).toBe("Not in allowlist: rm");
+    expect(tool.output).toBe("");
     expect(model.pendingPermissionRequestIds()).toEqual(["req-1"]);
     model.resolvePermission("req-1", "allow-once");
     tool = model.getItems()[0] as ToolItem;

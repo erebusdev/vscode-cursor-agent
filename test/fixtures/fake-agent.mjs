@@ -9,7 +9,15 @@
  *   "plan"             → cursor/create_plan request + cursor/update_todos
  *   "sleep <ms>"       → waits (cancellable) before answering
  *   "crash"            → exits the process with code 3
+ *   "askcrash"         → asks a question, then exits with code 4 while it is pending
+ *   "editrepeat <path>"→ edit whose identical diff content is resent in several updates
  *   "fail"             → responds with a JSON-RPC error
+ *
+ * Environment knobs:
+ *   FAKE_AGENT_AUTH_FAIL=1        authenticate fails
+ *   FAKE_AGENT_CRASH_ON_INIT=1    prints to stderr and exits with code 2 on initialize
+ *   FAKE_AGENT_LOAD_DELAY_MS=n    delay before the session/load response (default 20)
+ *   FAKE_AGENT_NEW_DELAY_MS=n     delay before the session/new response (default 0)
  */
 import readline from "node:readline";
 
@@ -73,6 +81,26 @@ async function handlePrompt(id, params) {
 
   if (text.startsWith("crash")) {
     process.exit(3);
+  }
+  if (text.startsWith("askcrash")) {
+    void request("cursor/ask_question", {
+      toolCallId: "q-crash",
+      title: "Still there?",
+      questions: [{ id: "q", prompt: "Which?", options: [{ id: "x", label: "X" }] }],
+    });
+    setTimeout(() => process.exit(4), 50);
+    return;
+  }
+  if (text.startsWith("editrepeat ")) {
+    const path = text.slice(11);
+    const toolCallId = `call-${nextId++}`;
+    const content = [{ type: "diff", path, oldText: "a\nb\nc\n", newText: "a\nB\nc\nd\n" }];
+    notify(sessionId, { sessionUpdate: "tool_call", toolCallId, title: `Edit \`${path}\``, kind: "edit", status: "pending", rawInput: { path } });
+    for (const status of ["in_progress", "in_progress", "completed", "completed"]) {
+      notify(sessionId, { sessionUpdate: "tool_call_update", toolCallId, status, content });
+    }
+    finish("end_turn");
+    return;
   }
   if (text.startsWith("fail")) {
     send({ jsonrpc: "2.0", id, error: { code: -32000, message: "Something went wrong communicating with the server." } });
@@ -177,6 +205,10 @@ rl.on("line", (line) => {
   const reply = (result) => send({ jsonrpc: "2.0", id, result });
   switch (method) {
     case "initialize":
+      if (process.env.FAKE_AGENT_CRASH_ON_INIT) {
+        process.stderr.write("fake agent: refusing to start\n");
+        process.exit(2);
+      }
       reply({
         protocolVersion: 1,
         agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, sessionCapabilities: { list: {} } },
@@ -191,8 +223,11 @@ rl.on("line", (line) => {
     case "session/new": {
       const sessionId = `s-${nextId++}`;
       sessions.set(sessionId, { cwd: params.cwd, history: [], mode: "agent", model: "model-a", title: undefined });
-      reply({ sessionId, modes, models, configOptions: configOptions(sessionId) });
-      setTimeout(() => notify(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [{ name: "compress", description: "Compress context" }] }), 5);
+      const newDelay = Number(process.env.FAKE_AGENT_NEW_DELAY_MS ?? "0");
+      setTimeout(() => {
+        reply({ sessionId, modes, models, configOptions: configOptions(sessionId) });
+        setTimeout(() => notify(sessionId, { sessionUpdate: "available_commands_update", availableCommands: [{ name: "compress", description: "Compress context" }] }), 5);
+      }, newDelay);
       return;
     }
     case "session/list":
@@ -208,17 +243,15 @@ rl.on("line", (line) => {
       for (const entry of s.history) {
         notify(params.sessionId, { sessionUpdate: entry.role === "user" ? "user_message_chunk" : "agent_message_chunk", content: { type: "text", text: entry.text } });
       }
-      setTimeout(() => reply({ modes, models, configOptions: configOptions(params.sessionId) }), 20);
+      setTimeout(() => reply({ modes, models, configOptions: configOptions(params.sessionId) }), Number(process.env.FAKE_AGENT_LOAD_DELAY_MS ?? "20"));
       return;
     }
     case "session/prompt":
       void handlePrompt(id, params);
       return;
     case "session/cancel":
+      // Outstanding permission requests are answered "cancelled" by the client; nothing to do here.
       cancelled = true;
-      for (const [pid, p] of pending) {
-        // Agent-side: outstanding permission requests will be answered "cancelled" by the client.
-      }
       return;
     case "session/set_config_option": {
       const s = sessions.get(params.sessionId);

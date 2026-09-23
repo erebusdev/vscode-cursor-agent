@@ -75,6 +75,12 @@ interface PendingRequest<T> {
   cancel(): void;
 }
 
+interface StartRequest {
+  target: string | undefined;
+  epoch: number;
+  promise: Promise<void>;
+}
+
 const SESSION_LOAD_TIMEOUT_MS = 90_000;
 const CANCEL_TIMEOUT_MS = 15_000;
 const STARTUP_TIMEOUT_MS = 60_000;
@@ -173,9 +179,15 @@ export class SessionRuntime {
   private readonly pendingPermissions = new Map<string, PendingRequest<acp.RequestPermissionResponse>>();
   private readonly pendingQuestions = new Map<string, PendingRequest<CursorAskQuestionResponse>>();
   private readonly pendingPlans = new Map<string, PendingRequest<CursorCreatePlanResponse>>();
-  private startPromise: Promise<void> | undefined;
   private connectPromise: Promise<AcpConnection> | undefined;
-  private loadingSessionId: string | undefined;
+  /** The start (new/load) currently executing, and at most one waiting behind it (latest request wins). */
+  private startInFlight: StartRequest | undefined;
+  private startQueued: StartRequest | undefined;
+  /** Bumped by every teardown; a start that began in an older epoch was superseded and fails silently. */
+  private teardownEpoch = 0;
+  private publishScheduled = false;
+  private modelOptionsMemo: { key: string; catalog: ReadonlyArray<CursorAvailableModel>; live: ReadonlyArray<ConfigOption>; overridesVersion: number; value: ConfigOption[] } | undefined;
+  private overridesVersion = 0;
 
   constructor(private readonly options: SessionRuntimeOptions) {
     this.model = new ThreadModel((message) => this.options.events.message(message), options.cwd);
@@ -185,6 +197,11 @@ export class SessionRuntime {
 
   get state(): SessionState {
     const modelOptions = this.currentModelOptions();
+    let agentCommand = this.process?.displayCommand;
+    if (agentCommand === undefined) {
+      const launch = this.options.getLaunchConfig();
+      agentCommand = [launch.command, ...launch.args, "acp"].join(" ");
+    }
     return {
       connection: this.connectionState,
       ...(this.sessionId ? { sessionId: this.sessionId } : {}),
@@ -192,7 +209,7 @@ export class SessionRuntime {
       cwd: this.options.cwd,
       workspaceName: this.options.workspaceName,
       ...(this.options.remoteName ? { remoteName: this.options.remoteName } : {}),
-      agentCommand: this.process?.displayCommand ?? [this.options.getLaunchConfig().command, ...this.options.getLaunchConfig().args, "acp"].join(" "),
+      agentCommand,
       ...(this.agentVersion ? { agentVersion: this.agentVersion } : {}),
       ...(this.modes ? { modes: this.modes } : {}),
       ...(this.models ? { models: this.models } : {}),
@@ -223,22 +240,43 @@ export class SessionRuntime {
     this.publishState();
   }
 
+  /**
+   * Publishes the session state to the UI on the next microtask. A synchronous
+   * burst of calls (tool updates, config changes and permission bookkeeping
+   * often publish several times in a row) builds and sends `state` once.
+   */
   private publishState(): void {
-    this.options.events.message({ type: "session", session: this.state });
+    if (this.publishScheduled) return;
+    this.publishScheduled = true;
+    queueMicrotask(() => {
+      this.publishScheduled = false;
+      this.options.events.message({ type: "session", session: this.state });
+    });
   }
 
   private currentModelOptions(): ConfigOption[] {
     const current = this.models?.currentModelId;
     if (!current) return [];
+    const memo = this.modelOptionsMemo;
+    if (memo && memo.key === current && memo.catalog === this.modelCatalog && memo.live === this.configOptions && memo.overridesVersion === this.overridesVersion) {
+      return memo.value;
+    }
     const entry = this.modelCatalog.find((m) => m.value === current);
     const fromCatalog = entry?.configOptions?.map(toConfigOption) ?? [];
     const overrides = this.modelOptionOverrides.get(current) ?? {};
     // Prefer live values from configOptions (session/set_config_option responses), then our own writes.
-    return fromCatalog.map((option) => {
+    const value = fromCatalog.map((option) => {
       const live = this.configOptions.find((c) => c.id === option.id);
       const override = overrides[option.id];
       return override !== undefined ? { ...option, currentValue: override } : live ? { ...option, currentValue: live.currentValue } : option;
     });
+    this.modelOptionsMemo = { key: current, catalog: this.modelCatalog, live: this.configOptions, overridesVersion: this.overridesVersion, value };
+    return value;
+  }
+
+  private setModelOptionOverrides(modelId: string, values: Record<string, string | boolean>): void {
+    this.modelOptionOverrides.set(modelId, values);
+    this.overridesVersion += 1;
   }
 
   // --- connection ------------------------------------------------------------------
@@ -256,7 +294,9 @@ export class SessionRuntime {
 
   private async connect(): Promise<AcpConnection> {
     if (this.connection && !this.connection.isClosed && this.authenticated) return this.connection;
+    if (this.disposed) throw new JsonRpcClosedError("initialize", "The extension is shutting down.");
     const launch = this.options.getLaunchConfig();
+    const epoch = this.teardownEpoch;
     const generation = ++this.connectionGeneration;
     this.options.log.info(`Launching Cursor agent: ${launch.command} ${[...launch.args, "acp"].join(" ")} (cwd: ${this.options.cwd})`);
     const process = await AgentProcess.spawn({
@@ -266,6 +306,11 @@ export class SessionRuntime {
       env: launch.env,
       onStderr: (text) => this.options.log.stderr(text),
     });
+    if (this.disposed || epoch !== this.teardownEpoch) {
+      // Torn down (dispose / reconnect) while spawning: do not leak the child.
+      await process.kill();
+      throw new JsonRpcClosedError("initialize", "The connection was closed before the agent finished starting.");
+    }
     this.options.log.info(`Agent process started (pid ${process.pid ?? "?"}).`);
     const logger: JsonRpcLogger | undefined = launch.protocolLogging
       ? { incoming: (line) => this.options.log.protocol("in", line), outgoing: (line) => this.options.log.protocol("out", line) }
@@ -306,12 +351,21 @@ export class SessionRuntime {
       this.authenticated = true;
       return connection;
     } catch (error) {
-      // Retire this connection silently; the caller reports the startup error.
-      this.connectionGeneration += 1;
-      this.connection = undefined;
-      this.process = undefined;
+      // Retire this connection silently; the caller reports the startup error. Only touch the
+      // shared fields if nothing newer has replaced this connection in the meantime.
+      if (this.connection === connection) {
+        this.connectionGeneration += 1;
+        this.connection = undefined;
+        this.process = undefined;
+      }
       connection.close("Startup failed.");
       await process.kill();
+      const stderr = process.stderr.trim();
+      if (error instanceof JsonRpcClosedError && stderr) {
+        // The agent died during startup (typically: not logged in, bad wrapper). Its stderr is
+        // the useful part; surface it the same way as a missing executable.
+        throw new AgentProcessError(error.message, stderr.slice(-2000));
+      }
       throw error;
     }
   }
@@ -324,13 +378,18 @@ export class SessionRuntime {
     this.cancelAllPending();
     this.activePrompt = undefined;
     this.connection = undefined;
-    this.loadingSessionId = undefined;
     this.model.setReplay(false);
     if (wasRunning) this.model.endTurn("error");
+    if (this.connectionState === "starting" || this.connectionState === "loading" || this.connectPromise) {
+      // A start / connect is awaiting a request that has just been rejected; it reports the failure
+      // (with the same reason) so the transcript does not get two notices for one crash.
+      return;
+    }
     if (this.connectionState !== "idle" && this.connectionState !== "error") {
       this.lastError = reason;
       this.model.addNotice("error", reason, stderr || undefined, ["reconnect", "newSession", "openLogs"]);
       this.setConnectionState("disconnected");
+      if (wasRunning) this.options.events.turnFinished("error");
     }
   }
 
@@ -356,7 +415,6 @@ export class SessionRuntime {
       updateTodos: (params: CursorUpdateTodosRequest) => {
         if (!live()) return;
         this.model.setTodos(params.todos ?? [], params.merge !== false);
-        this.publishState();
       },
       unknownRequest: async (method, params) => {
         this.options.log.warn(`Unsupported agent request ${method}: ${JSON.stringify(params).slice(0, 500)}`);
@@ -373,16 +431,56 @@ export class SessionRuntime {
 
   // --- session setup -----------------------------------------------------------------
 
-  /** Starts (or resumes) the session the view should show. */
-  async start(resumeSessionId?: string): Promise<void> {
-    if (this.startPromise) return this.startPromise;
-    this.startPromise = this.startInternal(resumeSessionId).finally(() => {
-      this.startPromise = undefined;
-    });
-    return this.startPromise;
+  /**
+   * Starts (or resumes) the session the view should show.
+   *
+   * Starts are serialised: one runs at a time and at most one more waits behind
+   * it. Repeated requests for the same target share the running start; a
+   * different target replaces whatever is waiting (the latest request wins),
+   * and every caller's promise settles once its request has run or been
+   * superseded.
+   */
+  start(resumeSessionId?: string): Promise<void> {
+    const epoch = this.teardownEpoch;
+    if (this.startQueued) {
+      this.startQueued.target = resumeSessionId;
+      this.startQueued.epoch = epoch;
+      return this.startQueued.promise;
+    }
+    const inFlight = this.startInFlight;
+    if (inFlight) {
+      if (inFlight.epoch === epoch && inFlight.target === resumeSessionId) return inFlight.promise;
+      const queued: StartRequest = { target: resumeSessionId, epoch, promise: Promise.resolve() };
+      queued.promise = inFlight.promise.then(() => {
+        if (this.startQueued === queued) this.startQueued = undefined;
+        // Runs in whatever epoch is current by then: a teardown in between must not make it fail silently.
+        return this.runStart(queued.target, this.teardownEpoch);
+      });
+      this.startQueued = queued;
+      return queued.promise;
+    }
+    return this.runStart(resumeSessionId, epoch);
   }
 
-  private async startInternal(resumeSessionId: string | undefined): Promise<void> {
+  private runStart(target: string | undefined, epoch: number): Promise<void> {
+    const request: StartRequest = { target, epoch, promise: Promise.resolve() };
+    // startInternal never rejects; the finally only clears the slot.
+    request.promise = this.startInternal(target, epoch).finally(() => {
+      if (this.startInFlight === request) this.startInFlight = undefined;
+    });
+    this.startInFlight = request;
+    return request.promise;
+  }
+
+  /** Resolves once any start in progress (running or queued) has settled. */
+  private async settleStart(): Promise<void> {
+    while (this.startQueued || this.startInFlight) {
+      await (this.startQueued ?? this.startInFlight)!.promise;
+    }
+  }
+
+  private async startInternal(resumeSessionId: string | undefined, epoch: number): Promise<void> {
+    if (this.disposed) return;
     this.lastError = undefined;
     this.setConnectionState("starting");
     try {
@@ -393,6 +491,11 @@ export class SessionRuntime {
         await this.newSessionInternal(connection);
       }
     } catch (error) {
+      if (this.disposed || epoch !== this.teardownEpoch) {
+        // Superseded by a reconnect / dispose while in progress: the replacement start owns the UI state.
+        this.options.log.info(`Start of session ${resumeSessionId ?? "(new)"} was superseded: ${describeError(error).text}`);
+        return;
+      }
       const { text, detail } = describeError(error);
       this.options.log.error(`Failed to start session: ${text}${detail ? `\n${detail}` : ""}`);
       this.lastError = text;
@@ -424,7 +527,6 @@ export class SessionRuntime {
   private async loadSessionInternal(connection: AcpConnection, sessionId: string): Promise<void> {
     this.resetSessionState();
     this.sessionId = sessionId;
-    this.loadingSessionId = sessionId;
     this.model.setReplay(true);
     this.setConnectionState("loading");
     let response: acp.LoadSessionResponse;
@@ -435,7 +537,6 @@ export class SessionRuntime {
         "session/load timed out while replaying history.",
       );
     } catch (error) {
-      this.loadingSessionId = undefined;
       this.model.setReplay(false);
       if (error instanceof JsonRpcRemoteError) {
         // The session is gone (Cursor does not persist sessions that never received a prompt,
@@ -448,7 +549,6 @@ export class SessionRuntime {
       }
       throw error;
     }
-    this.loadingSessionId = undefined;
     this.model.setReplay(false);
     this.applySessionSetup(response);
     if (this.model.getItems().length > 0) {
@@ -475,6 +575,7 @@ export class SessionRuntime {
   private resetSessionState(): void {
     this.cancelAllPending();
     this.modelOptionOverrides.clear();
+    this.overridesVersion += 1;
     this.model.reset();
     this.sessionId = undefined;
     this.title = undefined;
@@ -536,7 +637,7 @@ export class SessionRuntime {
   /** Parameters embedded in the model id are the authoritative current values of the model options. */
   private rememberModelParams(parsed: { modelId: string; params: Record<string, string> }): void {
     if (Object.keys(parsed.params).length === 0) return;
-    this.modelOptionOverrides.set(parsed.modelId, { ...(this.modelOptionOverrides.get(parsed.modelId) ?? {}), ...parsed.params });
+    this.setModelOptionOverrides(parsed.modelId, { ...(this.modelOptionOverrides.get(parsed.modelId) ?? {}), ...parsed.params });
   }
 
   private async refreshModelCatalog(): Promise<void> {
@@ -609,6 +710,10 @@ export class SessionRuntime {
   // --- prompting ---------------------------------------------------------------------
 
   async prompt(text: string, attachments: ReadonlyArray<PromptAttachmentInput>): Promise<void> {
+    // A session being created or replayed must finish first; prompting mid-replay would race the
+    // history (and, with no session id yet, would wrongly create a fresh session).
+    await this.settleStart();
+    if (this.disposed) return;
     if (this.isRunning) {
       this.options.events.message({ type: "toast", level: "warning", text: "The agent is still working. Stop it or wait for it to finish." });
       return;
@@ -802,11 +907,10 @@ export class SessionRuntime {
       return;
     }
     const update = notification.update;
+    const changedBefore = this.model.changedFilesVersion;
     if (this.model.applyUpdate(update)) {
-      if (update.sessionUpdate === "tool_call" || update.sessionUpdate === "tool_call_update") {
-        // Changed-files summary may have moved; keep the header in sync cheaply.
-        if ("content" in update && update.content?.some((c) => c.type === "diff")) this.publishState();
-      }
+      // The changed-files summary in the header only moves when a finished edit lands.
+      if (this.model.changedFilesVersion !== changedBefore) this.publishState();
       return;
     }
     switch (update.sessionUpdate) {
@@ -884,7 +988,7 @@ export class SessionRuntime {
       // Model-specific options are only reported by cursor/list_available_models, which may lag; remember our write.
       if (this.models) {
         const modelId = this.models.currentModelId;
-        this.modelOptionOverrides.set(modelId, { ...(this.modelOptionOverrides.get(modelId) ?? {}), [configId]: value });
+        this.setModelOptionOverrides(modelId, { ...(this.modelOptionOverrides.get(modelId) ?? {}), [configId]: value });
       }
       if (persist && this.models) {
         const prefs = this.options.storage.getModelPreferences();
@@ -909,6 +1013,7 @@ export class SessionRuntime {
   // --- teardown -----------------------------------------------------------------------------
 
   private async teardownProcess(): Promise<void> {
+    this.teardownEpoch += 1;
     this.connectionGeneration += 1;
     this.cancelAllPending();
     const connection = this.connection;
@@ -926,5 +1031,3 @@ export class SessionRuntime {
     await this.teardownProcess();
   }
 }
-
-export { isRecord };

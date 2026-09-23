@@ -10,6 +10,7 @@ const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
+  const logs: string[] = [];
   let lastSession: string | undefined;
   let prefs: ModelPreferences = {};
   const runtime = new SessionRuntime({
@@ -22,7 +23,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
       getModelPreferences: () => prefs,
       setModelPreferences: (p) => (prefs = p),
     },
-    log: { info: () => {}, warn: () => {}, error: () => {}, protocol: () => {}, stderr: () => {} },
+    log: { info: (m) => logs.push(m), warn: (m) => logs.push(m), error: (m) => logs.push(m), protocol: () => {}, stderr: () => {} },
     events: {
       message: (m) => messages.push(m),
       permissionRequested: (t) => events.push(`permission:${t}`),
@@ -31,7 +32,8 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
       agentUnavailable: (e) => events.push(`unavailable:${e}`),
     },
   });
-  return { runtime, messages, events, getLastSession: () => lastSession, getPrefs: () => prefs };
+  const launches = () => logs.filter((l) => l.startsWith("Launching Cursor agent")).length;
+  return { runtime, messages, events, logs, launches, getLastSession: () => lastSession, getPrefs: () => prefs };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
@@ -269,6 +271,19 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(getPrefs()).toEqual({ modelId: "model-a", options: { effort: "low" } });
   });
 
+  it("publishes the changed-files summary once per finished edit, not per update", async () => {
+    const { runtime, messages } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt(`editrepeat ${join(here, "x.txt")}`, []);
+    const tool = items(runtime).find((i) => i.type === "tool") as ToolItem;
+    expect(tool.status).toBe("completed");
+    expect(runtime.state.changedFiles).toEqual([{ path: join(here, "x.txt"), displayPath: "x.txt", additions: 2, deletions: 1 }]);
+    const withChanges = messages.filter((m) => m.type === "session" && m.session.changedFiles.length > 0);
+    expect(withChanges.length).toBeGreaterThan(0);
+    expect(withChanges.length).toBeLessThanOrEqual(3);
+  });
+
   it("prompt errors from the agent become notices, not crashes", async () => {
     const { runtime } = makeRuntime();
     active.push(runtime);
@@ -277,5 +292,161 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.connection).toBe("ready");
     const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>;
     expect(notice.text).toContain("Something went wrong");
+  });
+});
+
+describe("SessionRuntime lifecycle races", () => {
+  it("reconnects while a prompt is running and ends up in a usable session", async () => {
+    const { runtime, launches } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.reconnect();
+    await turn;
+    expect(runtime.state.connection).toBe("ready");
+    expect(launches()).toBe(2);
+    // The old (unpersisted) session is gone in the fake agent, so a fresh one is created; the turn is not left open.
+    expect(runtime.state.turnStartedAt).toBeUndefined();
+    await runtime.prompt("hello", []);
+    expect(lastAssistant(runtime)?.text).toBe("Echo: hello!");
+  });
+
+  it("reconnect while starting does not leave a stale start in charge", async () => {
+    const { runtime, launches } = makeRuntime({ FAKE_AGENT_NEW_DELAY_MS: "300" });
+    active.push(runtime);
+    const first = runtime.start();
+    await waitFor(() => runtime.state.connection === "starting");
+    await new Promise((r) => setTimeout(r, 50));
+    const again = runtime.reconnect();
+    await Promise.all([first, again]);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).toBeDefined();
+    expect(launches()).toBe(2);
+    // The superseded start must not have reported an error.
+    expect(items(runtime).some((i) => i.type === "notice")).toBe(false);
+  });
+
+  it("loads the last requested session when loadSession is called twice quickly", async () => {
+    const { runtime, messages, launches } = makeRuntime({ FAKE_AGENT_LOAD_DELAY_MS: "200" });
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("first", []);
+    const s1 = runtime.state.sessionId!;
+    await runtime.newSession();
+    await runtime.prompt("second", []);
+    const s2 = runtime.state.sessionId!;
+
+    const resets = () => messages.filter((m) => m.type === "items.reset").length;
+    const before = resets();
+    const a = runtime.loadSession(s1);
+    const b = runtime.loadSession(s2);
+    const c = runtime.loadSession(s2);
+    await Promise.all([a, b, c]);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).toBe(s2);
+    expect(lastAssistant(runtime)?.text).toBe("Echo: second!");
+    // First load ran, the two identical follow-ups were merged into one queued load.
+    expect(resets() - before).toBe(2);
+    expect(launches()).toBe(1);
+
+    // Same target while already loading: shares the in-flight load.
+    const d = runtime.loadSession(s1);
+    const e = runtime.loadSession(s1);
+    await Promise.all([d, e]);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(lastAssistant(runtime)?.text).toBe("Echo: first!");
+  });
+
+  it("newSession while a start is in flight waits for it and then creates a fresh session once", async () => {
+    const { runtime, launches, messages } = makeRuntime({ FAKE_AGENT_NEW_DELAY_MS: "150", FAKE_AGENT_LOAD_DELAY_MS: "150" });
+    active.push(runtime);
+    const resets = () => messages.filter((m) => m.type === "items.reset").length;
+    // Two requests for a fresh session while one is already being created share that start.
+    const starting = runtime.start();
+    await waitFor(() => runtime.state.connection === "starting");
+    await Promise.all([starting, runtime.newSession(), runtime.newSession()]);
+    expect(runtime.state.connection).toBe("ready");
+    expect(resets()).toBe(1);
+    await runtime.prompt("first", []);
+    const s1 = runtime.state.sessionId!;
+
+    // A fresh session requested while a resume is replaying runs after it, once, and wins.
+    const before = resets();
+    const load = runtime.loadSession(s1);
+    await waitFor(() => runtime.state.connection === "loading");
+    await Promise.all([load, runtime.newSession(), runtime.newSession()]);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).not.toBe(s1);
+    expect(items(runtime)).toEqual([]);
+    expect(resets() - before).toBe(2);
+    expect(launches()).toBe(1);
+    expect(items(runtime).some((i) => i.type === "notice")).toBe(false);
+  });
+
+  it("prompting while a session is being resumed waits for the replay instead of opening a new session", async () => {
+    const { runtime, launches } = makeRuntime({ FAKE_AGENT_LOAD_DELAY_MS: "200" });
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("first", []);
+    const s1 = runtime.state.sessionId!;
+    await runtime.newSession();
+
+    const load = runtime.loadSession(s1);
+    await waitFor(() => runtime.state.connection === "loading");
+    const turn = runtime.prompt("hello", []);
+    await Promise.all([load, turn]);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider", "user", "thought", "assistant", "turn_end"]);
+    expect(lastAssistant(runtime)?.text).toBe("Echo: hello!");
+    expect(launches()).toBe(1);
+  });
+
+  it("cancels a pending question and reports disconnected exactly once when the agent dies mid-turn", async () => {
+    const { runtime, messages, events } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("askcrash", []);
+    await waitFor(() => runtime.state.connection === "disconnected");
+    await new Promise((r) => setTimeout(r, 50));
+    const question = items(runtime).find((i) => i.type === "question") as Extract<ThreadItem, { type: "question" }>;
+    expect(question.state).toBe("cancelled");
+    const end = items(runtime).find((i) => i.type === "turn_end") as Extract<ThreadItem, { type: "turn_end" }>;
+    expect(end.stopReason).toBe("error");
+    const notices = items(runtime).filter((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>[];
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.text).toContain("exited with code 4");
+    expect(messages.filter((m) => m.type === "session" && m.session.connection === "disconnected")).toHaveLength(1);
+    expect(events).toContain("finished:error");
+    expect(runtime.state.pendingPermissions).toBe(0);
+  });
+
+  it("reports a crash during startup once, with the agent's stderr", async () => {
+    const { runtime, events, messages } = makeRuntime({ FAKE_AGENT_CRASH_ON_INIT: "1" });
+    active.push(runtime);
+    await runtime.start();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(runtime.state.connection).toBe("error");
+    expect(runtime.state.lastError).toContain("exited with code 2");
+    expect(items(runtime).some((i) => i.type === "notice")).toBe(false);
+    expect(events.filter((e) => e.startsWith("unavailable:"))).toHaveLength(1);
+    expect(messages.filter((m) => m.type === "session" && m.session.connection === "disconnected")).toHaveLength(0);
+    // Once the transcript has content the same failure becomes a single inline notice.
+    runtime.model.addNotice("info", "existing content", undefined, []);
+    await runtime.prompt("hello", []);
+    const notices = items(runtime).filter((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>[];
+    expect(notices).toHaveLength(2);
+    expect(notices[1]!.detail).toContain("refusing to start");
+  });
+
+  it("dispose during startup does not leave the agent running", async () => {
+    const { runtime, launches } = makeRuntime({ FAKE_AGENT_NEW_DELAY_MS: "300" });
+    const started = runtime.start();
+    await waitFor(() => runtime.state.connection === "starting");
+    await runtime.dispose();
+    await started;
+    expect(launches()).toBe(1);
+    expect(runtime.state.connection).not.toBe("ready");
+    expect(runtime.hasSession).toBe(false);
   });
 });

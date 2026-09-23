@@ -39,6 +39,10 @@ export type ThreadSink = (message: ExtensionToWebview) => void;
 
 const TOOL_OUTPUT_LIMIT = 200_000;
 const TOOL_OUTPUT_TRUNCATION = "[earlier output truncated]\n";
+/** Read-tool file contents and pretty-printed inputs are shown, not streamed; keep the head. */
+const FILE_CONTENT_LIMIT = 200_000;
+const INPUT_TEXT_LIMIT = 50_000;
+const HEAD_TRUNCATION = "\n[… truncated]";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -138,7 +142,7 @@ function prettyInput(rawInput: unknown): string | undefined {
   if (keys.length === 0) return undefined;
   if (keys.length === 1 && (keys[0] === "command" || keys[0] === "path")) return undefined;
   try {
-    return JSON.stringify(rawInput, null, 2);
+    return boundHead(JSON.stringify(rawInput, null, 2), INPUT_TEXT_LIMIT);
   } catch {
     return undefined;
   }
@@ -147,6 +151,23 @@ function prettyInput(rawInput: unknown): string | undefined {
 function boundOutput(text: string): string {
   if (text.length <= TOOL_OUTPUT_LIMIT) return text;
   return TOOL_OUTPUT_TRUNCATION + text.slice(text.length - TOOL_OUTPUT_LIMIT);
+}
+
+function boundHead(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  return text.slice(0, limit) + HEAD_TRUNCATION;
+}
+
+interface CachedDiff {
+  readonly oldText: string | null | undefined;
+  readonly newText: string;
+  readonly diff: FileDiff;
+}
+
+interface ChangeTotals {
+  displayPath: string;
+  additions: number;
+  deletions: number;
 }
 
 export function stripCursorTitleBackticks(title: string): string {
@@ -159,13 +180,21 @@ export class ThreadModel {
   private readonly index = new Map<string, number>();
   private readonly toolIndex = new Map<string, string>();
   private readonly toolRawInput = new Map<string, unknown>();
+  /**
+   * Last diff built per tool call and path. Cursor resends the full (identical)
+   * diff content with every tool_call_update, so re-diffing is wasted work.
+   */
+  private readonly toolDiffs = new Map<string, Map<string, CachedDiff>>();
   private openAssistantId: string | undefined;
   private openThoughtId: string | undefined;
   private openUserId: string | undefined;
   private replay = false;
   private counter = 0;
   private turnStartedAt: number | undefined;
-  private readonly changed = new Map<string, { displayPath: string; additions: number; deletions: number }>();
+  /** Diffs of each finished tool item (keyed by item id); the changed-files summary is the sum of these. */
+  private readonly changesByTool = new Map<string, ReadonlyArray<FileDiff>>();
+  private changedCache: ReadonlyArray<{ path: string; displayPath: string; additions: number; deletions: number }> | undefined;
+  private changedVersion = 0;
 
   /** Receives the full before/after text of every edit (for the native diff editor). */
   private onDiff: ((itemId: string, path: string, oldText: string, newText: string) => void) | undefined;
@@ -193,8 +222,28 @@ export class ThreadModel {
     return this.replay;
   }
 
+  /** Aggregated per-file additions/deletions of finished edit tools. Memoised until the next change. */
   changedFiles(): ReadonlyArray<{ path: string; displayPath: string; additions: number; deletions: number }> {
-    return Array.from(this.changed, ([path, value]) => ({ path, ...value }));
+    if (this.changedCache) return this.changedCache;
+    const totals = new Map<string, ChangeTotals>();
+    for (const diffs of this.changesByTool.values()) {
+      for (const diff of diffs) {
+        const prev = totals.get(diff.path);
+        if (prev) {
+          prev.additions += diff.additions;
+          prev.deletions += diff.deletions;
+        } else {
+          totals.set(diff.path, { displayPath: diff.displayPath, additions: diff.additions, deletions: diff.deletions });
+        }
+      }
+    }
+    this.changedCache = Array.from(totals, ([path, value]) => ({ path, ...value }));
+    return this.changedCache;
+  }
+
+  /** Bumps whenever `changedFiles()` would return something different. */
+  get changedFilesVersion(): number {
+    return this.changedVersion;
   }
 
   setCwd(cwd: string): void {
@@ -229,7 +278,12 @@ export class ThreadModel {
     this.index.clear();
     this.toolIndex.clear();
     this.toolRawInput.clear();
-    this.changed.clear();
+    this.toolDiffs.clear();
+    if (this.changesByTool.size > 0) {
+      this.changesByTool.clear();
+      this.changedCache = undefined;
+      this.changedVersion += 1;
+    }
     this.openAssistantId = this.openThoughtId = this.openUserId = undefined;
     this.turnStartedAt = undefined;
     this.sink({ type: "items.reset", items: [] });
@@ -422,10 +476,7 @@ export class ThreadModel {
           const t = this.contentText(entry.content);
           if (t.trim()) texts.push(t);
         } else if (entry.type === "diff") {
-          const raw = { path: entry.path, oldText: entry.oldText, newText: entry.newText };
-          nextDiffs.push(buildFileDiff(raw, this.toDisplayPath(entry.path)));
-          const normalized = normalizeCursorDiff(raw);
-          this.onDiff?.(base.id, entry.path, normalized.oldText, normalized.newText);
+          nextDiffs.push(this.diffFor(update.toolCallId, base.id, entry));
         } else if (entry.type === "terminal") {
           texts.push(`[terminal ${entry.terminalId}]`);
         }
@@ -442,7 +493,7 @@ export class ThreadModel {
         if (typeof raw.output === "string" && raw.output.length > 0) parts.push(raw.output);
         if (typeof raw.exitCode === "number") exitCode = raw.exitCode;
         if (typeof raw.content === "string" && (kind === "read" || parts.length === 0)) {
-          if (kind === "read") fileContent = raw.content;
+          if (kind === "read") fileContent = boundHead(raw.content, FILE_CONTENT_LIMIT);
           else parts.push(raw.content);
         }
         if (typeof raw.error === "string" && raw.error) parts.push(raw.error);
@@ -488,18 +539,36 @@ export class ThreadModel {
       this.toolIndex.set(update.toolCallId, next.id);
       this.add(next);
     }
-    for (const diff of diffs) {
-      if (finished) this.recordChange(diff);
-    }
+    if (finished && diffs.length > 0) this.recordChanges(next.id, diffs);
   }
 
-  private recordChange(diff: FileDiff): void {
-    const prev = this.changed.get(diff.path);
-    this.changed.set(diff.path, {
-      displayPath: diff.displayPath,
-      additions: (prev?.additions ?? 0) + diff.additions,
-      deletions: (prev?.deletions ?? 0) + diff.deletions,
-    });
+  /** Builds (or reuses) the display diff for one `diff` content entry and forwards the full texts once. */
+  private diffFor(toolCallId: string, itemId: string, entry: { path: string; oldText?: string | null; newText: string }): FileDiff {
+    let byPath = this.toolDiffs.get(toolCallId);
+    const cached = byPath?.get(entry.path);
+    if (cached && cached.oldText === entry.oldText && cached.newText === entry.newText) return cached.diff;
+    const raw = { path: entry.path, oldText: entry.oldText, newText: entry.newText };
+    const diff = buildFileDiff(raw, this.toDisplayPath(entry.path));
+    if (!byPath) {
+      byPath = new Map();
+      this.toolDiffs.set(toolCallId, byPath);
+    }
+    byPath.set(entry.path, { oldText: entry.oldText, newText: entry.newText, diff });
+    if (this.onDiff) {
+      const normalized = normalizeCursorDiff(raw);
+      this.onDiff(itemId, entry.path, normalized.oldText, normalized.newText);
+    }
+    return diff;
+  }
+
+  /** Replaces the changed-files contribution of a finished tool (idempotent for repeated updates). */
+  private recordChanges(itemId: string, diffs: ReadonlyArray<FileDiff>): void {
+    const previous = this.changesByTool.get(itemId);
+    if (previous === diffs) return;
+    if (previous && previous.length === diffs.length && previous.every((d, i) => d === diffs[i])) return;
+    this.changesByTool.set(itemId, diffs);
+    this.changedCache = undefined;
+    this.changedVersion += 1;
   }
 
   private setPlan(entries: ReadonlyArray<acp.PlanEntry>): void {
@@ -593,11 +662,14 @@ export class ThreadModel {
 
   attachPermission(params: acp.RequestPermissionRequest, requestId: string): ToolItem {
     const toolCall = params.toolCall;
+    // The permission request's `content` is the *reason* ("Not in allowlist: npm"), not tool output,
+    // so it is shown on the permission prompt and kept out of the tool card's output.
+    const { content: _reasonContent, ...toolCallWithoutReason } = toolCall;
     // Make sure the tool card exists (permission can precede the tool_call update).
     if (!this.toolIndex.has(toolCall.toolCallId)) {
-      this.upsertTool({ sessionUpdate: "tool_call", ...toolCall } as unknown as acp.ToolCall, "pending");
-    } else if (toolCall.content || toolCall.rawInput !== undefined || toolCall.title) {
-      this.upsertTool({ sessionUpdate: "tool_call_update", ...toolCall } as unknown as acp.ToolCallUpdate, "pending");
+      this.upsertTool({ sessionUpdate: "tool_call", ...toolCallWithoutReason } as unknown as acp.ToolCall, "pending");
+    } else if (toolCall.rawInput !== undefined || toolCall.title) {
+      this.upsertTool({ sessionUpdate: "tool_call_update", ...toolCallWithoutReason } as unknown as acp.ToolCallUpdate, "pending");
     }
     const itemId = this.toolIndex.get(toolCall.toolCallId)!;
     const item = this.get(itemId) as ToolItem;

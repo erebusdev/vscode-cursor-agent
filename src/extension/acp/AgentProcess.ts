@@ -30,7 +30,7 @@ export class AgentProcessError extends Error {
 export class AgentProcess {
   private stderrTail = "";
   private exited: AgentExit | undefined;
-  private readonly exitListeners = new Set<(exit: AgentExit) => void>();
+  private exitListeners = new Set<(exit: AgentExit) => void>();
 
   private constructor(
     readonly child: ChildProcessWithoutNullStreams,
@@ -41,10 +41,23 @@ export class AgentProcess {
     child.stderr.on("data", (chunk: string) => {
       this.stderrTail = (this.stderrTail + chunk).slice(-STDERR_TAIL_LIMIT);
     });
+    // Writing to stdin after the child died surfaces as an asynchronous 'error' event on the
+    // stream (EPIPE / ERR_STREAM_DESTROYED), never as a synchronous throw. Without a listener
+    // that event would crash the extension host, so every stdio stream gets a sink here; the
+    // JSON-RPC peer adds its own (informative) listeners on top.
+    for (const stream of [child.stdin, child.stdout, child.stderr]) {
+      stream.on("error", () => undefined);
+    }
     child.on("exit", (code, signal) => {
       this.exited = { code, signal, stderrTail: this.stderrTail };
-      for (const listener of this.exitListeners) {
-        listener(this.exited);
+      const listeners = this.exitListeners;
+      this.exitListeners = new Set();
+      for (const listener of listeners) {
+        try {
+          listener(this.exited);
+        } catch {
+          // A misbehaving listener must not stop the others from running.
+        }
       }
     });
   }
@@ -107,41 +120,58 @@ export class AgentProcess {
     return this.stderrTail;
   }
 
+  /** Registers an exit listener (invoked immediately if the process already exited). Returns a disposer. */
   onExit(listener: (exit: AgentExit) => void): () => void {
     if (this.exited) {
       listener(this.exited);
       return () => undefined;
     }
     this.exitListeners.add(listener);
-    return () => this.exitListeners.delete(listener);
+    return () => {
+      this.exitListeners.delete(listener);
+    };
   }
 
-  /** Graceful stop: close stdin, SIGTERM, then SIGKILL after a grace period. */
+  /**
+   * Graceful stop: close stdin, SIGTERM, then SIGKILL after a grace period.
+   * Always resolves within `graceMs` (plus a short SIGKILL wait), even if the
+   * child never reports an exit, so shutdown cannot hang on a stuck agent.
+   */
   async kill(graceMs = 1500): Promise<void> {
     if (this.exited) return;
+    const child = this.child;
+    // Spawn failed or the process is already gone: nothing to wait for.
+    if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
     try {
-      this.child.stdin.end();
+      if (!child.stdin.destroyed) child.stdin.end();
     } catch {
       // ignore
     }
+    let signalled = false;
     try {
-      this.child.kill("SIGTERM");
+      signalled = child.kill("SIGTERM");
     } catch {
       // ignore
     }
+    if (!signalled) return;
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      const termTimer = setTimeout(() => {
         try {
-          this.child.kill("SIGKILL");
+          child.kill("SIGKILL");
         } catch {
           // ignore
         }
-        resolve();
+        // Give the kernel a moment to deliver the exit; never wait indefinitely.
+        killTimer = setTimeout(finish, 500);
       }, graceMs);
-      this.onExit(() => {
-        clearTimeout(timer);
+      const dispose = this.onExit(finish);
+      function finish(): void {
+        clearTimeout(termTimer);
+        if (killTimer) clearTimeout(killTimer);
+        dispose();
         resolve();
-      });
+      }
     });
   }
 }

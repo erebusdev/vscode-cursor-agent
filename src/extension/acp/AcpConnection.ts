@@ -87,6 +87,7 @@ export const CLIENT_INFO = { name: "vscode-cursor-acp", version: "0.1.0" } as co
 
 export class AcpConnection {
   private readonly peer: JsonRpcPeer;
+  private readonly disposeExitListener: () => void;
 
   constructor(readonly process: AgentProcess, handlers: AcpClientHandlers, logger?: JsonRpcLogger) {
     this.peer = new JsonRpcPeer(process.child.stdin, process.child.stdout, logger);
@@ -111,13 +112,15 @@ export class AcpConnection {
       const { method, params } = envelope as { method: string; params: unknown };
       handlers.unknownNotification(method, params);
     });
-    process.onExit((exit) => {
+    this.disposeExitListener = process.onExit((exit) => {
       const reason =
         exit.signal !== null
           ? `The Cursor agent process was terminated by ${exit.signal}.`
           : `The Cursor agent process exited with code ${exit.code ?? "unknown"}.`;
       this.peer.close(reason);
     });
+    // Once the peer is closed for any reason the exit listener has nothing left to do.
+    this.peer.onClose(() => this.disposeExitListener());
   }
 
   get isClosed(): boolean {

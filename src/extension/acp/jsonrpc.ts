@@ -56,10 +56,17 @@ export class JsonRpcPeer {
   private readonly inflightIncoming = new Map<string | number, AbortController>();
   private fallbackRequest: RequestHandler | undefined;
   private fallbackNotification: NotificationHandler | undefined;
-  private buffer = "";
+  /**
+   * Partial line received so far. Chunks are only joined once a newline
+   * arrives, so a long line delivered in many small chunks costs O(n) rather
+   * than O(n²) string concatenation.
+   */
+  private chunks: string[] = [];
+  private pendingLength = 0;
   private closed = false;
   private closeReason: string | undefined;
-  private readonly closeListeners = new Set<(reason: string) => void>();
+  private closeListeners = new Set<(reason: string) => void>();
+  private endTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly output: Writable,
@@ -70,7 +77,9 @@ export class JsonRpcPeer {
     input.on("data", (chunk: string) => this.onData(chunk));
     // The process 'exit' event (which carries the exit code) usually follows stdout 'end'
     // within milliseconds; give it a moment so the close reason is the informative one.
-    input.on("end", () => setTimeout(() => this.close("The agent closed its output stream."), 250));
+    input.on("end", () => {
+      this.endTimer = setTimeout(() => this.close("The agent closed its output stream."), 250);
+    });
     input.on("error", (error: Error) => this.close(`Agent stdout error: ${error.message}`));
     output.on("error", (error: Error) => this.close(`Agent stdin error: ${error.message}`));
   }
@@ -121,6 +130,12 @@ export class JsonRpcPeer {
     if (this.closed) return;
     this.closed = true;
     this.closeReason = reason;
+    if (this.endTimer) {
+      clearTimeout(this.endTimer);
+      this.endTimer = undefined;
+    }
+    this.chunks = [];
+    this.pendingLength = 0;
     for (const [id, pending] of this.pending) {
       this.pending.delete(id);
       pending.reject(new JsonRpcClosedError(pending.method, reason));
@@ -129,7 +144,9 @@ export class JsonRpcPeer {
       controller.abort();
     }
     this.inflightIncoming.clear();
-    for (const listener of this.closeListeners) {
+    const listeners = this.closeListeners;
+    this.closeListeners = new Set();
+    for (const listener of listeners) {
       try {
         listener(reason);
       } catch {
@@ -139,9 +156,12 @@ export class JsonRpcPeer {
   }
 
   private write(message: unknown): void {
+    if (this.closed) return;
     const line = JSON.stringify(message);
     this.logger?.outgoing?.(line);
     try {
+      // A destroyed/ended stdin reports failures through the 'error' event (handled in the
+      // constructor); the try/catch covers synchronous throws from exotic streams.
       this.output.write(line + "\n");
     } catch (error) {
       this.close(`Failed to write to agent stdin: ${error instanceof Error ? error.message : String(error)}`);
@@ -149,23 +169,44 @@ export class JsonRpcPeer {
   }
 
   private onData(chunk: string): void {
-    this.buffer += chunk;
-    if (this.buffer.length > MAX_LINE_LENGTH) {
-      this.close("The agent sent a line longer than the maximum supported size.");
+    if (this.closed) return;
+    let newline = chunk.indexOf("\n");
+    if (newline < 0) {
+      this.pendingLength += chunk.length;
+      if (this.pendingLength > MAX_LINE_LENGTH) {
+        this.close("The agent sent a line longer than the maximum supported size.");
+        return;
+      }
+      this.chunks.push(chunk);
       return;
     }
-    let newline = this.buffer.indexOf("\n");
+    // First line completes whatever was buffered; the rest of the chunk is scanned in place.
+    const head = this.chunks.length > 0 ? this.chunks.join("") + chunk.slice(0, newline) : chunk.slice(0, newline);
+    this.chunks = [];
+    this.pendingLength = 0;
+    this.handleLine(head);
+    let start = newline + 1;
+    newline = chunk.indexOf("\n", start);
     while (newline >= 0) {
-      const line = this.buffer.slice(0, newline).replace(/\r$/, "");
-      this.buffer = this.buffer.slice(newline + 1);
-      if (line.trim().length > 0) {
-        this.handleLine(line);
+      if (this.closed) return;
+      this.handleLine(chunk.slice(start, newline));
+      start = newline + 1;
+      newline = chunk.indexOf("\n", start);
+    }
+    if (start < chunk.length) {
+      const rest = chunk.slice(start);
+      if (rest.length > MAX_LINE_LENGTH) {
+        this.close("The agent sent a line longer than the maximum supported size.");
+        return;
       }
-      newline = this.buffer.indexOf("\n");
+      this.chunks.push(rest);
+      this.pendingLength = rest.length;
     }
   }
 
-  private handleLine(line: string): void {
+  private handleLine(rawLine: string): void {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line.trim().length === 0) return;
     this.logger?.incoming?.(line);
     let message: Record<string, unknown>;
     try {

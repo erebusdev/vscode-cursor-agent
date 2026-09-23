@@ -11,7 +11,18 @@ import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 
-let loginShellPathCache: Promise<string | undefined> | undefined;
+/** Login-shell PATH probes, keyed by the shell + PATH they were run with. */
+const loginShellPathCache = new Map<string, { promise: Promise<string | undefined> }>();
+/** A successful probe is valid for the process lifetime; a failed one is retried after this. */
+const FAILED_PROBE_TTL_MS = 30_000;
+const LOGIN_SHELL_TIMEOUT_MS = 5000;
+const PATH_MARKER = "__CURSOR_ACP_PATH__";
+const ANSI_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
+
+/** Test hook: forget cached login-shell PATH probes. */
+export function resetLoginShellPathCache(): void {
+  loginShellPathCache.clear();
+}
 
 async function isExecutable(path: string): Promise<boolean> {
   try {
@@ -41,29 +52,52 @@ async function findInPath(name: string, pathValue: string | undefined): Promise<
   return undefined;
 }
 
+function probeLoginShellPath(shell: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      shell,
+      // Interactive login shells may print banners / MOTD / prompt fragments to stdout, so the
+      // PATH is wrapped in markers and extracted rather than assumed to be the whole output.
+      ["-ilc", `printf "\\n${PATH_MARKER}%s${PATH_MARKER}\\n" "$PATH"`],
+      { timeout: LOGIN_SHELL_TIMEOUT_MS, maxBuffer: 1024 * 1024, env: { ...env, TERM: "dumb" } },
+      (error, stdout) => {
+        if (error || !stdout) {
+          resolve(undefined);
+          return;
+        }
+        const clean = stdout.replace(ANSI_PATTERN, "");
+        // The last marker pair wins (a shell with `set -v` may echo the command itself first).
+        const end = clean.lastIndexOf(PATH_MARKER);
+        const first = end > 0 ? clean.lastIndexOf(PATH_MARKER, end - 1) : -1;
+        if (first < 0) {
+          resolve(undefined);
+          return;
+        }
+        const value = clean.slice(first + PATH_MARKER.length, end).trim();
+        resolve(value || undefined);
+      },
+    );
+    child.on("error", () => resolve(undefined));
+  });
+}
+
 function loginShellPath(env: NodeJS.ProcessEnv): Promise<string | undefined> {
   if (process.platform === "win32") return Promise.resolve(undefined);
-  if (!loginShellPathCache) {
-    loginShellPathCache = new Promise((resolve) => {
-      const shell = env.SHELL || "/bin/sh";
-      const child = execFile(
-        shell,
-        ["-ilc", 'printf "%s" "$PATH"'],
-        { timeout: 5000, env: { ...env, TERM: "dumb" } },
-        (error, stdout) => {
-          if (error || !stdout) {
-            resolve(undefined);
-            return;
-          }
-          // Only keep the last line: some shells print banners in interactive mode.
-          const lines = stdout.trim().split("\n");
-          resolve(lines[lines.length - 1]?.trim() || undefined);
-        },
-      );
-      child.on("error", () => resolve(undefined));
-    });
-  }
-  return loginShellPathCache;
+  const shell = env.SHELL || "/bin/sh";
+  const key = `${shell}\u0000${env.PATH ?? ""}`;
+  const cached = loginShellPathCache.get(key);
+  if (cached) return cached.promise;
+  const entry = { promise: probeLoginShellPath(shell, env) };
+  loginShellPathCache.set(key, entry);
+  void entry.promise.then((value) => {
+    if (value === undefined) {
+      // Do not pin a failure (slow shell, transient error) for the whole process lifetime.
+      setTimeout(() => {
+        if (loginShellPathCache.get(key) === entry) loginShellPathCache.delete(key);
+      }, FAILED_PROBE_TTL_MS).unref?.();
+    }
+  });
+  return entry.promise;
 }
 
 export async function resolveExecutable(command: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
