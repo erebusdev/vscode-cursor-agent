@@ -4,7 +4,7 @@
 import * as vscode from "vscode";
 import { execFile, type ExecFileException } from "node:child_process";
 import type { AgentProbe, ExtensionSettings, SettingsKey } from "../shared/protocol";
-import { resolveExecutable } from "./acp/resolveExecutable";
+import { describeDefaultAgentCommands, resolveAgentExecutable } from "./acp/resolveExecutable";
 
 const SECTION = "cursorAcp";
 
@@ -24,7 +24,7 @@ export function readExtensionSettings(): ExtensionSettings {
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
-    agentPath: config.get<string>("agentPath", "agent"),
+    agentPath: config.get<string>("agentPath", ""),
     agentArgs: config.get<string[]>("agentArgs", []),
     environment: config.get<Record<string, string>>("environment", {}),
     configDir: config.get<string>("configDir", ""),
@@ -65,16 +65,17 @@ export async function resetExtensionSetting(key: SettingsKey): Promise<void> {
 
 export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv): Promise<AgentProbe> {
   const checkedAt = Date.now();
-  const resolved = await resolveExecutable(configuredPath || "agent", env);
-  if (!resolved) {
+  const found = await resolveAgentExecutable(configuredPath, env);
+  if (!found) {
     return {
       state: "notFound",
       configuredPath,
-      error: `"${configuredPath || "agent"}" was not found.`,
+      error: configuredPath.trim() ? `"${configuredPath.trim()}" was not found.` : `Neither ${describeDefaultAgentCommands()} was found on PATH.`,
       hint: "Install the Cursor Agent CLI (curl https://cursor.com/install -fsS | bash) or point this at the executable / wrapper script.",
       checkedAt,
     };
   }
+  const resolved = found.path;
   return new Promise<AgentProbe>((resolve) => {
     const child = execFile(resolved, ["--version"], { env, timeout: PROBE_TIMEOUT_MS, maxBuffer: 256 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (error) {

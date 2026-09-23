@@ -2,7 +2,7 @@
  * Spawns and supervises the `agent acp` child process.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { resolveExecutable } from "./resolveExecutable";
+import { describeDefaultAgentCommands, resolveAgentExecutable } from "./resolveExecutable";
 
 export interface AgentSpawnOptions {
   readonly command: string;
@@ -63,13 +63,14 @@ export class AgentProcess {
   }
 
   static async spawn(options: AgentSpawnOptions): Promise<AgentProcess> {
-    const resolved = await resolveExecutable(options.command, options.env);
-    if (!resolved) {
+    const found = await resolveAgentExecutable(options.command, options.env);
+    if (!found) {
       throw new AgentProcessError(
-        `Cursor Agent executable not found: "${options.command}".`,
-        "Set `cursorAcp.agentPath` to the full path of the `agent` CLI (or a wrapper script), e.g. /Users/me/.local/bin/agent.",
+        options.command.trim() ? `Cursor Agent executable not found: "${options.command.trim()}".` : `Cursor Agent CLI not found (looked for ${describeDefaultAgentCommands()}).`,
+        "Install the Cursor Agent CLI, or set `cursorAcp.agentPath` to the full path of the `agent` CLI (or a wrapper script), e.g. /Users/me/.local/bin/agent.",
       );
     }
+    const resolved = found.path;
     const displayCommand = [resolved, ...options.args].join(" ");
     const child = spawn(resolved, [...options.args], {
       cwd: options.cwd,

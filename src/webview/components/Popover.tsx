@@ -13,6 +13,11 @@ interface PopoverProps {
   class?: string;
   align?: "start" | "end";
   minWidth?: number;
+  /**
+   * Move focus into the popover on open and back to the anchor on close.
+   * Hover previews pass false so they never steal focus from the composer.
+   */
+  manageFocus?: boolean;
 }
 
 const FOCUSABLE = 'button:not([disabled]), [role="option"]:not([disabled]), [role="menuitem"]:not([disabled]), input:not([disabled]), a[href]';
@@ -25,7 +30,7 @@ type Placement = { left: number; top?: number; bottom?: number; maxHeight: numbe
  * arrow-key roving focus and restores focus to the anchor on close.
  */
 export function Popover(props: PopoverProps) {
-  const { anchor, open, onClose, children, label, role = "dialog", align = "start", minWidth } = props;
+  const { anchor, open, onClose, children, label, role = "dialog", align = "start", minWidth, manageFocus = true } = props;
   const ref = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<Placement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -63,7 +68,7 @@ export function Popover(props: PopoverProps) {
 
   // Initial focus once placed.
   useEffect(() => {
-    if (!open || !place) return;
+    if (!open || !place || !manageFocus) return;
     const p = ref.current;
     if (!p) return;
     const preferred =
@@ -72,7 +77,7 @@ export function Popover(props: PopoverProps) {
       p.querySelector<HTMLElement>(FOCUSABLE);
     (preferred ?? p).focus({ preventScroll: true });
     preferred?.scrollIntoView?.({ block: "nearest" });
-  }, [open, place !== null]);
+  }, [open, place !== null, manageFocus]);
 
   // Outside click + focus restore.
   useEffect(() => {
@@ -86,12 +91,13 @@ export function Popover(props: PopoverProps) {
     document.addEventListener("mousedown", onDown, true);
     return () => {
       document.removeEventListener("mousedown", onDown, true);
+      if (!manageFocus) return;
       const active = document.activeElement;
       if (!active || active === document.body || ref.current?.contains(active)) {
         anchor.current?.focus({ preventScroll: true });
       }
     };
-  }, [open, anchor]);
+  }, [open, anchor, manageFocus]);
 
   if (!open) return null;
 

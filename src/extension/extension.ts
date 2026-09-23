@@ -24,7 +24,8 @@ let runtime: SessionRuntime | undefined;
 
 function launchConfig(): AgentLaunchConfig {
   const config = vscode.workspace.getConfiguration("cursorAcp");
-  const command = config.get<string>("agentPath", "agent").trim() || "agent";
+  // Empty means auto-detect (see DEFAULT_AGENT_COMMANDS); anything else is used as-is.
+  const command = config.get<string>("agentPath", "").trim();
   const args = config.get<string[]>("agentArgs", []).filter((a) => typeof a === "string");
   const extraEnv = config.get<Record<string, string>>("environment", {});
   const env: NodeJS.ProcessEnv = { ...process.env };

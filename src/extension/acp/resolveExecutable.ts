@@ -19,6 +19,36 @@ const LOGIN_SHELL_TIMEOUT_MS = 5000;
 const PATH_MARKER = "__CURSOR_ACP_PATH__";
 const ANSI_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
+/** Command names tried, in order, when no executable is configured. */
+export const DEFAULT_AGENT_COMMANDS: ReadonlyArray<string> = ["agent", "cursor-agent"];
+
+/** Human-readable form of DEFAULT_AGENT_COMMANDS for error messages: `"agent" or "cursor-agent"`. */
+export function describeDefaultAgentCommands(): string {
+  return DEFAULT_AGENT_COMMANDS.map((c) => `"${c}"`).join(" or ");
+}
+
+export interface ResolvedAgent {
+  /** The command name / path that matched. */
+  readonly command: string;
+  /** Absolute path to run. */
+  readonly path: string;
+}
+
+/**
+ * Resolves the agent executable from the `cursorAcp.agentPath` setting.
+ * A configured value (path or bare name) always wins and is the only thing
+ * tried; when it is empty the default command names are tried in order.
+ */
+export async function resolveAgentExecutable(configured: string, env: NodeJS.ProcessEnv): Promise<ResolvedAgent | undefined> {
+  const custom = configured.trim();
+  const candidates = custom ? [custom] : DEFAULT_AGENT_COMMANDS;
+  for (const command of candidates) {
+    const path = await resolveExecutable(command, env);
+    if (path) return { command, path };
+  }
+  return undefined;
+}
+
 /** Test hook: forget cached login-shell PATH probes. */
 export function resetLoginShellPathCache(): void {
   loginShellPathCache.clear();
@@ -110,7 +140,7 @@ export async function resolveExecutable(command: string, env: NodeJS.ProcessEnv)
   if (fromPath) return fromPath;
   const fromLoginShell = await findInPath(trimmed, await loginShellPath(env));
   if (fromLoginShell) return fromLoginShell;
-  const home = homedir();
+  const home = env.HOME || homedir();
   const wellKnown = [
     join(home, ".local", "bin", trimmed),
     join(home, ".cursor", "bin", trimmed),

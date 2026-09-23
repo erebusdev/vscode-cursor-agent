@@ -2,7 +2,7 @@
 
 | Setting | Purpose |
 | --- | --- |
-| `cursorAcp.agentPath` | The `agent` executable or a wrapper script. Resolved from PATH, your login shell, and `~/.local/bin` when not absolute. |
+| `cursorAcp.agentPath` | The `agent` executable or a wrapper script. Empty auto-detects `agent` or `cursor-agent` from PATH, your login shell, and `~/.local/bin`; a configured value always wins. |
 | `cursorAcp.agentArgs` | Extra arguments inserted before `acp` (for example an API endpoint). |
 | `cursorAcp.environment` | Extra environment variables for the agent process. |
 

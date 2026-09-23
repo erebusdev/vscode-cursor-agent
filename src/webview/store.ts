@@ -56,6 +56,8 @@ export interface StoreState {
   probe: AgentProbe | undefined;
   /** Whether the settings view is shown in place of the transcript. */
   settingsOpen: boolean;
+  /** Whether the detailed usage view is shown in place of the transcript. */
+  usageOpen: boolean;
   /** Latest @-mention file search results. */
   fileResults: FileResults | undefined;
   toasts: ReadonlyArray<Toast>;
@@ -88,6 +90,7 @@ const state: StoreState = {
   extSettings: undefined,
   probe: undefined,
   settingsOpen: false,
+  usageOpen: false,
   fileResults: undefined,
   toasts: [],
   attachments: getPersisted().attachments ?? [],
@@ -226,6 +229,14 @@ export function clearAttachments(): void {
 export function setSettingsOpen(open: boolean): void {
   if (state.settingsOpen === open) return;
   state.settingsOpen = open;
+  if (open) state.usageOpen = false;
+  notify();
+}
+
+export function setUsageOpen(open: boolean): void {
+  if (state.usageOpen === open) return;
+  state.usageOpen = open;
+  if (open) state.settingsOpen = false;
   notify();
 }
 
@@ -304,6 +315,7 @@ export function handleMessage(msg: ExtensionToWebview): void {
     }
     case "showSettings": {
       state.settingsOpen = true;
+      state.usageOpen = false;
       break;
     }
     case "usage": {

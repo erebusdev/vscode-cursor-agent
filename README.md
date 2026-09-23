@@ -30,9 +30,9 @@ hosts your workspace.
 
 1. Install the Cursor Agent CLI and log in (`agent login`).
 2. Open the **Cursor Agent** view in the activity bar (or `Cmd+Alt+C`). By
-   default the extension looks for `agent` on your PATH, your login shell's
-   PATH, and `~/.local/bin`. If it is not found, a setup card asks for the
-   path. Use the gear in the view for the in-app settings panel (path with
+   default the extension looks for `agent`, then `cursor-agent`, on your
+   PATH, your login shell's PATH, and `~/.local/bin`. A configured path is
+   always used instead. If nothing is found, a setup card asks for the path. Use the gear in the view for the in-app settings panel (path with
    Browse and Test, extra args, environment, behaviour), or VS Code's settings
    editor; both write the same `cursorAcp.*` settings.
 3. A wrapper script works as the path too, e.g.
@@ -45,7 +45,7 @@ hosts your workspace.
 
 | Setting | Description |
 | --- | --- |
-| `cursorAcp.agentPath` | Executable (or wrapper) that supports `acp`. Machine-overridable, so remotes can differ. |
+| `cursorAcp.agentPath` | Executable (or wrapper) that supports `acp`. Empty auto-detects `agent` or `cursor-agent`; a configured value is always used instead. Machine-overridable, so remotes can differ. |
 | `cursorAcp.agentArgs` | Extra arguments inserted before `acp` (e.g. `-e <endpoint>`). |
 | `cursorAcp.environment` | Extra environment variables for the agent process. |
 | `cursorAcp.resumeLastSession` | Resume the last session for the folder when the view opens. |

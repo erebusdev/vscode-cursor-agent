@@ -2087,6 +2087,37 @@ button.chip:disabled {
 .usage-meta-line {
   word-break: break-word;
 }
+.usage-popover .usage-meta-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.usage-meta-line.warn {
+  color: var(--vscode-charts-orange, var(--yellow));
+}
+.usage-meta-line.over {
+  color: var(--red);
+}
+.usage-window-detail {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.usage-windows.detailed {
+  gap: 12px;
+}
+.usage-windows.detailed .usage-window-head {
+  font-size: 13px;
+}
+.usage-windows.detailed .usage-bar {
+  height: 6px;
+  border-radius: 3px;
+}
+.usage-checked {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .usage-error {
   display: flex;
   gap: 6px;
@@ -2114,6 +2145,51 @@ button.chip:disabled {
 }
 .usage-footer .link-button {
   font-size: 11px;
+  flex: none;
+}
+
+/* --- Usage pane ----------------------------------------------------------- */
+
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.kv-key {
+  color: var(--muted);
+  flex: none;
+}
+.kv-val {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.usage-models summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  user-select: none;
+}
+.usage-models summary:hover {
+  color: var(--vscode-foreground);
+}
+.usage-model-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.usage-model-list code {
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--subtle-bg);
 }
 
 /* --- Settings view -------------------------------------------------------- */
@@ -2121,29 +2197,70 @@ button.chip:disabled {
 .icon-button.active {
   background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground, var(--hover-bg)));
 }
-.settings-view {
+.settings-view,
+.pane {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.settings-top {
+.settings-top,
+.pane-top {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 8px 4px;
   flex: none;
 }
-.settings-title {
+.pane-top-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  min-width: 22px;
+  justify-content: center;
+}
+.settings-title,
+.pane-title {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
 }
-.settings-scroll {
+.settings-scroll,
+.pane-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 0 12px 16px;
+}
+.pane-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  padding: 12px 0;
+}
+.pane-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pane-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.pane-footer .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  flex: none;
 }
 .settings-loading {
   display: flex;
@@ -2152,15 +2269,18 @@ button.chip:disabled {
   color: var(--muted);
   padding: 12px 0;
 }
-.settings-section {
+.settings-section,
+.pane-section {
   padding: 6px 0 4px;
 }
-.settings-section + .settings-section {
+.settings-section + .settings-section,
+.pane-section + .pane-section {
   border-top: 1px solid var(--border);
   margin-top: 6px;
   padding-top: 10px;
 }
-.settings-heading {
+.settings-heading,
+.pane-heading {
   margin: 0 0 4px;
   font-size: 11px;
   font-weight: 600;

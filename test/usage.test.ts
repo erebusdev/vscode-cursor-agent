@@ -7,7 +7,14 @@ import { fetchCursorUsage, mapUsage, resolveCursorConfigDir } from "../src/exten
 describe("usage", () => {
   it("maps the dashboard response into windows and dollars", () => {
     const usage = mapUsage(
-      { billingCycleEnd: "1790441001000", planUsage: { totalSpend: 111872, limit: 2000, bonusSpend: 109872, autoPercentUsed: 87.05, apiPercentUsed: 100, totalPercentUsed: 89.4976 }, displayMessage: "You've hit your usage limit" },
+      {
+        billingCycleStart: "1787762601000",
+        billingCycleEnd: "1790441001000",
+        planUsage: { totalSpend: 111872, includedSpend: 2000, limit: 2000, bonusSpend: 109872, remainingBonus: false, bonusTooltip: "Free usage beyond what you've purchased.", autoPercentUsed: 87.05, apiPercentUsed: 100, totalPercentUsed: 89.4976 },
+        spendLimitUsage: { totalSpend: 503080, pooledUsed: 503080, individualUsed: 125039, limitType: "team" },
+        displayMessage: "You've hit your usage limit",
+        autoBucketModels: ["default", "composer-2", 42],
+      },
       1,
     );
     expect(usage.windows.map((w) => [w.id, Math.round(w.usedPercent)])).toEqual([["totalPercentUsed", 89], ["autoPercentUsed", 87], ["apiPercentUsed", 100]]);
@@ -15,6 +22,21 @@ describe("usage", () => {
     expect(usage.spendUsd).toBe(1118.72);
     expect(usage.limitUsd).toBe(20);
     expect(usage.message).toBe("You've hit your usage limit");
+    expect(usage.cycleStartsAt).toBe(new Date(1787762601000).toISOString());
+    expect(usage.includedSpendUsd).toBe(20);
+    expect(usage.bonusRemaining).toBe(false);
+    expect(usage.bonusNote).toBe("Free usage beyond what you've purchased.");
+    expect(usage.teamSpend).toEqual({ totalUsd: 5030.8, pooledUsd: 5030.8, individualUsd: 1250.39, limitType: "team" });
+    expect(usage.autoModels).toEqual(["default", "composer-2"]);
+  });
+
+  it("omits optional detail fields the dashboard does not report", () => {
+    const usage = mapUsage({ planUsage: { totalPercentUsed: 5 } }, 1);
+    expect(usage.windows).toEqual([{ id: "totalPercentUsed", label: "Included", usedPercent: 5 }]);
+    expect(usage.cycleStartsAt).toBeUndefined();
+    expect(usage.teamSpend).toBeUndefined();
+    expect(usage.autoModels).toBeUndefined();
+    expect(usage.bonusRemaining).toBeUndefined();
   });
 
   it("sniffs CURSOR_CONFIG_DIR from a wrapper script", async () => {

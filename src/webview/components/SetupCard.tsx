@@ -41,7 +41,7 @@ export function SetupCard() {
         <span id="setup-title">Set up Cursor Agent</span>
       </div>
       <p class="setup-text">
-        The Cursor Agent CLI could not be started. Point the extension at the <code>agent</code> executable (or a wrapper script) and make sure you are logged in.
+        The Cursor Agent CLI could not be started. Install it, or point the extension at the <code>agent</code> executable (or a wrapper script), and make sure you are logged in.
       </p>
       <label class="setting-label" for="setup-agentPath">
         Agent path

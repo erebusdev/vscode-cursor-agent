@@ -202,7 +202,7 @@ export function AgentPathControl({ id, value, onSaved }: { id: string; value: st
   return (
     <div class="agent-path">
       <div class="agent-path-row">
-        <CommitInput id={id} value={value} placeholder="agent" mono ariaLabel="Agent executable path" onCommit={commit} />
+        <CommitInput id={id} value={value} placeholder="Auto-detect: agent or cursor-agent" mono ariaLabel="Agent executable path" onCommit={commit} />
         <button type="button" class="button secondary small" onClick={() => post({ type: "settings.browseAgent" })}>
           Browse…
         </button>

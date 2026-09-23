@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resetLoginShellPathCache, resolveExecutable } from "../src/extension/acp/resolveExecutable";
+import { resetLoginShellPathCache, resolveAgentExecutable, resolveExecutable } from "../src/extension/acp/resolveExecutable";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -49,5 +49,33 @@ describe.skipIf(process.platform === "win32")("resolveExecutable", () => {
     expect(await resolveExecutable(agent, { PATH: "" })).toBe(agent);
     expect(await resolveExecutable(join("/definitely/missing", name), { PATH: "" })).toBeUndefined();
     expect(await resolveExecutable("   ", { PATH: "" })).toBeUndefined();
+  });
+});
+
+describe.skipIf(process.platform === "win32")("resolveAgentExecutable", () => {
+  it("prefers a configured value and otherwise tries agent then cursor-agent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "resolve-agent-"));
+    dirs.push(dir);
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    const make = (name: string) => {
+      const p = join(bin, name);
+      writeFileSync(p, "#!/bin/sh\nexit 0\n");
+      chmodSync(p, 0o755);
+      return p;
+    };
+    // Fake login shell that prints nothing, so the real login PATH cannot leak in.
+    const shell = join(dir, "fake-shell");
+    writeFileSync(shell, "#!/bin/sh\nexit 0\n");
+    chmodSync(shell, 0o755);
+    const env = { PATH: bin, HOME: dir, SHELL: shell };
+    const cursorAgent = make("cursor-agent");
+    expect(await resolveAgentExecutable("", env)).toEqual({ command: "cursor-agent", path: cursorAgent });
+    const agent = make("agent");
+    expect(await resolveAgentExecutable("", env)).toEqual({ command: "agent", path: agent });
+    const custom = make("my-wrapper");
+    expect(await resolveAgentExecutable(custom, env)).toEqual({ command: custom, path: custom });
+    // A configured value that does not exist is not silently replaced by a default.
+    expect(await resolveAgentExecutable(join(bin, "missing"), env)).toBeUndefined();
   });
 });

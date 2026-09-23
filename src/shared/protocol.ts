@@ -357,6 +357,23 @@ export interface UsageSummary {
   readonly spendUsd?: number;
   readonly limitUsd?: number;
   readonly bonusUsd?: number;
+  /** Start of the current billing cycle (ISO). */
+  readonly cycleStartsAt?: string;
+  /** Portion of the spend covered by the plan's included allowance. */
+  readonly includedSpendUsd?: number;
+  /** Whether Cursor reports bonus (provider-funded) usage still available. */
+  readonly bonusRemaining?: boolean;
+  /** Cursor's explanation of bonus usage, if provided. */
+  readonly bonusNote?: string;
+  /** Team/pooled spend-limit usage, when the account is on a team plan. */
+  readonly teamSpend?: {
+    readonly totalUsd?: number;
+    readonly individualUsd?: number;
+    readonly pooledUsd?: number;
+    readonly limitType?: string;
+  };
+  /** Model ids that count toward the "Auto models" window. */
+  readonly autoModels?: ReadonlyArray<string>;
   readonly error?: string;
 }
 

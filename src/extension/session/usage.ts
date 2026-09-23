@@ -77,11 +77,14 @@ interface RawUsage {
     autoPercentUsed?: number;
     apiPercentUsed?: number;
     totalPercentUsed?: number;
+    remainingBonus?: boolean;
+    bonusTooltip?: string;
   };
   spendLimitUsage?: { totalSpend?: number; individualUsed?: number; pooledUsed?: number; limitType?: string };
   displayMessage?: string;
   autoModelSelectedDisplayMessage?: string;
   namedModelSelectedDisplayMessage?: string;
+  autoBucketModels?: unknown;
 }
 
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
@@ -91,7 +94,7 @@ export function mapUsage(raw: RawUsage, checkedAt: number): UsageSummary {
   const plan = raw.planUsage;
   if (plan) {
     for (const [key, label] of [
-      ["totalPercentUsed", "Included usage"],
+      ["totalPercentUsed", "Included"],
       ["autoPercentUsed", "Auto models"],
       ["apiPercentUsed", "Named models"],
     ] as const) {
@@ -99,19 +102,39 @@ export function mapUsage(raw: RawUsage, checkedAt: number): UsageSummary {
       if (typeof value === "number" && Number.isFinite(value)) windows.push({ id: key, label, usedPercent: clamp(value) });
     }
   }
-  const end = Number(raw.billingCycleEnd);
-  const resetsAt = Number.isFinite(end) && end > 0 ? new Date(end).toISOString() : undefined;
+  const iso = (v: string | number | undefined) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : undefined;
+  };
+  const resetsAt = iso(raw.billingCycleEnd);
+  const cycleStartsAt = iso(raw.billingCycleStart);
   const cents = (n: number | undefined) => (typeof n === "number" && Number.isFinite(n) ? n / 100 : undefined);
+  const team = raw.spendLimitUsage;
+  const teamSpend = team
+    ? {
+        ...(cents(team.totalSpend) !== undefined ? { totalUsd: cents(team.totalSpend)! } : {}),
+        ...(cents(team.individualUsed) !== undefined ? { individualUsd: cents(team.individualUsed)! } : {}),
+        ...(cents(team.pooledUsed) !== undefined ? { pooledUsd: cents(team.pooledUsed)! } : {}),
+        ...(typeof team.limitType === "string" ? { limitType: team.limitType } : {}),
+      }
+    : undefined;
+  const autoModels = Array.isArray(raw.autoBucketModels) ? raw.autoBucketModels.filter((m): m is string => typeof m === "string") : [];
   return {
     checkedAt,
     windows,
     ...(resetsAt ? { resetsAt } : {}),
+    ...(cycleStartsAt ? { cycleStartsAt } : {}),
     ...(raw.displayMessage ? { message: raw.displayMessage } : {}),
     ...(raw.autoModelSelectedDisplayMessage ? { autoMessage: raw.autoModelSelectedDisplayMessage } : {}),
     ...(raw.namedModelSelectedDisplayMessage ? { namedMessage: raw.namedModelSelectedDisplayMessage } : {}),
     ...(cents(plan?.totalSpend) !== undefined ? { spendUsd: cents(plan?.totalSpend)! } : {}),
     ...(cents(plan?.limit) !== undefined ? { limitUsd: cents(plan?.limit)! } : {}),
     ...(cents(plan?.bonusSpend) !== undefined ? { bonusUsd: cents(plan?.bonusSpend)! } : {}),
+    ...(cents(plan?.includedSpend) !== undefined ? { includedSpendUsd: cents(plan?.includedSpend)! } : {}),
+    ...(typeof plan?.remainingBonus === "boolean" ? { bonusRemaining: plan.remainingBonus } : {}),
+    ...(plan?.bonusTooltip ? { bonusNote: plan.bonusTooltip } : {}),
+    ...(teamSpend && Object.keys(teamSpend).length > 0 ? { teamSpend } : {}),
+    ...(autoModels.length > 0 ? { autoModels } : {}),
   };
 }
 
