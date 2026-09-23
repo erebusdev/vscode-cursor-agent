@@ -12,6 +12,15 @@ import { DiffContentProvider } from "./DiffContentProvider";
 import { fetchCursorUsage } from "./session/usage";
 import { probeAgent, readExtensionSettings, resetExtensionSetting, updateExtensionSetting } from "./settings";
 
+function isSubsequence(needle: string, haystack: string): boolean {
+  let i = 0;
+  for (const ch of haystack) {
+    if (ch === needle[i]) i++;
+    if (i === needle.length) return true;
+  }
+  return needle.length === 0;
+}
+
 interface Attached {
   readonly webview: vscode.Webview;
   readonly isVisible: () => boolean;
@@ -283,6 +292,9 @@ export class ChatHost implements vscode.Disposable {
         case "usage.refresh":
           await this.refreshUsage();
           return;
+        case "files.search":
+          await this.searchFiles(message.query, message.requestId);
+          return;
         case "settings.get":
           this.send({ type: "extensionSettings", settings: readExtensionSettings() });
           return;
@@ -318,6 +330,38 @@ export class ChatHost implements vscode.Disposable {
   }
 
   private usageInFlight: Promise<void> | undefined;
+
+  private fileIndex: { files: ReadonlyArray<{ path: string; name: string }>; builtAt: number } | undefined;
+
+  /** Fuzzy-ish workspace file search for @-mentions in the composer. */
+  private async searchFiles(query: string, requestId: number): Promise<void> {
+    if (!this.fileIndex || Date.now() - this.fileIndex.builtAt > 30_000) {
+      const uris = await vscode.workspace.findFiles("**/*", "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/build/**,**/.next/**}", 5000);
+      const files = uris.map((uri) => {
+        const path = vscode.workspace.asRelativePath(uri, false);
+        return { path, name: basename(path) };
+      });
+      this.fileIndex = { files, builtAt: Date.now() };
+    }
+    const q = query.trim().toLowerCase();
+    const scored = this.fileIndex.files
+      .map((file) => {
+        const name = file.name.toLowerCase();
+        const path = file.path.toLowerCase();
+        let score = 0;
+        if (!q) score = 1;
+        else if (name.startsWith(q)) score = 100 - name.length;
+        else if (name.includes(q)) score = 60 - name.length / 10;
+        else if (path.includes(q)) score = 30 - path.length / 50;
+        else if (isSubsequence(q, path)) score = 10 - path.length / 100;
+        return { file, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map((entry) => entry.file);
+    this.send({ type: "files.results", requestId, query, files: scored });
+  }
 
   /** Resolves the configured executable and reads its version; results go to the settings panel. */
   async probe(): Promise<void> {

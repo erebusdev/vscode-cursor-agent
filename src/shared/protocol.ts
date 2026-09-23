@@ -439,7 +439,8 @@ export type WebviewToExtension =
   | { readonly type: "settings.update"; readonly key: SettingsKey; readonly value: string | boolean | ReadonlyArray<string> | Readonly<Record<string, string>> }
   | { readonly type: "settings.probe" }
   | { readonly type: "settings.browseAgent" }
-  | { readonly type: "settings.reset"; readonly key: SettingsKey };
+  | { readonly type: "settings.reset"; readonly key: SettingsKey }
+  | { readonly type: "files.search"; readonly query: string; readonly requestId: number };
 
 // ---------------------------------------------------------------------------
 // Messages: extension -> webview
@@ -460,4 +461,5 @@ export type ExtensionToWebview =
   | { readonly type: "extensionSettings"; readonly settings: ExtensionSettings }
   | { readonly type: "agentProbe"; readonly probe: AgentProbe }
   | { readonly type: "showSettings" }
+  | { readonly type: "files.results"; readonly requestId: number; readonly query: string; readonly files: ReadonlyArray<{ readonly path: string; readonly name: string }> }
   | { readonly type: "toast"; readonly level: "info" | "warning" | "error"; readonly text: string };

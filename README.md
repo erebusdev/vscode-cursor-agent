@@ -29,12 +29,17 @@ hosts your workspace.
 ## Setup
 
 1. Install the Cursor Agent CLI and log in (`agent login`).
-2. Set `cursorAcp.agentPath` to the executable (default: `agent` resolved
-   from your PATH / login shell / `~/.local/bin`). A wrapper script works too,
-   e.g. `/Users/me/.local/bin/cursor-flexnet`, which selects the account and
+2. Open the **Cursor Agent** view in the activity bar (or `Cmd+Alt+C`). By
+   default the extension looks for `agent` on your PATH, your login shell's
+   PATH, and `~/.local/bin`. If it is not found, a setup card asks for the
+   path. Use the gear in the view for the in-app settings panel (path with
+   Browse and Test, extra args, environment, behaviour), or VS Code's settings
+   editor; both write the same `cursorAcp.*` settings.
+3. A wrapper script works as the path too, e.g.
+   `/Users/me/.local/bin/cursor-flexnet`, which selects the account and
    config directory before exec'ing the real CLI. The extension always runs
    `<agentPath> [agentArgs...] acp`.
-3. Open the **Cursor Agent** view in the activity bar (or `Cmd+Alt+C`).
+4. The **Get started** walkthrough (Help → Welcome) covers the same steps.
 
 ### Settings
 
@@ -61,8 +66,8 @@ hosts your workspace.
 | Cursor Agent: Stop Current Turn / Reconnect Agent / Show Logs | |
 
 In the chat: `Enter` sends, `Shift+Enter` inserts a newline, `Esc` stops the
-current turn, `/` opens the command list, `↑` on an empty box recalls the
-previous prompt. When a permission prompt is showing, `Enter`/`y` allows,
+current turn, `/` opens the command list, `@` mentions a workspace file, `↑`
+on an empty box recalls the previous prompt. When a permission prompt is showing, `Enter`/`y` allows,
 `a` always allows, `n`/`Esc` rejects.
 
 ## How it works

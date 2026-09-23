@@ -65,6 +65,35 @@
       { "command": "cursorAcp.addSelectionToChat", "key": "ctrl+alt+a", "mac": "cmd+alt+a", "when": "editorHasSelection" },
       { "command": "cursorAcp.newSession", "key": "ctrl+alt+n", "mac": "cmd+alt+n", "when": "cursorAcp.viewFocused" }
     ],
+    "walkthroughs": [
+      {
+        "id": "cursorAcp.gettingStarted",
+        "title": "Get started with Cursor Agent Chat",
+        "description": "Chat with the Cursor Agent CLI inside VS Code.",
+        "steps": [
+          {
+            "id": "install",
+            "title": "Install the Cursor Agent CLI",
+            "description": "Install the CLI and sign in once from a terminal.\n[Install instructions](https://cursor.com/docs/cli/installation)\n```bash\ncurl https://cursor.com/install -fsS | bash\nagent login\n```",
+            "media": { "markdown": "media/walkthrough/install.md" }
+          },
+          {
+            "id": "configure",
+            "title": "Point the extension at the CLI",
+            "description": "By default the extension looks for `agent` on your PATH. If you use a wrapper script (for example to select an account), set the path in Settings.\n[Open Settings](command:cursorAcp.openSettings)",
+            "media": { "markdown": "media/walkthrough/configure.md" },
+            "completionEvents": ["onSettingChanged:cursorAcp.agentPath"]
+          },
+          {
+            "id": "chat",
+            "title": "Start chatting",
+            "description": "Open the Cursor Agent view and send a message. Press Enter to send, Shift+Enter for a new line, and type / for commands.\n[Open Cursor Agent](command:cursorAcp.focus)",
+            "media": { "markdown": "media/walkthrough/chat.md" },
+            "completionEvents": ["onView:cursorAcp.chat"]
+          }
+        ]
+      }
+    ],
     "configuration": {
       "title": "Cursor Agent Chat",
       "properties": {
