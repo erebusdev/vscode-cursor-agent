@@ -330,7 +330,6 @@ function UsageDetail({ s, now }: { s: UsageSummary; now: number }) {
           {s.limitUsd !== undefined && <Row label="Included in plan" value={s.includedSpendUsd !== undefined ? `${money(s.includedSpendUsd)} of ${money(s.limitUsd)}` : money(s.limitUsd)} />}
           {s.bonusUsd !== undefined && <Row label="Bonus usage" value={`${money(s.bonusUsd)}${s.bonusRemaining === false ? " (none left)" : ""}`} />}
           {s.spendUsd !== undefined && <Row label="Total" value={money(s.spendUsd)} />}
-          {s.bonusNote && <p class="pane-note">{s.bonusNote}</p>}
         </section>
       )}
 

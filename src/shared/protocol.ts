@@ -363,8 +363,6 @@ export interface UsageSummary {
   readonly includedSpendUsd?: number;
   /** Whether Cursor reports bonus (provider-funded) usage still available. */
   readonly bonusRemaining?: boolean;
-  /** Cursor's explanation of bonus usage, if provided. */
-  readonly bonusNote?: string;
   /** Team/pooled spend-limit usage, when the account is on a team plan. */
   readonly teamSpend?: {
     readonly totalUsd?: number;

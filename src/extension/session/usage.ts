@@ -78,7 +78,6 @@ interface RawUsage {
     apiPercentUsed?: number;
     totalPercentUsed?: number;
     remainingBonus?: boolean;
-    bonusTooltip?: string;
   };
   spendLimitUsage?: { totalSpend?: number; individualUsed?: number; pooledUsed?: number; limitType?: string };
   displayMessage?: string;
@@ -132,7 +131,6 @@ export function mapUsage(raw: RawUsage, checkedAt: number): UsageSummary {
     ...(cents(plan?.bonusSpend) !== undefined ? { bonusUsd: cents(plan?.bonusSpend)! } : {}),
     ...(cents(plan?.includedSpend) !== undefined ? { includedSpendUsd: cents(plan?.includedSpend)! } : {}),
     ...(typeof plan?.remainingBonus === "boolean" ? { bonusRemaining: plan.remainingBonus } : {}),
-    ...(plan?.bonusTooltip ? { bonusNote: plan.bonusTooltip } : {}),
     ...(teamSpend && Object.keys(teamSpend).length > 0 ? { teamSpend } : {}),
     ...(autoModels.length > 0 ? { autoModels } : {}),
   };
