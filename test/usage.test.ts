@@ -52,16 +52,34 @@ describe("usage", () => {
   it("reads auth.json and posts to the dashboard endpoint", async () => {
     const dir = mkdtempSync(join(tmpdir(), "usage-"));
     writeFileSync(join(dir, "auth.json"), JSON.stringify({ accessToken: "tok" }));
-    let seen: { url: string; auth: string | undefined } | undefined;
+    const seen: Array<{ url: string; auth: string | undefined }> = [];
     const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
-      seen = { url: String(url), auth: (init?.headers as Record<string, string>)?.authorization };
+      const u = String(url);
+      seen.push({ url: u, auth: (init?.headers as Record<string, string>)?.authorization });
+      if (u.endsWith("AuthService/GetEmail")) return new Response(JSON.stringify({ email: "me@example.com" }), { status: 200 });
+      if (u.endsWith("DashboardService/GetTeams")) return new Response(JSON.stringify({ teams: [{ name: "Acme", role: "TEAM_ROLE_OWNER" }] }), { status: 200 });
       return new Response(JSON.stringify({ planUsage: { totalPercentUsed: 12 } }), { status: 200 });
     }) as typeof fetch;
     const usage = await fetchCursorUsage({ configDir: dir, env: {}, fetchImpl });
-    expect(seen?.url).toBe("https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage");
-    expect(seen?.auth).toBe("Bearer tok");
+    expect(seen.map((s) => s.url)).toContain("https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage");
+    expect(seen.every((s) => s.auth === "Bearer tok")).toBe(true);
     expect(usage.windows[0]?.usedPercent).toBe(12);
+    expect(usage.account).toEqual({ email: "me@example.com", team: "Acme", teamRole: "Owner" });
     const missing = await fetchCursorUsage({ configDir: join(dir, "nope"), env: {}, fetchImpl });
     expect(missing.error).toContain("No Cursor login");
+  });
+
+  it("keeps usage numbers when the account lookups fail", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "usage-"));
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ accessToken: "tok" }));
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.endsWith("GetCurrentPeriodUsage")) return new Response(JSON.stringify({ planUsage: { totalPercentUsed: 3 } }), { status: 200 });
+      throw new Error("offline");
+    }) as typeof fetch;
+    const usage = await fetchCursorUsage({ configDir: dir, env: {}, fetchImpl });
+    expect(usage.error).toBeUndefined();
+    expect(usage.windows[0]?.usedPercent).toBe(3);
+    expect(usage.account).toBeUndefined();
   });
 });

@@ -116,12 +116,33 @@ function spendLine(summary: UsageSummary): string {
   return summary.bonusUsd ? `${base} · +${money(summary.bonusUsd, true)} bonus` : base;
 }
 
+function accountLine(account: UsageSummary["account"]): string {
+  if (!account) return "";
+  return [account.email, account.team].filter((s): s is string => !!s).join(" · ");
+}
+
 function UsageOverview({ summary, now }: { summary: UsageSummary; now: number }) {
-  if (summary.error) return <UsageError error={summary.error} />;
+  const who = accountLine(summary.account);
+  if (summary.error)
+    return (
+      <>
+        {who && (
+          <div class="usage-meta-line muted usage-account" title={who}>
+            {who}
+          </div>
+        )}
+        <UsageError error={summary.error} />
+      </>
+    );
   const status = statusLine(summary, now);
   const spend = spendLine(summary);
   return (
     <>
+      {who && (
+        <div class="usage-meta-line muted usage-account" title={who}>
+          {who}
+        </div>
+      )}
       {summary.windows.length === 0 ? (
         <div class="usage-meta-line muted">No usage windows reported.</div>
       ) : (
@@ -267,6 +288,15 @@ function UsageDetail({ s, now }: { s: UsageSummary; now: number }) {
   const teamLabel = team?.limitType ? `${team.limitType.charAt(0).toUpperCase()}${team.limitType.slice(1)} spend` : "Shared spend";
   return (
     <>
+      {s.account && (s.account.email || s.account.team) && (
+        <section class="pane-section" aria-labelledby="usage-account">
+          <h3 id="usage-account" class="pane-heading">
+            Account
+          </h3>
+          {s.account.email && <Row label="Signed in as" value={s.account.email} />}
+          {s.account.team && <Row label="Team" value={s.account.teamRole ? `${s.account.team} (${s.account.teamRole})` : s.account.team} />}
+        </section>
+      )}
       <section class="pane-section" aria-labelledby="usage-plan">
         <h3 id="usage-plan" class="pane-heading">
           Plan usage
@@ -382,6 +412,7 @@ export function UsageView() {
         )}
         {s?.error && (
           <section class="pane-section">
+            {s.account?.email && <Row label="Signed in as" value={s.account.email} />}
             <UsageError error={s.error} />
           </section>
         )}

@@ -2119,6 +2119,10 @@ button.chip:disabled {
   height: 6px;
   border-radius: 3px;
 }
+.usage-account {
+  font-size: 11px;
+  margin-top: -2px;
+}
 .usage-checked {
   white-space: nowrap;
   overflow: hidden;

@@ -138,6 +138,25 @@ export function mapUsage(raw: RawUsage, checkedAt: number): UsageSummary {
   };
 }
 
+type Rpc = (method: string) => Promise<Response>;
+
+/** Who the CLI token belongs to (email) and, for team plans, the team name and role. */
+async function fetchAccount(rpc: Rpc): Promise<UsageSummary["account"] | undefined> {
+  const [emailResult, teamsResult] = await Promise.allSettled([
+    rpc("aiserver.v1.AuthService/GetEmail").then((r) => (r.ok ? (r.json() as Promise<{ email?: string }>) : undefined)),
+    rpc("aiserver.v1.DashboardService/GetTeams").then((r) => (r.ok ? (r.json() as Promise<{ teams?: Array<{ name?: string; role?: string }> }>) : undefined)),
+  ]);
+  const email = emailResult.status === "fulfilled" && typeof emailResult.value?.email === "string" ? emailResult.value.email.trim() : "";
+  const team = teamsResult.status === "fulfilled" ? teamsResult.value?.teams?.find((t) => typeof t?.name === "string" && t.name.trim()) : undefined;
+  const role = typeof team?.role === "string" ? team.role.replace(/^TEAM_ROLE_/, "").toLowerCase() : "";
+  if (!email && !team) return undefined;
+  return {
+    ...(email ? { email } : {}),
+    ...(team?.name ? { team: team.name.trim() } : {}),
+    ...(role ? { teamRole: role.charAt(0).toUpperCase() + role.slice(1) } : {}),
+  };
+}
+
 export async function fetchCursorUsage(options: UsageSourceOptions): Promise<UsageSummary> {
   const checkedAt = Date.now();
   const configDir = await resolveCursorConfigDir(options);
@@ -161,8 +180,8 @@ export async function fetchCursorUsage(options: UsageSourceOptions): Promise<Usa
   const doFetch = options.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const response = await doFetch(`${endpoint}/aiserver.v1.DashboardService/GetCurrentPeriodUsage`, {
+  const rpc = (method: string) =>
+    doFetch(`${endpoint}/${method}`, {
       method: "POST",
       headers: {
         authorization: `Bearer ${token}`,
@@ -173,11 +192,14 @@ export async function fetchCursorUsage(options: UsageSourceOptions): Promise<Usa
       body: "{}",
       signal: controller.signal,
     });
+  try {
+    // Account identity is best-effort: a failure there must not hide the usage numbers.
+    const [response, account] = await Promise.all([rpc("aiserver.v1.DashboardService/GetCurrentPeriodUsage"), fetchAccount(rpc)]);
     if (!response.ok) {
-      return { checkedAt, windows: [], error: `Cursor usage request failed (${response.status}).` };
+      return { checkedAt, windows: [], error: `Cursor usage request failed (${response.status}).`, ...(account ? { account } : {}) };
     }
     const raw = (await response.json()) as RawUsage;
-    return mapUsage(raw, checkedAt);
+    return { ...mapUsage(raw, checkedAt), ...(account ? { account } : {}) };
   } catch (error) {
     return { checkedAt, windows: [], error: `Could not reach Cursor: ${error instanceof Error ? error.message : String(error)}` };
   } finally {

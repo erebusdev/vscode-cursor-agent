@@ -374,6 +374,12 @@ export interface UsageSummary {
   };
   /** Cursor's first-party model ids (the "Cursor usage" pool). */
   readonly autoModels?: ReadonlyArray<string>;
+  /** The logged-in CLI account, when Cursor reports it. */
+  readonly account?: {
+    readonly email?: string;
+    readonly team?: string;
+    readonly teamRole?: string;
+  };
   readonly error?: string;
 }
 
