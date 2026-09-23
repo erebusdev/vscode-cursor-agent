@@ -106,7 +106,7 @@ npm run build          # bundles extension + webview into dist/
 npm run typecheck
 npm test               # unit + fake-agent runtime tests
 CURSOR_ACP_E2E=1 npm run test:e2e   # real agent (uses Cursor usage)
-npm run package        # writes build/cursor-agent-<version>.vsix
+npm run package        # writes build/cursor-agent-<version>.vsix (or ./build.sh)
 ```
 
 Press F5 in VS Code to launch an Extension Development Host.
@@ -120,11 +120,15 @@ into a `.vsix` under the gitignored `build/` directory. `.vscodeignore`
 keeps sources, tests and maps out of the archive, and `--no-dependencies`
 skips `node_modules` because everything is bundled.
 
-Install the result with the CLI (`--profile` targets a specific VS Code
-profile):
+`./build.sh` wraps the same steps (`--check` runs typecheck and tests first,
+`--install` installs the result with the `code` CLI).
+
+The VSIX is profile-agnostic. Which VS Code profile it goes into is decided
+when you install it, either from the Extensions view (`…` menu → **Install
+from VSIX…**, into the current profile) or with the CLI:
 
 ```
-code --install-extension build/cursor-agent-0.1.0.vsix --profile "Flexnet"
+code --install-extension build/cursor-agent-0.1.0.vsix
 ```
 
-or from the Extensions view: `…` menu → **Install from VSIX…**.
+Add `--profile <name>` to that command to target a different profile.
