@@ -57,7 +57,7 @@
         { "command": "cursorAcp.showLogs", "when": "view =~ /^cursorAcp\\.chat/", "group": "2_config@2" }
       ],
       "editor/title": [
-        { "command": "cursorAcp.focus", "when": "config.cursorAcp.editorTitleButton", "group": "navigation@9" }
+        { "command": "cursorAcp.focus", "when": "config.cursorAcp.editorTitleButton", "group": "navigation" }
       ],
       "editor/context": [
         { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection", "group": "cursorAcp@1" }
