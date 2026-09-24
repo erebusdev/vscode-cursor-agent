@@ -74,9 +74,14 @@ interface RowProps {
   wide?: boolean;
   /** Full-width content under the label (lists, editors, status lines). */
   children?: ComponentChildren;
+  /**
+   * Whether the label names the control `id` (inputs, switches, dropdowns).
+   * Off for action buttons and read-only content, which keep their own text as their name.
+   */
+  labelFor?: boolean;
 }
 
-export function SettingRow({ id, label, description, settingKey, source, saved, control, wide, children }: RowProps) {
+export function SettingRow({ id, label, description, settingKey, source, saved, control, wide, children, labelFor = true }: RowProps) {
   const overridden = !!source && source !== "default";
   const descId = description ? `${id}-desc` : undefined;
   return (
@@ -84,9 +89,15 @@ export function SettingRow({ id, label, description, settingKey, source, saved, 
       <div class={`srow-main${wide ? " wide" : ""}`}>
         <div class="srow-text">
           <div class="srow-label-line">
-            <label class="srow-label" for={id}>
-              {label}
-            </label>
+            {labelFor ? (
+              <label class="srow-label" for={id}>
+                {label}
+              </label>
+            ) : (
+              <span class="srow-label" id={`${id}-label`}>
+                {label}
+              </span>
+            )}
             {overridden && (
               <span class="srow-source" title={SOURCE_LABEL[source].hint}>
                 {SOURCE_LABEL[source].text}

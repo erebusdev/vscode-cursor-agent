@@ -168,6 +168,7 @@ function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
         <BoolRow settings={settings} k="protocolLogging" label="Protocol logging" description="Log every ACP JSON-RPC message to the Cursor Agent output channel. Useful when reporting a problem; noisy otherwise." />
         <SettingRow
           id="advanced-logs"
+          labelFor={false}
           label="Logs"
           description="The Cursor Agent output channel: connection, probe and MCP messages."
           control={
@@ -178,6 +179,7 @@ function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
         />
         <SettingRow
           id="advanced-vscode-settings"
+          labelFor={false}
           label="VS Code settings"
           description="Every cursorAcp.* setting in VS Code's settings editor, including workspace overrides."
           control={
@@ -186,7 +188,7 @@ function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
             </button>
           }
         />
-        {version && <SettingRow id="advanced-version" label="Version" description="Cursor Agent (VSCode ACP) extension." control={<span class="srow-value" id="advanced-version">{version}</span>} />}
+        {version && <SettingRow id="advanced-version" labelFor={false} label="Version" description="Cursor Agent (VSCode ACP) extension." control={<span class="srow-value" id="advanced-version">{version}</span>} />}
       </SettingsGroup>
     </>
   );

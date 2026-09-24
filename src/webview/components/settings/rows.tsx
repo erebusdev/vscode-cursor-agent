@@ -275,7 +275,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
 export function EnvRow({ settings, onSaved }: { settings: ExtensionSettings; onSaved: () => void }) {
   const [saved, flash] = useSavedFlash();
   return (
-    <SettingRow id="setting-environment" settingKey="environment" label="Environment variables" description="Extra environment variables for the agent process. Values override the extension host environment." source={settings.sources.environment} saved={saved}>
+    <SettingRow id="setting-environment" labelFor={false} settingKey="environment" label="Environment variables" description="Extra environment variables for the agent process. Values override the extension host environment." source={settings.sources.environment} saved={saved}>
       <EnvEditor
         value={settings.environment}
         onCommit={(rec) => {
@@ -543,6 +543,7 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
   return (
     <SettingRow
       id="setting-defaultModel-use"
+      labelFor={false}
       settingKey="defaultModel"
       label="Defaults for new sessions"
       description="Every new session starts with this model and these options. Changes made inside a session apply to that session only."

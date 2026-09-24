@@ -85,6 +85,7 @@ export function ManageModels() {
   return (
     <SettingRow
       id="models-show-all"
+      labelFor={false}
       label="Shown in the model picker"
       description={
         <>

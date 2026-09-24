@@ -24,6 +24,7 @@ function ForwardedList({ status }: { status: McpStatus }) {
   return (
     <SettingRow
       id="mcp-forwarded"
+      labelFor={false}
       label="Forwarded by the extension"
       description={
         status.projectSkipped
@@ -64,6 +65,7 @@ function CliList({ status }: { status: McpStatus }) {
   return (
     <SettingRow
       id="mcp-cli"
+      labelFor={false}
       label="Reported by the CLI"
       description={
         <>
@@ -126,6 +128,7 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
         />
         <SettingRow
           id="mcp-open-config"
+          labelFor={false}
           label="Project configuration"
           description="This workspace's .cursor/mcp.json, created with an empty server list if it does not exist yet."
           control={
