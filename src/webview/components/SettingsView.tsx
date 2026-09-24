@@ -1,7 +1,8 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentProbe, ExtensionSettings, SettingsKey } from "../../shared/protocol";
-import { setModelsOpen, setSettingsOpen, useSelector } from "../store";
+import { setSettingsOpen, useSelector } from "../store";
+import { ManageModels } from "./ManageModels";
 import { post } from "../vscode";
 import { Icon, IconButton, Spinner } from "./ui";
 
@@ -602,7 +603,9 @@ export function SettingsView() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const [tab, setTab] = useState<SettingsTab>("agent");
+  const requestedTab = useSelector((s) => s.settingsTab);
+  const [tab, setTab] = useState<SettingsTab>(requestedTab);
+  useEffect(() => setTab(requestedTab), [requestedTab]);
   const tabs: ReadonlyArray<{ id: SettingsTab; label: string; hint: string }> = [
     { id: "agent", label: "Agent", hint: "Where the Cursor CLI is and how it is launched" },
     { id: "approvals", label: "Approvals", hint: "What runs without asking" },
@@ -679,11 +682,7 @@ export function SettingsView() {
                 Models
               </h3>
               <ModelDefaultsRow settings={settings} />
-              <div class="settings-links">
-                <button title="Choose which models appear in the picker" type="button" class="link-button" onClick={() => setModelsOpen(true)}>
-                  <Icon name="list-selection" /> Manage visible models
-                </button>
-              </div>
+              <ManageModels />
             </section>
             )}
 

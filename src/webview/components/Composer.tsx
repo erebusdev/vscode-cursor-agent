@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
-import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, setModelsOpen, useSelector } from "../store";
+import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, setSettingsOpen, useSelector } from "../store";
 import { visibleModels } from "../../shared/modelVisibility";
 import { getPersisted, persist, post } from "../vscode";
 import { readImageFile } from "../attachments";
@@ -209,7 +209,7 @@ function ModelPicker() {
             onClick={() => {
               setOpen(false);
               setFilter("");
-              setModelsOpen(true);
+              setSettingsOpen(true, "models");
             }}
           >
             <Icon name="settings" /> Manage models…{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}

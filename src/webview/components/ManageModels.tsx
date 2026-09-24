@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { SessionModel } from "../../shared/protocol";
 import { modelFamily, modelGroup, sortModelsByFamily, type ModelGroup } from "../../shared/modelVisibility";
-import { getState, setModelsOpen, useSelector } from "../store";
+import { getState, useSelector } from "../store";
 import { post } from "../vscode";
 import { Checkbox } from "./SettingsView";
-import { Icon, IconButton } from "./ui";
+import { Icon } from "./ui";
 
 const GROUPS: ReadonlyArray<{ id: ModelGroup; title: string; blurb: string }> = [
   { id: "auto", title: "Auto", blurb: "Cursor picks the model per request, including third-party ones, and bills it as that model." },
@@ -64,29 +64,17 @@ function GroupCheckbox({ id, label, members, hidden }: { id: string; label: stri
   );
 }
 
-export function ManageModelsView() {
+/** Inline model manager, shown inside the settings Models tab. */
+export function ManageModels() {
   const models = useSelector((s) => s.session.models);
   const settings = useSelector((s) => s.settings);
   const cursorIds = useSelector((s) => s.usage.summary?.autoModels);
   const usageLoading = useSelector((s) => s.usage.loading);
-  const backRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    backRef.current?.focus({ preventScroll: true });
     // The usage API knows which ids Cursor bills as its own; fetch it once so grouping is accurate.
     const u = getState().usage;
     if (!u.loading && !u.summary?.autoModels) post({ type: "usage.refresh" });
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      if ((e.target as HTMLElement | null)?.closest(".popover")) return;
-      e.preventDefault();
-      setModelsOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   const all = models?.availableModels ?? [];
@@ -94,62 +82,57 @@ export function ManageModelsView() {
   const hiddenCount = all.filter((m) => hidden.includes(m.modelId)).length;
 
   return (
-    <div class="pane models-view" role="region" aria-label="Manage models">
-      <div class="pane-top">
-        <IconButton ref={backRef} icon="arrow-left" label="Back to chat" onClick={() => setModelsOpen(false)} />
-        <h2 class="pane-title">Models</h2>
-        <span class="pane-top-actions">
-          {hiddenCount > 0 && (
-            <button type="button" class="link-button" title="Show every model again" onClick={() => setHidden([])}>
-              Show all
-            </button>
-          )}
-        </span>
+    <div class="models-manager">
+      <div class="models-manager-head">
+        <span class="setting-label">Visible models</span>
+        {hiddenCount > 0 && (
+          <button type="button" class="link-button" title="Show every model again" onClick={() => setHidden([])}>
+            Show all ({hiddenCount} hidden)
+          </button>
+        )}
       </div>
-      <div class="pane-scroll">
-        <p class="pane-note">
-          Untick a model to hide it from the picker. A group's box ticks or unticks all of its models at once. New models Cursor adds stay visible until you hide them.
-          {usageLoading ? " Checking which models are Cursor's…" : ""}
-        </p>
-        {all.length === 0 && <div class="pane-empty">No models reported yet. Connect to the agent first.</div>}
-        {GROUPS.map((g) => {
-          const members = all.filter((m) => modelGroup(m.modelId, cursorIds) === g.id);
-          if (members.length === 0) return null;
-          return (
-            <section key={g.id} class="models-group" aria-labelledby={`models-${g.id}`}>
-              <div class="models-group-head">
-                {members.length > 1 ? <GroupCheckbox id={`models-group-${g.id}`} label={g.title} members={members} hidden={hidden} /> : <span class="models-group-spacer" />}
-                <h3 id={`models-${g.id}`} class="pane-heading">
-                  {g.title}
-                </h3>
-                <span class="models-group-count">{members.filter((m) => !hidden.includes(m.modelId)).length}/{members.length}</span>
-              </div>
-              <p class="pane-note">{g.blurb}</p>
-              {(() => {
-                const sorted = sortModelsByFamily(members);
-                const counts = new Map<string, number>();
-                for (const m of sorted) counts.set(modelFamily(m.modelId), (counts.get(modelFamily(m.modelId)) ?? 0) + 1);
-                let lastFamily = "";
-                return sorted.map((m) => {
-                  const family = modelFamily(m.modelId);
-                  const showLabel = family !== lastFamily && (counts.get(family) ?? 0) > 1;
-                  lastFamily = family;
-                  return (
-                    <>
-                      {showLabel && (
-                        <div key={`fam-${family}`} class="models-family">
-                          {family.replace(/-/g, " ")}
-                        </div>
-                      )}
-                      <ModelRow key={m.modelId} model={m} current={m.modelId === models?.currentModelId} hidden={hidden.includes(m.modelId)} />
-                    </>
-                  );
-                });
-              })()}
-            </section>
-          );
-        })}
-      </div>
+      <p class="setting-desc">
+        Untick a model to hide it from the picker. A group's box ticks or unticks all of its models. New models Cursor adds stay visible until you hide them.
+        {usageLoading ? " Checking which models are Cursor's…" : ""}
+      </p>
+      {all.length === 0 && <div class="pane-empty">No models reported yet. Connect to the agent first.</div>}
+      {GROUPS.map((g) => {
+        const members = all.filter((m) => modelGroup(m.modelId, cursorIds) === g.id);
+        if (members.length === 0) return null;
+        return (
+          <section key={g.id} class="models-group" aria-labelledby={`models-${g.id}`}>
+            <div class="models-group-head">
+              {members.length > 1 ? <GroupCheckbox id={`models-group-${g.id}`} label={g.title} members={members} hidden={hidden} /> : <span class="models-group-spacer" />}
+              <h4 id={`models-${g.id}`} class="pane-heading">
+                {g.title}
+              </h4>
+              <span class="models-group-count">{members.filter((m) => !hidden.includes(m.modelId)).length}/{members.length}</span>
+            </div>
+            <p class="pane-note">{g.blurb}</p>
+            {(() => {
+              const sorted = sortModelsByFamily(members);
+              const counts = new Map<string, number>();
+              for (const x of sorted) counts.set(modelFamily(x.modelId), (counts.get(modelFamily(x.modelId)) ?? 0) + 1);
+              let lastFamily = "";
+              return sorted.map((x) => {
+                const family = modelFamily(x.modelId);
+                const showLabel = family !== lastFamily && (counts.get(family) ?? 0) > 1;
+                lastFamily = family;
+                return (
+                  <>
+                    {showLabel && (
+                      <div key={`fam-${family}`} class="models-family">
+                        {family.replace(/-/g, " ")}
+                      </div>
+                    )}
+                    <ModelRow key={x.modelId} model={x} current={x.modelId === models?.currentModelId} hidden={hidden.includes(x.modelId)} />
+                  </>
+                );
+              });
+            })()}
+          </section>
+        );
+      })}
     </div>
   );
 }

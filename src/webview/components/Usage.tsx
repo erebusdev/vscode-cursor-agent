@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { UsageSummary, UsageWindow } from "../../shared/protocol";
 import { pluralize, relativeTime } from "../format";
-import { getState, setUsageOpen, useSelector } from "../store";
+import { getState, setSettingsOpen, setUsageOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Popover } from "./Popover";
 import { Icon, IconButton, Spinner, useNow } from "./ui";
@@ -84,8 +84,8 @@ function UsageError({ error }: { error: string }) {
       <div>
         <div>{error}</div>
         <div class="usage-error-hint">
-          If Cursor's config lives elsewhere, set <code>cursorAcp.configDir</code> in{" "}
-          <button title="Open the extension settings" type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
+          If Cursor's config lives elsewhere, set the config directory in{" "}
+          <button title="Open the Agent settings" type="button" class="link-button" onClick={() => setSettingsOpen(true, "agent")}>
             Settings
           </button>
           .

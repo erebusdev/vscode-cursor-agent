@@ -8,7 +8,6 @@ import { SettingsView } from "./SettingsView";
 import { Toasts } from "./Toasts";
 import { Transcript } from "./Transcript";
 import { UsageView } from "./Usage";
-import { ManageModelsView } from "./ManageModels";
 import { WorkingIndicator } from "./WorkingIndicator";
 
 /** Accept file drops anywhere in the view; they become composer attachments. */
@@ -62,7 +61,6 @@ export function App() {
   const settingsOpen = useSelector((s) => s.settingsOpen);
   const usageOpen = useSelector((s) => s.usageOpen);
   const dropping = useDropZone();
-  const modelsOpen = useSelector((s) => s.modelsOpen);
   return (
     <div class={`app${dropping ? " dropping" : ""}`}>
       {dropping && (
@@ -76,8 +74,6 @@ export function App() {
         <SettingsView />
       ) : usageOpen ? (
         <UsageView />
-      ) : modelsOpen ? (
-        <ManageModelsView />
       ) : (
         <>
           <Transcript />

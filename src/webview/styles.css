@@ -2283,6 +2283,20 @@ button.chip:disabled {
   font-size: 11px;
   color: var(--muted);
 }
+.models-manager {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.models-manager-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.models-manager .models-group {
+  padding-top: 8px;
+}
 .models-family {
   margin: 6px 0 1px 26px;
   font-size: 10px;
