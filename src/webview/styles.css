@@ -2240,6 +2240,9 @@ button.chip:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.model-option-row .toggle {
+  flex: 0 0 auto;
+}
 .model-option-row .select-input,
 .model-option-input {
   flex: 0 0 auto;

@@ -249,6 +249,7 @@ function ModelPicker() {
 
 function optionValueLabel(o: ConfigOption): string {
   if (o.type === "boolean" || typeof o.currentValue === "boolean") return o.currentValue ? "On" : "Off";
+  if (isTrueFalse(o.options.map((x) => x.value))) return o.currentValue === "true" ? "On" : "Off";
   const match = o.options.find((x) => x.value === o.currentValue);
   return match?.name ?? String(o.currentValue);
 }
@@ -259,23 +260,36 @@ function headlineOption(options: ReadonlyArray<ConfigOption>): ConfigOption | un
   return options.find((o) => o.category === "thought_level" || /effort|reasoning|thinking/i.test(o.id) || /effort|reasoning|thinking/i.test(o.name));
 }
 
+function isTrueFalse(values: ReadonlyArray<string>): boolean {
+  return values.length === 2 && values.includes("true") && values.includes("false");
+}
+
 /** One option of the current model, edited in place inside the model popover. */
 function OptionRow({ option }: { option: ConfigOption }) {
   const [text, setText] = useState(String(option.currentValue));
   const isBool = option.type === "boolean" || typeof option.currentValue === "boolean";
-  const isSelect = !isBool && option.options.length > 0;
+  // Cursor sends on/off options such as Fast and Thinking as a select of "true"/"false"; those get a switch too.
+  const isTrueFalseSelect = !isBool && isTrueFalse(option.options.map((x) => x.value));
+  const isSelect = !isBool && !isTrueFalseSelect && option.options.length > 0;
   const set = (value: string | boolean) => {
     if (value !== option.currentValue) post({ type: "config.set", configId: option.id, value });
   };
+  if (isBool || isTrueFalseSelect) {
+    const on = isBool ? option.currentValue === true : option.currentValue === "true";
+    const id = `model-option-${option.id}`;
+    return (
+      <div class="model-option-row" title={option.description ?? option.name}>
+        <label class="model-option-name" for={id}>
+          {option.name}
+        </label>
+        <Toggle id={id} checked={on} onChange={(next) => set(isBool ? next : String(next))} />
+      </div>
+    );
+  }
   return (
     <label class="model-option-row" title={option.description ?? option.name}>
       <span class="model-option-name">{option.name}</span>
-      {isBool ? (
-        <select class="select-input" value={option.currentValue ? "true" : "false"} onChange={(e) => set((e.currentTarget as HTMLSelectElement).value === "true")}>
-          <option value="true">On</option>
-          <option value="false">Off</option>
-        </select>
-      ) : isSelect ? (
+      {isSelect ? (
         <select class="select-input" value={String(option.currentValue)} onChange={(e) => set((e.currentTarget as HTMLSelectElement).value)}>
           {option.options.map((x) => (
             <option key={x.value} value={x.value} title={x.description}>
