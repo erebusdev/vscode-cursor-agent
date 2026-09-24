@@ -767,6 +767,10 @@ export class SessionRuntime {
       } else if (attachment.kind === "file" && attachment.path) {
         contextParts.push(`Referenced file: ${attachment.path}`);
         uiAttachments.push({ kind: "file", label: attachment.label, path: attachment.path });
+      } else if (attachment.kind === "file" && attachment.text !== undefined) {
+        // Dropped from outside the workspace: the webview only has the contents, not a path.
+        contextParts.push(`Contents of ${attachment.label}:\n\`\`\`\n${attachment.text}\n\`\`\``);
+        uiAttachments.push({ kind: "file", label: attachment.label });
       }
     }
     const isSlashCommand = /^\/[^\s/]+(?:\s|$)/.test(trimmed);

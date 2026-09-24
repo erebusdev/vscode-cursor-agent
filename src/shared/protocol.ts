@@ -467,6 +467,7 @@ export type WebviewToExtension =
   | { readonly type: "openLogs" }
   | { readonly type: "openExternal"; readonly url: string }
   | { readonly type: "attachActiveFile" }
+  | { readonly type: "attachUris"; readonly uris: ReadonlyArray<string> }
   | { readonly type: "pickFiles" }
   | { readonly type: "draft"; readonly text: string }
   | { readonly type: "usage.refresh" }

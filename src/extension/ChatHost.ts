@@ -335,6 +335,9 @@ export class ChatHost implements vscode.Disposable {
         case "pickFiles":
           await this.pickFiles();
           return;
+        case "attachUris":
+          await this.attachUris(message.uris);
+          return;
         case "usage.refresh":
           await this.refreshUsage();
           return;
@@ -568,6 +571,44 @@ export class ChatHost implements vscode.Disposable {
   private fileAttachment(uri: vscode.Uri): PromptAttachmentInput {
     const path = vscode.workspace.asRelativePath(uri, false);
     return { kind: "file", label: basename(path), path };
+  }
+
+  /** Dropped URIs (Explorer, editor tabs, OS): images are inlined, everything else attached by path. */
+  private async attachUris(uris: ReadonlyArray<string>): Promise<void> {
+    let skipped = 0;
+    for (const raw of uris.slice(0, 50)) {
+      let uri: vscode.Uri;
+      try {
+        uri = vscode.Uri.parse(raw, true);
+      } catch {
+        skipped++;
+        continue;
+      }
+      if (uri.scheme !== "file" && uri.scheme !== "vscode-remote") {
+        skipped++;
+        continue;
+      }
+      try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        if (stat.type & vscode.FileType.Directory) {
+          skipped++;
+          continue;
+        }
+        const ext = uri.path.toLowerCase().match(/\.(png|jpe?g|gif|webp|bmp)$/)?.[1];
+        if (ext && stat.size <= 8 * 1024 * 1024) {
+          const bytes = await vscode.workspace.fs.readFile(uri);
+          const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
+          this.send({ type: "composer.attach", attachment: { kind: "image", label: basename(uri.path), data: Buffer.from(bytes).toString("base64"), mimeType } });
+          continue;
+        }
+      } catch {
+        skipped++;
+        continue;
+      }
+      this.send({ type: "composer.attach", attachment: this.fileAttachment(uri) });
+    }
+    if (skipped > 0) this.send({ type: "toast", level: "info", text: `${skipped} dropped item${skipped === 1 ? " was" : "s were"} skipped (folders and non-file URIs cannot be attached).` });
+    this.send({ type: "composer.focus" });
   }
 
   private async pickFiles(): Promise<void> {

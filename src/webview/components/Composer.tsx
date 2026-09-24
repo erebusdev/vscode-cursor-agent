@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/ho
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
 import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, useSelector } from "../store";
 import { getPersisted, persist, post } from "../vscode";
+import { readImageFile } from "../attachments";
 import { Popover, PopoverList } from "./Popover";
 import { Icon, IconButton, Spinner } from "./ui";
 
@@ -222,25 +223,6 @@ function OptionPill({ option }: { option: ConfigOption }) {
 // ---------------------------------------------------------------------------
 // Composer
 // ---------------------------------------------------------------------------
-
-function readImageFile(file: File): Promise<PromptAttachmentInput | null> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onerror = () => resolve(null);
-    reader.onload = () => {
-      const url = typeof reader.result === "string" ? reader.result : "";
-      const comma = url.indexOf(",");
-      if (comma < 0) return resolve(null);
-      resolve({
-        kind: "image",
-        label: file.name || `image.${(file.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`,
-        data: url.slice(comma + 1),
-        mimeType: file.type || "image/png",
-      });
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 /** The message waiting to go out after the current turn, with edit / send-now / remove. */
 function QueuedBar() {

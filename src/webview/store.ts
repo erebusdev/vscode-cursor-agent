@@ -193,6 +193,11 @@ function emitComposer(e: ComposerEvent): void {
 
 let toastSeq = 0;
 
+/** Ask the composer to take focus (same path the host's composer.focus message uses). */
+export function focusComposer(): void {
+  emitComposer({ type: "focus" });
+}
+
 export function addToast(level: Toast["level"], text: string, ttl = 4000): void {
   const id = ++toastSeq;
   state.toasts = [...state.toasts, { id, level, text }];
