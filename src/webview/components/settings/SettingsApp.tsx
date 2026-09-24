@@ -128,7 +128,7 @@ function AgentPage({ settings }: { settings: ExtensionSettings }) {
         <EnvRow settings={settings} onSaved={mark} />
       </SettingsGroup>
       <SettingsGroup title="Usage">
-        <TextRow settings={settings} k="configDir" label="Config directory" description="Cursor's config folder, used by the usage panel." placeholder="~/.cursor" mono />
+        <TextRow settings={settings} k="configDir" label="Config folder" description="Cursor's config folder, used by the usage panel." placeholder="~/.cursor" mono />
       </SettingsGroup>
       {changed && (
         <div class="settings-footer" role="status">
