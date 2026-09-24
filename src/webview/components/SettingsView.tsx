@@ -367,14 +367,14 @@ function ApprovalPolicyRow({ settings }: { settings: ExtensionSettings }) {
 
 function SafeListRow({ settings }: { settings: ExtensionSettings }) {
   const [saved, flash] = useSavedFlash();
-  const [draft, setDraft] = useState(settings.safeList.join("\n"));
+  const [draft, setDraft] = useState((settings.safeList ?? []).join("\n"));
   const focused = useRef(false);
   useEffect(() => {
-    if (!focused.current) setDraft(settings.safeList.join("\n"));
+    if (!focused.current) setDraft((settings.safeList ?? []).join("\n"));
   }, [settings.safeList]);
   const commit = () => {
     const next = draft.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (!sameArray(next, settings.safeList)) {
+    if (!sameArray(next, settings.safeList ?? [])) {
       updateSetting("safeList", next);
       flash();
     }
@@ -414,7 +414,7 @@ function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) {
   const models = useSelector((s) => s.session.models);
   const modelOptions = useSelector((s) => s.session.modelOptions);
   const name = settings.defaultModel ? (models?.availableModels.find((m) => m.modelId === settings.defaultModel)?.name ?? settings.defaultModel) : "Cursor's current default";
-  const opts = Object.entries(settings.defaultModelOptions);
+  const opts = Object.entries(settings.defaultModelOptions ?? {});
   const currentName = models ? (models.availableModels.find((m) => m.modelId === models.currentModelId)?.name ?? models.currentModelId) : undefined;
   return (
     <SettingRow
