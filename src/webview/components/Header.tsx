@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../../shared/protocol";
-import { parseTime, recentSessions, sessionLabel } from "../../shared/sessionHistory";
+import { parseTime, recentMatches, sessionLabel } from "../../shared/sessionHistory";
 import { pluralize, relativeTime } from "../format";
 import { getState, openHistory, openSettings, resumeSession, setHistoryOpen, useSelector } from "../store";
 import { post } from "../vscode";
@@ -125,15 +125,21 @@ const HISTORY_REFRESH_MS = 10_000;
 
 /**
  * Header history button. Hovering shows the recent sessions in a card that
- * never takes focus; clicking (or Enter/Space) toggles the history pane in the
- * chat view, like the usage button. ArrowDown opens the recent list as a menu.
+ * does not take focus until the pointer moves into it (or the user clicks its
+ * filter, types on the button or presses ArrowDown); then its filter has focus.
+ * Clicking the button (or Enter/Space) toggles the history pane in the chat
+ * view, like the usage button.
  */
 function HistoryButton() {
   const sessions = useSelector((s) => s.sessions);
   const currentId = useSelector((s) => s.session.sessionId);
   const paneOpen = useSelector((s) => s.pane === "history");
-  const [open, setOpen] = useState<false | "hover" | "menu">(false);
+  // "hover": a preview that never takes focus; "active": the filter (or a row) has focus.
+  const [open, setOpen] = useState<false | "hover" | "active">(false);
+  const [filter, setFilter] = useState("");
   const anchor = useRef<HTMLButtonElement>(null);
+  const card = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const listedAt = useRef(0);
   const now = useNow(open !== false, 30_000);
@@ -146,6 +152,10 @@ function HistoryButton() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+  // A closed card forgets its filter.
+  useEffect(() => {
+    if (!open) setFilter("");
   }, [open]);
 
   const refresh = () => {
@@ -166,8 +176,21 @@ function HistoryButton() {
   };
   const hide = () => {
     hold();
-    if (open === "menu") return;
-    timer.current = window.setTimeout(() => setOpen(false), HISTORY_HOVER_CLOSE_MS);
+    timer.current = window.setTimeout(() => {
+      // A typed filter keeps the card open while focus is in it.
+      if (input.current?.value.trim() && card.current?.contains(document.activeElement)) return;
+      setOpen(false);
+    }, HISTORY_HOVER_CLOSE_MS);
+  };
+  /** Keeps the card open and moves focus to its filter (Popover focuses `data-autofocus` once active). */
+  const activate = (seed?: string) => {
+    hold();
+    if (seed !== undefined) setFilter((f) => f + seed);
+    if (open === "active") input.current?.focus();
+    else {
+      refresh();
+      setOpen("active");
+    }
   };
   const close = () => {
     hold();
@@ -178,18 +201,20 @@ function HistoryButton() {
     setHistoryOpen(!paneOpen);
   };
   const openPane = () => {
+    const query = filter.trim();
     close();
-    openHistory();
+    openHistory(query);
   };
   const pick = (sessionId: string) => {
     close();
     resumeSession(sessionId);
   };
 
-  const recent = recentSessions(sessions.list, HISTORY_RECENT);
-  const visible = sessions.list.filter((s) => !s.hidden).length;
-  const more = visible - recent.length;
-  const menu = open === "menu";
+  const { items: recent, total } = recentMatches(sessions.list, filter, HISTORY_RECENT);
+  const more = total - recent.length;
+  const q = filter.trim();
+  const active = open === "active";
+  const anyVisible = sessions.list.some((s) => !s.hidden);
 
   return (
     <>
@@ -199,8 +224,8 @@ function HistoryButton() {
         label="Session history"
         class={open || paneOpen ? "active" : undefined}
         aria-pressed={paneOpen}
-        aria-haspopup="menu"
-        aria-expanded={menu}
+        aria-haspopup="dialog"
+        aria-expanded={active}
         data-hover-card=""
         onClick={togglePane}
         onMouseEnter={show}
@@ -208,28 +233,48 @@ function HistoryButton() {
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || (e.key === "ArrowUp" && open)) {
             e.preventDefault();
-            hold();
-            refresh();
-            setOpen("menu");
+            activate();
+          } else if (e.key.length === 1 && e.key !== " " && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            // Typing on the button starts filtering the recent sessions.
+            e.preventDefault();
+            activate(e.key);
           }
         }}
       />
-      <Popover
-        anchor={anchor}
-        open={open !== false}
-        onClose={close}
-        label="Recent sessions"
-        role={menu ? "menu" : "dialog"}
-        align="end"
-        class="history-hover-popover"
-        manageFocus={menu}
-      >
-        <div class="history-hover" onMouseEnter={hold} onMouseLeave={hide}>
+      <Popover anchor={anchor} open={open !== false} onClose={close} label="Recent sessions" align="end" class="history-hover-popover" manageFocus={active}>
+        <div ref={card} class="history-hover" onMouseEnter={() => (open === "hover" ? activate() : hold())} onMouseLeave={hide}>
           <div class="popover-heading">
             Recent sessions {sessions.loading && <Spinner class="section-spinner" />}
           </div>
+          <span class="history-hover-filter">
+            <Icon name="search" class="history-search-icon" />
+            <input
+              ref={input}
+              type="text"
+              class="text-input"
+              placeholder="Filter sessions"
+              aria-label="Filter recent sessions"
+              title="Filter by title or session id. Enter resumes the first match, ↓ moves to the list."
+              data-autofocus=""
+              value={filter}
+              onInput={(e) => setFilter((e.currentTarget as HTMLInputElement).value)}
+              onMouseDown={() => activate()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && recent[0]) {
+                  e.preventDefault();
+                  pick(recent[0].sessionId);
+                } else if (e.key === "Escape" && filter) {
+                  // First Escape clears the filter; the next one closes the card.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFilter("");
+                }
+              }}
+            />
+          </span>
           {sessions.error && <div class="popover-empty error">{sessions.error}</div>}
-          {!sessions.loading && !sessions.error && recent.length === 0 && <div class="popover-empty">No sessions yet in this folder.</div>}
+          {!sessions.loading && !sessions.error && !anyVisible && <div class="popover-empty">No sessions yet in this folder.</div>}
+          {anyVisible && recent.length === 0 && q && <div class="popover-empty">No sessions match “{q}”</div>}
           {recent.length > 0 && (
             <div class="popover-list history-hover-list">
               {recent.map((s) => {
@@ -242,7 +287,6 @@ function HistoryButton() {
                   <button
                     key={s.sessionId}
                     type="button"
-                    role={menu ? "menuitem" : undefined}
                     aria-current={current ? "true" : undefined}
                     class={`popover-item history-hover-item${current ? " selected" : ""}`}
                     title={tooltip}
@@ -259,8 +303,8 @@ function HistoryButton() {
             </div>
           )}
           <div class="history-hover-footer">
-            <span class="history-hover-more">{more > 0 ? `${more} more` : ""}</span>
-            <button type="button" role={menu ? "menuitem" : undefined} class="link-button" title="Open the history pane: search, rename, hide and resume sessions" onClick={openPane}>
+            <span class="history-hover-more">{more > 0 ? `${more} more${q ? " matching" : ""}` : ""}</span>
+            <button type="button" class="link-button" title={q ? `Open the history pane searching for “${q}”` : "Open the history pane: search, rename, hide and resume sessions"} onClick={openPane}>
               All history…
             </button>
           </div>
