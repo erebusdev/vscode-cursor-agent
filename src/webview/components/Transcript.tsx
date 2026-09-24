@@ -179,7 +179,7 @@ export function Transcript() {
         </div>
       </div>
       {showPill && !empty && (
-        <button type="button" class="new-messages-pill" onClick={() => scrollToBottom("smooth")}>
+        <button title="Scroll to the latest message" type="button" class="new-messages-pill" onClick={() => scrollToBottom("smooth")}>
           <Icon name="arrow-down" /> New messages
         </button>
       )}

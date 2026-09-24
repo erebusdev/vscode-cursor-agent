@@ -73,7 +73,7 @@ export function ManageModelsView() {
         <h2 class="pane-title">Models</h2>
         <span class="pane-top-actions">
           {hiddenCount > 0 && (
-            <button type="button" class="link-button" onClick={() => setHidden({ hiddenModels: [], hiddenModelGroups: [] })}>
+            <button title="Show every model again" type="button" class="link-button" onClick={() => setHidden({ hiddenModels: [], hiddenModelGroups: [] })}>
               Show all
             </button>
           )}

@@ -191,7 +191,7 @@ function ModelPicker() {
           emptyText="No matching models"
         />
         <div class="popover-footer">
-          <button
+          <button title="Choose which models appear in this list"
             type="button"
             class="link-button"
             onClick={() => {
@@ -263,7 +263,7 @@ function OptionPill({ option }: { option: ConfigOption }) {
             }}
           >
             <input type="text" class="text-input" data-autofocus aria-label={option.name} placeholder={String(option.currentValue)} value={text} onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)} />
-            <button type="submit" class="button primary small">
+            <button title="Apply this value" type="submit" class="button primary small">
               Set
             </button>
           </form>
@@ -694,7 +694,7 @@ export function Composer() {
       {slashOpen && (
         <div ref={slashRef} class="slash-popup" role="listbox" aria-label="Slash commands" id="slash-listbox">
           {slashMatches.map((cmd, i) => (
-            <button
+            <button title={cmd.description ? `/${cmd.name}: ${cmd.description}` : `Insert /${cmd.name}`}
               key={cmd.name}
               type="button"
               role="option"

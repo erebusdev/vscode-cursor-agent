@@ -64,7 +64,7 @@ export function Disclosure({ label, children, defaultOpen = false, class: cls, i
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div class={`disclosure${open ? " open" : ""}${cls ? ` ${cls}` : ""}`}>
-      <button type="button" class="disclosure-summary" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button title={open ? "Collapse" : "Expand"} type="button" class="disclosure-summary" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name={open ? "chevron-down" : "chevron-right"} class="disclosure-chevron" />
         {icon && <Icon name={icon} />}
         <span class="disclosure-label">{label}</span>

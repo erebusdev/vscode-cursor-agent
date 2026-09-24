@@ -11,7 +11,7 @@ export const Thought = memo(function Thought({ item }: { item: ThoughtItem }) {
   if (!item.text && !streaming) return null;
   return (
     <div class={`thought${streaming ? " streaming" : ""}${open ? " open" : ""}`} data-item-id={item.id}>
-      <button type="button" class="thought-summary" aria-expanded={open} onClick={() => toggle()}>
+      <button title={open ? "Hide thinking" : "Show thinking"} type="button" class="thought-summary" aria-expanded={open} onClick={() => toggle()}>
         <Icon name={open ? "chevron-down" : "chevron-right"} class="disclosure-chevron" />
         {streaming ? <Spinner class="thought-icon" /> : <Icon name="lightbulb" class="thought-icon" />}
         <span class={`thought-label${streaming ? " shimmer" : ""}`}>{streaming ? "Thinking…" : "Thought"}</span>

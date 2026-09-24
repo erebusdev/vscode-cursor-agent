@@ -50,15 +50,15 @@ function LoginCard() {
       <p class="setup-text">The Cursor Agent CLI is installed on this machine but not logged in. Sign in once and the extension will connect.</p>
       <StatusLine />
       <div class="card-actions">
-        <button type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.login" })}>
+        <button title="Run agent login in a terminal" type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.login" })}>
           <Icon name="sign-in" /> Log in
         </button>
         {loginUrl && (
-          <button type="button" class="button secondary" onClick={() => post({ type: "openExternal", url: loginUrl })}>
+          <button title="Open Cursor's sign-in page in your browser" type="button" class="button secondary" onClick={() => post({ type: "openExternal", url: loginUrl })}>
             <Icon name="link-external" /> Open login page
           </button>
         )}
-        <button type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
+        <button title="Try connecting to the agent again" type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name="plug" /> Connect
         </button>
       </div>
@@ -95,13 +95,13 @@ export function SetupCard() {
       </p>
       <StatusLine />
       <div class="card-actions">
-        <button type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.install" })}>
+        <button title="Run Cursor's installer in a terminal" type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.install" })}>
           <Icon name="cloud-download" /> Install Cursor Agent
         </button>
-        <button type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
+        <button title="Try connecting to the agent again" type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name="plug" /> Connect
         </button>
-        <button type="button" class="button secondary" onClick={() => setSettingsOpen(true)}>
+        <button title="Open the extension settings" type="button" class="button secondary" onClick={() => setSettingsOpen(true)}>
           All settings
         </button>
       </div>

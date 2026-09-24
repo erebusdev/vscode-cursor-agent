@@ -77,7 +77,7 @@ export const ToolCard = memo(function ToolCard({ item }: { item: ToolItem }) {
 
   return (
     <div class={`tool-card kind-${item.kind} status-${item.status}${expanded ? " open" : ""}${pendingPermission ? " needs-permission" : ""}`} data-item-id={item.id}>
-      <button type="button" class="tool-header" aria-expanded={bodyAvailable ? expanded : undefined} disabled={!bodyAvailable} onClick={() => toggle()}>
+      <button title={bodyAvailable ? (expanded ? "Hide details" : "Show details") : undefined} type="button" class="tool-header" aria-expanded={bodyAvailable ? expanded : undefined} disabled={!bodyAvailable} onClick={() => toggle()}>
         <Icon name={KIND_ICON[item.kind] ?? "tools"} class="tool-kind-icon" />
         <span class={`tool-title${isExec && item.command ? " mono" : ""}`} title={primary}>
           {primary}

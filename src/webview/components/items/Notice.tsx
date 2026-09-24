@@ -32,7 +32,7 @@ export const Notice = memo(function Notice({ item }: { item: NoticeItem }) {
               const def = ACTIONS[a];
               if (!def) return null;
               return (
-                <button key={a} type="button" class="button secondary small" onClick={def.send}>
+                <button title={def.label} key={a} type="button" class="button secondary small" onClick={def.send}>
                   <Icon name={def.icon} /> {def.label}
                 </button>
               );

@@ -203,10 +203,10 @@ export function AgentPathControl({ id, settingKey, value, onSaved }: { id: strin
     <div class="agent-path">
       <div class="agent-path-row">
         <CommitInput id={id} value={value} placeholder={settingKey === "agentPathWindows" ? "Auto-detect: agent.exe or agent.cmd" : "Auto-detect: cursor-agent or agent"} mono ariaLabel="Agent executable path" onCommit={commit} />
-        <button type="button" class="button secondary small" onClick={() => post({ type: "settings.browseAgent" })}>
+        <button title="Pick the executable or wrapper script" type="button" class="button secondary small" onClick={() => post({ type: "settings.browseAgent" })}>
           Browse…
         </button>
-        <button
+        <button title="Check that the path resolves and reports a version"
           type="button"
           class="button secondary small"
           disabled={probe?.state === "checking"}
@@ -295,7 +295,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
           <IconButton icon="close" label={`Remove ${r.key || "variable"}`} onClick={() => remove(r.id)} />
         </div>
       ))}
-      <button
+      <button title="Add an environment variable"
         type="button"
         class="link-button env-add"
         onClick={() => {
@@ -589,10 +589,10 @@ export function SettingsView() {
               </h3>
               <BoolRow settings={settings} k="protocolLogging" label="Protocol logging" description="Log every ACP JSON-RPC message to the Cursor Agent output channel." />
               <div class="settings-links">
-                <button type="button" class="link-button" onClick={() => post({ type: "openLogs" })}>
+                <button title="Open the Cursor Agent output channel" type="button" class="link-button" onClick={() => post({ type: "openLogs" })}>
                   <Icon name="output" /> Open logs
                 </button>
-                <button type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
+                <button title="Edit these settings as JSON" type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
                   <Icon name="json" /> Open settings.json
                 </button>
               </div>
@@ -602,7 +602,7 @@ export function SettingsView() {
               <div class="settings-footer" role="status">
                 <Icon name="info" />
                 <span>Changes to the agent path, arguments or environment take effect on the next connection.</span>
-                <button type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
+                <button title="Restart the agent with the new settings" type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
                   <Icon name="refresh" /> Reconnect now
                 </button>
               </div>

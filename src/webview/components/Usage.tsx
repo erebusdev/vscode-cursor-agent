@@ -85,7 +85,7 @@ function UsageError({ error }: { error: string }) {
         <div>{error}</div>
         <div class="usage-error-hint">
           If Cursor's config lives elsewhere, set <code>cursorAcp.configDir</code> in{" "}
-          <button type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
+          <button title="Open the extension settings" type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
             Settings
           </button>
           .
@@ -245,7 +245,7 @@ export function UsageButton() {
             {usage.summary && <UsageOverview summary={usage.summary} now={now} />}
             <div class="usage-footer">
               <span class="usage-checked">{usage.loading && usage.summary ? <Spinner /> : usage.summary ? `Checked ${relativeTime(usage.summary.checkedAt, now)}` : ""}</span>
-              <button type="button" class="link-button" onClick={togglePane}>
+              <button title="Open the full usage view" type="button" class="link-button" onClick={togglePane}>
                 Details
               </button>
             </div>
@@ -404,7 +404,7 @@ export function UsageView() {
         {!s && !usage.loading && (
           <div class="pane-empty">
             <span>No usage information yet.</span>
-            <button type="button" class="link-button" onClick={() => post({ type: "usage.refresh" })}>
+            <button title="Fetch usage from Cursor" type="button" class="link-button" onClick={() => post({ type: "usage.refresh" })}>
               Check now
             </button>
           </div>
@@ -419,7 +419,7 @@ export function UsageView() {
         {s && (
           <div class="pane-footer">
             <span class="usage-checked">Checked {relativeTime(s.checkedAt, now)}</span>
-            <button type="button" class="link-button" onClick={() => post({ type: "openExternal", url: DASHBOARD_URL })}>
+            <button title="Open the Cursor dashboard in your browser" type="button" class="link-button" onClick={() => post({ type: "openExternal", url: DASHBOARD_URL })}>
               Open Cursor dashboard <Icon name="link-external" />
             </button>
           </div>

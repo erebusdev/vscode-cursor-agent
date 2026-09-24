@@ -33,7 +33,7 @@ export function Welcome() {
         {!needsSetup && (connection === "error" || connection === "disconnected") && (
           <p class="welcome-status error">
             <Icon name="error" /> {lastError ?? (connection === "error" ? "The agent failed to start." : "The agent disconnected.")}{" "}
-            <button type="button" class="link-button" onClick={() => post({ type: "session.reconnect" })}>
+            <button title="Try connecting to the agent again" type="button" class="link-button" onClick={() => post({ type: "session.reconnect" })}>
               Reconnect
             </button>
           </p>
