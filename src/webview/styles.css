@@ -2278,7 +2278,7 @@ button.chip:disabled {
   color: var(--muted);
 }
 .models-family {
-  margin: 6px 0 1px 26px;
+  margin: 6px 0 1px 28px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -2801,6 +2801,8 @@ body[data-view="settings"] {
   width: 200px;
   padding: 72px 8px 16px 12px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 .settings-nav-list {
   display: flex;
@@ -2813,12 +2815,12 @@ body[data-view="settings"] {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-radius: var(--radius);
   color: var(--vscode-foreground);
   text-align: left;
   font-size: 13px;
-  line-height: 20px;
+  line-height: 18px;
 }
 .settings-nav-item .codicon {
   flex: none;
@@ -2826,11 +2828,11 @@ body[data-view="settings"] {
   color: var(--vscode-icon-foreground, var(--muted));
 }
 .settings-nav-item:hover {
-  background: var(--hover-bg);
+  background: var(--vscode-list-hoverBackground, var(--hover-bg));
 }
 .settings-nav-item.selected {
-  background: var(--vscode-list-inactiveSelectionBackground, var(--active-bg));
-  color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground));
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-inactiveSelectionBackground, var(--active-bg)));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
 }
 .settings-nav-item.selected .codicon {
   color: inherit;
@@ -2844,6 +2846,32 @@ body[data-view="settings"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.settings-nav-footer {
+  margin-top: auto;
+  padding: 16px 10px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+}
+.settings-nav-footer .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-descriptionForeground, var(--muted));
+}
+.settings-nav-footer .link-button:hover {
+  color: var(--vscode-foreground);
+  text-decoration: none;
+}
+.settings-nav-footer .codicon {
+  font-size: 13px;
 }
 
 .settings-main {
@@ -2863,27 +2891,28 @@ body[data-view="settings"] {
   margin: 0 auto;
 }
 .settings-page-title {
-  margin: 12px 0 28px;
+  margin: 8px 0 24px;
   font-size: 26px;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 1.25;
 }
 
 /* Groups and cards */
 .sgroup + .sgroup {
-  margin-top: 36px;
+  margin-top: 32px;
 }
 .sgroup-head {
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 24px;
-  margin: 0 2px 10px;
+  margin: 0 2px 8px;
 }
 .sgroup-title {
   flex: 1 1 auto;
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 .sgroup-actions {
@@ -2903,12 +2932,12 @@ body[data-view="settings"] {
   background: var(--vscode-editorWidget-background, var(--card-bg));
   border: 1px solid var(--vscode-widget-border, var(--border));
   border-radius: 10px;
-  padding: 0 16px;
+  padding: 0 18px;
 }
 
 /* Rows */
 .srow {
-  padding: 16px 0;
+  padding: 14px 0;
 }
 .srow + .srow {
   border-top: 1px solid var(--vscode-widget-border, var(--border));
@@ -2917,7 +2946,7 @@ body[data-view="settings"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 24px;
+  gap: 10px 32px;
 }
 .srow-text {
   flex: 1 1 260px;
@@ -2929,11 +2958,13 @@ body[data-view="settings"] {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   max-width: 100%;
 }
 .srow-main.wide .srow-control {
-  flex: 0 1 340px;
-  min-width: 200px;
+  flex: 0 1 360px;
+  min-width: 240px;
+  max-width: 360px;
 }
 .srow-main.wide .srow-control > * {
   width: 100%;
@@ -2950,33 +2981,42 @@ body[data-view="settings"] {
   font-size: 13px;
 }
 .srow-desc {
-  margin-top: 3px;
-  font-size: 12px;
+  margin-top: 2px;
+  font-size: 13px;
   line-height: 1.5;
-  color: var(--muted);
+  color: var(--vscode-descriptionForeground, var(--muted));
 }
 .srow-source {
   font-size: 10px;
-  line-height: 15px;
-  padding: 0 6px;
-  border-radius: 8px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
+  line-height: 14px;
+  padding: 0 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--vscode-widget-border, var(--border));
+  color: var(--vscode-descriptionForeground, var(--muted));
 }
 .srow-reset {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 12px;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
   color: var(--vscode-textLink-foreground);
-  padding: 0 3px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.srow:hover .srow-reset,
+.srow:focus-within .srow-reset {
+  opacity: 1;
 }
 .srow-reset:hover {
   color: var(--vscode-textLink-activeForeground);
-  text-decoration: underline;
+  background: var(--vscode-toolbar-hoverBackground, var(--hover-bg));
 }
 .srow-reset .codicon {
-  font-size: 12px;
+  font-size: 16px;
 }
 .srow-saved {
   font-size: 12px;
@@ -2999,53 +3039,106 @@ body[data-view="settings"] {
   font-size: var(--mono-size);
   color: var(--muted);
 }
-.settings-app .text-input {
-  padding: 5px 8px;
-  border-radius: var(--radius);
-  line-height: 18px;
+.srow-plain-value {
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
-.settings-app .button {
-  border-radius: var(--radius);
+.srow-plain-value.empty {
+  color: var(--vscode-descriptionForeground, var(--muted));
 }
-.settings-app .button.small {
-  padding: 3px 10px;
+.srow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.chip {
   font-size: 12px;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-widget-border, var(--border));
+  background: var(--vscode-editor-background, transparent);
+  white-space: nowrap;
+}
+.srow-details {
+  margin-top: 6px;
+}
+.srow-details summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--vscode-textLink-foreground);
+}
+.srow-details summary:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+.srow-details ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.srow-details li + li {
+  margin-top: 2px;
+}
+
+/* One height for fields, dropdowns, buttons and segmented controls */
+.settings-app .text-input {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  line-height: 26px;
+}
+.settings-app .button,
+.settings-app .button.small {
+  min-height: 28px;
+  padding: 0 12px;
+  gap: 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 26px;
+}
+.settings-app .button.secondary {
+  border: 1px solid var(--vscode-button-border, var(--vscode-widget-border, var(--border)));
+}
+.settings-app .button .codicon {
+  font-size: 14px;
 }
 
 /* Toggle switch */
 .toggle {
   position: relative;
   flex: none;
-  width: 36px;
-  height: 20px;
-  border-radius: 10px;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
   border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--border)));
-  background: var(--vscode-checkbox-background, var(--vscode-input-background));
+  background: var(--vscode-input-background, var(--vscode-checkbox-background));
   transition: background-color 120ms, border-color 120ms;
 }
 .toggle-thumb {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--vscode-checkbox-foreground, var(--vscode-foreground));
-  transition: transform 120ms;
+  transition: transform 120ms, background-color 120ms;
 }
 .toggle.on {
   background: var(--vscode-button-background);
   border-color: var(--vscode-button-border, var(--vscode-button-background));
 }
 .toggle.on .toggle-thumb {
-  transform: translateX(16px);
+  transform: translateX(18px);
   background: var(--vscode-button-foreground);
 }
 .toggle:hover:not(.on) {
   border-color: var(--focus);
 }
 .toggle:focus-visible {
-  outline: 1px solid var(--focus);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -3053,16 +3146,18 @@ body[data-view="settings"] {
 .segmented {
   display: inline-flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 2px;
+  min-height: 28px;
   padding: 2px;
-  border-radius: var(--radius);
+  border-radius: 6px;
   border: 1px solid var(--vscode-widget-border, var(--border));
 }
 .segment {
-  padding: 3px 12px;
-  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  border-radius: 4px;
   font-size: 13px;
-  line-height: 20px;
+  line-height: 22px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -3090,10 +3185,11 @@ body[data-view="settings"] {
   appearance: none;
   font: inherit;
   font-size: 13px;
-  line-height: 20px;
+  height: 28px;
+  line-height: 26px;
   min-width: 140px;
-  padding: 4px 30px 4px 10px;
-  border-radius: var(--radius);
+  padding: 0 30px 0 10px;
+  border-radius: 6px;
   color: var(--vscode-dropdown-foreground);
   background: var(--vscode-dropdown-background);
   border: 1px solid var(--vscode-dropdown-border, var(--border));
@@ -3210,6 +3306,24 @@ body[data-view="settings"] {
   margin-top: 0;
   padding-top: 6px;
 }
+/* Every group head and model row uses the same 20px checkbox slot. */
+.models-grid .checkbox {
+  width: 20px;
+  height: 20px;
+}
+.models-grid .models-group-head {
+  gap: 8px;
+}
+.models-grid .models-group-head .pane-heading {
+  font-size: 12px;
+}
+.models-grid .pane-note {
+  margin: 2px 0 6px 28px;
+  font-size: 12px;
+}
+.models-grid .models-row {
+  font-size: 13px;
+}
 
 .status-list {
   list-style: none;
@@ -3287,6 +3401,14 @@ body[data-view="settings"] {
     justify-content: center;
     padding: 8px 0;
   }
+  .settings-nav-footer {
+    align-items: center;
+    padding: 16px 0 0;
+  }
+  .settings-nav-version,
+  .settings-nav-footer .link-button span {
+    display: none;
+  }
   .settings-nav-label {
     position: absolute;
     width: 1px;
@@ -3316,6 +3438,9 @@ body[data-view="settings"] {
   .settings-nav-list {
     flex-direction: row;
     justify-content: space-between;
+  }
+  .settings-nav-footer {
+    display: none;
   }
   .settings-nav-item {
     width: auto;

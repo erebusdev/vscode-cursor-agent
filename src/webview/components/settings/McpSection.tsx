@@ -148,7 +148,7 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
                 <Spinner /> Checking…
               </span>
             )}
-            <IconButton icon="refresh" label="Check again (reads the mcp.json files and runs agent mcp list)" disabled={mcp.loading} onClick={() => post({ type: "mcp.status" })} />
+            <IconButton icon="refresh" label="Refresh status" disabled={mcp.loading} onClick={() => post({ type: "mcp.status" })} />
           </>
         }
       >

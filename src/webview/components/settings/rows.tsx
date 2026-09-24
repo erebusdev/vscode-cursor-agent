@@ -460,7 +460,24 @@ export function SafeListEditor({ settings }: { settings: ExtensionSettings }) {
       label="Patterns"
       description={
         <>
-          One regular expression per row. A shell command is split on <code>|</code>, <code>&amp;&amp;</code>, <code>||</code> and <code>;</code>, and runs without asking only if every part matches a pattern. MCP and other tools are matched by Cursor's permission pattern, such as <code>Mcp(server:tool)</code>. Commands with redirection, <code>$(…)</code> or an inline shell always ask. Use <code>^</code> to anchor at the start of the command.
+          One regular expression per row; a command runs without asking only if every part of it matches.
+          <details class="srow-details">
+            <summary>How matching works</summary>
+            <ul>
+              <li>
+                A shell command is split on <code>|</code>, <code>&amp;&amp;</code>, <code>||</code> and <code>;</code>; each part must match some pattern.
+              </li>
+              <li>
+                MCP and other tools are matched by Cursor's permission pattern, such as <code>Mcp(server:tool)</code>.
+              </li>
+              <li>
+                Commands with redirection, <code>$(…)</code> or an inline shell always ask.
+              </li>
+              <li>
+                Patterns match anywhere in the text; start with <code>^</code> to anchor at the start of the command.
+              </li>
+            </ul>
+          </details>
         </>
       }
       settingKey="safeList"
@@ -510,7 +527,7 @@ export function SafeListEditor({ settings }: { settings: ExtensionSettings }) {
                 }}
               />
               {error && <Icon name="warning" class="safe-row-warning" title={`Invalid: ${error}`} />}
-              <IconButton icon="trash" label="Remove this pattern" onClick={() => remove(r.id)} />
+              <IconButton icon="trash" label="Remove pattern" onClick={() => remove(r.id)} />
             </div>
           );
         })}
@@ -541,22 +558,49 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
   const opts = Object.entries(settings.defaultModelOptions ?? {});
   const currentName = models ? (models.availableModels.find((m) => m.modelId === models.currentModelId)?.name ?? models.currentModelId) : undefined;
   return (
-    <SettingRow
-      id="setting-defaultModel-use"
-      labelFor={false}
-      settingKey="defaultModel"
-      label="Defaults for new sessions"
-      description="Every new session starts with this model and these options. Changes made inside a session apply to that session only."
-      source={settings.sources.defaultModel !== "default" ? settings.sources.defaultModel : settings.sources.defaultModelOptions}
-      saved={saved}
-    >
-      <dl class="model-defaults">
-        <dt>Model</dt>
-        <dd>{name}</dd>
-        <dt>Options</dt>
-        <dd>{opts.length ? opts.map(([k, v]) => `${k}: ${typeof v === "boolean" ? (v ? "on" : "off") : v}`).join(" · ") : "none"}</dd>
-      </dl>
-      <div class="list-actions">
+    <>
+      <SettingRow
+        id="setting-defaultModel"
+        labelFor={false}
+        settingKey="defaultModel"
+        label="Model"
+        description="The model every new session starts with."
+        source={settings.sources.defaultModel}
+        saved={saved}
+        control={
+          <span class={`srow-plain-value${settings.defaultModel ? "" : " empty"}`} aria-labelledby="setting-defaultModel-label">
+            {name}
+          </span>
+        }
+      />
+      <SettingRow
+        id="setting-defaultModelOptions"
+        labelFor={false}
+        settingKey="defaultModelOptions"
+        label="Options"
+        description="Effort, context and other option values applied to new sessions."
+        source={settings.sources.defaultModelOptions}
+        control={
+          opts.length ? (
+            <span class="srow-chips" role="list" aria-labelledby="setting-defaultModelOptions-label">
+              {opts.map(([k, v]) => (
+                <span key={k} class="chip" role="listitem">
+                  {k}: {typeof v === "boolean" ? (v ? "on" : "off") : v}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span class="srow-plain-value empty">none</span>
+          )
+        }
+      />
+      <SettingRow
+        id="setting-defaultModel-use"
+        labelFor={false}
+        label="Change defaults"
+        description="Changes made inside a session apply to that session only."
+        control={
+          <>
         <button
           id="setting-defaultModel-use"
           title={currentName ? `Use ${currentName}${modelOptions.length ? " and its current options" : ""} for new sessions` : "Connect to a session first"}
@@ -574,7 +618,7 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
           <button
             title="Let new sessions use whatever the Cursor CLI defaults to"
             type="button"
-            class="button tertiary small"
+            class="button secondary small"
             onClick={() => {
               updateSetting("defaultModel", "");
               updateSetting("defaultModelOptions", {});
@@ -584,7 +628,9 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
             <Icon name="discard" /> Clear
           </button>
         )}
-      </div>
-    </SettingRow>
+          </>
+        }
+      />
+    </>
   );
 }

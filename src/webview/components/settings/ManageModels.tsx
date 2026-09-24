@@ -117,7 +117,8 @@ export function ManageModels() {
         return (
           <section key={g.id} class="models-group" aria-labelledby={`models-${g.id}`}>
             <div class="models-group-head">
-              {members.length > 1 ? <GroupCheckbox id={`models-group-${g.id}`} label={g.title} members={members} hidden={hidden} /> : <span class="models-group-spacer" />}
+              {/* Same slot in every group, so the headings line up; with one model it ticks that model. */}
+              <GroupCheckbox id={`models-group-${g.id}`} label={g.title} members={members} hidden={hidden} />
               <h4 id={`models-${g.id}`} class="pane-heading">
                 {g.title}
               </h4>

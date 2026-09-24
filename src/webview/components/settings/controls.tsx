@@ -13,9 +13,9 @@ export type Source = ExtensionSettings["sources"][string];
 export type SettingValue = string | boolean | ReadonlyArray<string> | Readonly<Record<string, string>>;
 
 const SOURCE_LABEL: Record<Exclude<Source, "default">, { text: string; hint: string }> = {
-  user: { text: "User", hint: "Set in your user settings" },
-  workspace: { text: "Workspace", hint: "Set in this workspace's settings, which override your user settings" },
-  remote: { text: "Remote", hint: "Set in the remote machine's settings" },
+  user: { text: "User", hint: "Set at user level" },
+  workspace: { text: "Workspace", hint: "Set in this workspace" },
+  remote: { text: "Remote", hint: "Set on the remote machine" },
 };
 
 export function updateSetting(key: SettingsKey, value: SettingValue): void {
@@ -104,8 +104,8 @@ export function SettingRow({ id, label, description, settingKey, source, saved, 
               </span>
             )}
             {overridden && settingKey && (
-              <button type="button" class="srow-reset" title="Reset to the default value" onClick={() => post({ type: "settings.reset", key: settingKey })}>
-                <Icon name="discard" /> Reset
+              <button type="button" class="srow-reset" title="Reset to default" aria-label={`Reset ${label} to default`} onClick={() => post({ type: "settings.reset", key: settingKey })}>
+                <Icon name="discard" />
               </button>
             )}
             <span class={`srow-saved${saved ? " show" : ""}`} aria-live="polite">

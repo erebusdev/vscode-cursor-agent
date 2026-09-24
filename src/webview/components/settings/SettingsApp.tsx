@@ -86,9 +86,18 @@ function Nav({ current }: { current: SettingsSection }) {
           );
         })}
       </div>
+      <div class="settings-nav-footer">
+        {VERSION && <span class="settings-nav-version">Version {VERSION}</span>}
+        <button type="button" class="link-button" title="Open VS Code settings editor" aria-label="Open VS Code settings editor" onClick={() => post({ type: "openSettings" })}>
+          <span>VS Code settings</span>
+          <Icon name="link-external" />
+        </button>
+      </div>
     </nav>
   );
 }
+
+const VERSION = document.body.dataset.version;
 
 function GeneralPage({ settings }: { settings: ExtensionSettings }) {
   return (
@@ -115,7 +124,7 @@ function AgentPage({ settings }: { settings: ExtensionSettings }) {
         <AgentPathRow settings={settings} onSaved={mark} />
         <AgentArgsRow settings={settings} onSaved={mark} />
       </SettingsGroup>
-      <SettingsGroup title="Environment">
+      <SettingsGroup title="Process">
         <EnvRow settings={settings} onSaved={mark} />
       </SettingsGroup>
       <SettingsGroup title="Usage">
@@ -150,7 +159,7 @@ function ApprovalsPage({ settings }: { settings: ExtensionSettings }) {
 function ModelsPage({ settings }: { settings: ExtensionSettings }) {
   return (
     <>
-      <SettingsGroup>
+      <SettingsGroup title="Defaults for new sessions">
         <ModelDefaultsRow settings={settings} />
       </SettingsGroup>
       <SettingsGroup title="Visible models">
@@ -161,7 +170,7 @@ function ModelsPage({ settings }: { settings: ExtensionSettings }) {
 }
 
 function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
-  const version = document.body.dataset.version;
+  const version = VERSION;
   return (
     <>
       <SettingsGroup>
