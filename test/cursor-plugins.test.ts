@@ -136,7 +136,8 @@ describe("user-level mcp.json edits", () => {
     const data = JSON.parse(text);
     expect(Object.keys(data)).toEqual(["theme", "mcpServers", "zzz"]);
     expect(data.mcpServers).toEqual({ github: original.mcpServers.github, [sentry.id]: sentry.entry, [docs.id]: docs.entry });
-    expect(statSync(path).mode & 0o777).toBe(0o640);
+    // Windows has no Unix permission bits.
+    if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o640);
     expect(readdirSync(dir)).toEqual(["mcp.json"]);
 
     // Nothing to do: no write.

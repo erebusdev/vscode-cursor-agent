@@ -36,16 +36,18 @@ describe("agent HOME detection", () => {
 describe("which user-level mcp.json", () => {
   const base = { homedir: "/Users/me", windows: false };
   it("prefers the setting, then HOME in the environment setting, then the agent process, then the home folder", () => {
-    expect(resolveUserMcpConfig({ ...base, setting: "~/custom/mcp.json", environment: { HOME: "/env" }, agentHome: "/agent" })).toEqual({ path: "/Users/me/custom/mcp.json", cursorDir: "/Users/me/custom", source: "settings" });
-    expect(resolveUserMcpConfig({ ...base, setting: " ", environment: { HOME: "/env/home" }, agentHome: "/agent" })).toEqual({ path: "/env/home/.cursor/mcp.json", cursorDir: "/env/home/.cursor", source: "environment" });
-    expect(resolveUserMcpConfig({ ...base, setting: "", environment: { OTHER: "x" }, agentHome: "/agent" })).toEqual({ path: "/agent/.cursor/mcp.json", cursorDir: "/agent/.cursor", source: "agent" });
-    expect(resolveUserMcpConfig({ ...base, setting: "", environment: {} })).toEqual({ path: "/Users/me/.cursor/mcp.json", cursorDir: "/Users/me/.cursor", source: "default" });
+    // Paths are built with the platform's separator, as the code does.
+    const at = (...parts: string[]) => ({ path: join(...parts, "mcp.json"), cursorDir: join(...parts) });
+    expect(resolveUserMcpConfig({ ...base, setting: "~/custom/mcp.json", environment: { HOME: "/env" }, agentHome: "/agent" })).toEqual({ ...at("/Users/me", "custom"), source: "settings" });
+    expect(resolveUserMcpConfig({ ...base, setting: " ", environment: { HOME: "/env/home" }, agentHome: "/agent" })).toEqual({ ...at("/env/home", ".cursor"), source: "environment" });
+    expect(resolveUserMcpConfig({ ...base, setting: "", environment: { OTHER: "x" }, agentHome: "/agent" })).toEqual({ ...at("/agent", ".cursor"), source: "agent" });
+    expect(resolveUserMcpConfig({ ...base, setting: "", environment: {} })).toEqual({ ...at("/Users/me", ".cursor"), source: "default" });
   });
 
   it("uses USERPROFILE before HOME on Windows", () => {
     expect(resolveUserMcpConfig({ setting: "", environment: { HOME: "/h", USERPROFILE: "/p" }, homedir: "/x", windows: true }).source).toBe("environment");
     expect(resolveUserMcpConfig({ setting: "", environment: { HOME: "/h", USERPROFILE: "/p" }, homedir: "/x", windows: true }).cursorDir).toMatch(/^[\\/]p[\\/]\.cursor$/);
-    expect(resolveUserMcpConfig({ setting: "", environment: { HOME: "/h", USERPROFILE: "/p" }, homedir: "/x", windows: false }).cursorDir).toBe("/h/.cursor");
+    expect(resolveUserMcpConfig({ setting: "", environment: { HOME: "/h", USERPROFILE: "/p" }, homedir: "/x", windows: false }).cursorDir).toBe(join("/h", ".cursor"));
   });
 
   it("only syncs a non-.cursor/mcp.json file when it was set explicitly", () => {
