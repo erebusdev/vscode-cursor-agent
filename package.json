@@ -2,81 +2,243 @@
   "name": "cursor-agent",
   "displayName": "Cursor Agent (VSCode ACP)",
   "description": "The Cursor Agent CLI inside VS Code: streaming chat, tool calls, diffs, permissions, sessions.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "erebuslabs",
   "license": "MIT",
-  "author": { "name": "Erebus Labs" },
-  "repository": { "type": "git", "url": "https://github.com/erebusdev/vscode-cursor-agent.git" },
+  "author": {
+    "name": "Erebus Labs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/erebusdev/vscode-cursor-agent.git"
+  },
   "homepage": "https://github.com/erebusdev/vscode-cursor-agent#readme",
-  "bugs": { "url": "https://github.com/erebusdev/vscode-cursor-agent/issues" },
+  "bugs": {
+    "url": "https://github.com/erebusdev/vscode-cursor-agent/issues"
+  },
   "private": true,
-  "engines": { "vscode": "^1.94.0" },
-  "categories": ["AI", "Chat", "Programming Languages"],
-  "keywords": ["cursor", "agent", "acp", "chat", "ai"],
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "cursor",
+    "agent",
+    "acp",
+    "chat",
+    "ai"
+  ],
   "icon": "media/icon.png",
   "main": "./dist/extension.js",
-  "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "capabilities": {
-    "untrustedWorkspaces": { "supported": false, "description": "The Cursor agent runs commands and edits files in the workspace." },
-    "virtualWorkspaces": { "supported": false, "description": "The Cursor agent needs a real folder on disk." }
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The Cursor agent runs commands and edits files in the workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The Cursor agent needs a real folder on disk."
+    }
   },
   "contributes": {
     "viewsContainers": {
       "secondarySidebar": [
-        { "id": "cursorAcp", "title": "Cursor", "icon": "media/cursor-activity.svg", "when": "!cursorAcp.noSecondarySidebar" }
+        {
+          "id": "cursorAcp",
+          "title": "Cursor",
+          "icon": "media/cursor-activity.svg",
+          "when": "!cursorAcp.noSecondarySidebar"
+        }
       ],
       "activitybar": [
-        { "id": "cursorAcpLeft", "title": "Cursor", "icon": "media/cursor-activity.svg", "when": "cursorAcp.noSecondarySidebar" }
+        {
+          "id": "cursorAcpLeft",
+          "title": "Cursor",
+          "icon": "media/cursor-activity.svg",
+          "when": "cursorAcp.noSecondarySidebar"
+        }
       ]
     },
     "views": {
       "cursorAcp": [
-        { "type": "webview", "id": "cursorAcp.chat", "name": "Cursor", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor", "when": "!cursorAcp.noSecondarySidebar" }
+        {
+          "type": "webview",
+          "id": "cursorAcp.chat",
+          "name": "Cursor",
+          "icon": "media/cursor-activity.svg",
+          "contextualTitle": "Cursor",
+          "when": "!cursorAcp.noSecondarySidebar"
+        }
       ],
       "cursorAcpLeft": [
-        { "type": "webview", "id": "cursorAcp.chatLeft", "name": "Cursor", "icon": "media/cursor-activity.svg", "contextualTitle": "Cursor", "when": "cursorAcp.noSecondarySidebar" }
+        {
+          "type": "webview",
+          "id": "cursorAcp.chatLeft",
+          "name": "Cursor",
+          "icon": "media/cursor-activity.svg",
+          "contextualTitle": "Cursor",
+          "when": "cursorAcp.noSecondarySidebar"
+        }
       ]
     },
     "commands": [
-      { "command": "cursorAcp.focus", "title": "Open Cursor", "category": "Cursor Agent", "icon": { "light": "media/cursor-light.svg", "dark": "media/cursor-dark.svg" } },
-      { "command": "cursorAcp.newSession", "title": "New Session", "category": "Cursor Agent", "icon": "$(add)" },
-      { "command": "cursorAcp.showHistory", "title": "Session History…", "category": "Cursor Agent", "icon": "$(history)" },
-      { "command": "cursorAcp.openInEditor", "title": "Open Cursor in Editor", "category": "Cursor Agent", "icon": "$(link-external)" },
-      { "command": "cursorAcp.addSelectionToChat", "title": "Add Selection to Cursor", "category": "Cursor Agent", "icon": "$(insert)" },
-      { "command": "cursorAcp.addFileToChat", "title": "Add File to Cursor", "category": "Cursor Agent" },
-      { "command": "cursorAcp.stop", "title": "Stop Current Turn", "category": "Cursor Agent", "icon": "$(debug-stop)" },
-      { "command": "cursorAcp.reconnect", "title": "Reconnect Agent", "category": "Cursor Agent", "icon": "$(refresh)" },
-      { "command": "cursorAcp.showLogs", "title": "Show Logs", "category": "Cursor Agent", "icon": "$(output)" },
-      { "command": "cursorAcp.openSettings", "title": "Open Settings", "category": "Cursor Agent", "icon": "$(gear)" }
+      {
+        "command": "cursorAcp.focus",
+        "title": "Open Cursor",
+        "category": "Cursor Agent",
+        "icon": {
+          "light": "media/cursor-light.svg",
+          "dark": "media/cursor-dark.svg"
+        }
+      },
+      {
+        "command": "cursorAcp.newSession",
+        "title": "New Session",
+        "category": "Cursor Agent",
+        "icon": "$(add)"
+      },
+      {
+        "command": "cursorAcp.showHistory",
+        "title": "Session History…",
+        "category": "Cursor Agent",
+        "icon": "$(history)"
+      },
+      {
+        "command": "cursorAcp.openInEditor",
+        "title": "Open Cursor in Editor",
+        "category": "Cursor Agent",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "cursorAcp.addSelectionToChat",
+        "title": "Add Selection to Cursor",
+        "category": "Cursor Agent",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "cursorAcp.addFileToChat",
+        "title": "Add File to Cursor",
+        "category": "Cursor Agent"
+      },
+      {
+        "command": "cursorAcp.stop",
+        "title": "Stop Current Turn",
+        "category": "Cursor Agent",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "cursorAcp.reconnect",
+        "title": "Reconnect Agent",
+        "category": "Cursor Agent",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "cursorAcp.showLogs",
+        "title": "Show Logs",
+        "category": "Cursor Agent",
+        "icon": "$(output)"
+      },
+      {
+        "command": "cursorAcp.openSettings",
+        "title": "Open Settings",
+        "category": "Cursor Agent",
+        "icon": "$(gear)"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "cursorAcp.openInEditor", "when": "view =~ /^cursorAcp\\.chat/", "group": "navigation@1" },
-        { "command": "cursorAcp.newSession", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@1" },
-        { "command": "cursorAcp.showHistory", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@2" },
-        { "command": "cursorAcp.reconnect", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@3" },
-        { "command": "cursorAcp.stop", "when": "view =~ /^cursorAcp\\.chat/", "group": "1_session@4" },
-        { "command": "cursorAcp.openSettings", "when": "view =~ /^cursorAcp\\.chat/", "group": "2_config@1" },
-        { "command": "cursorAcp.showLogs", "when": "view =~ /^cursorAcp\\.chat/", "group": "2_config@2" }
+        {
+          "command": "cursorAcp.openInEditor",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cursorAcp.newSession",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "1_session@1"
+        },
+        {
+          "command": "cursorAcp.showHistory",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "1_session@2"
+        },
+        {
+          "command": "cursorAcp.reconnect",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "1_session@3"
+        },
+        {
+          "command": "cursorAcp.stop",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "1_session@4"
+        },
+        {
+          "command": "cursorAcp.openSettings",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "2_config@1"
+        },
+        {
+          "command": "cursorAcp.showLogs",
+          "when": "view =~ /^cursorAcp\\.chat/",
+          "group": "2_config@2"
+        }
       ],
       "editor/title": [
-        { "command": "cursorAcp.focus", "when": "config.cursorAcp.editorTitleButton", "group": "navigation" }
+        {
+          "command": "cursorAcp.focus",
+          "when": "config.cursorAcp.editorTitleButton",
+          "group": "navigation"
+        }
       ],
       "editor/context": [
-        { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection", "group": "cursorAcp@1" }
+        {
+          "command": "cursorAcp.addSelectionToChat",
+          "when": "editorHasSelection",
+          "group": "cursorAcp@1"
+        }
       ],
       "explorer/context": [
-        { "command": "cursorAcp.addFileToChat", "when": "!explorerResourceIsFolder", "group": "cursorAcp@1" }
+        {
+          "command": "cursorAcp.addFileToChat",
+          "when": "!explorerResourceIsFolder",
+          "group": "cursorAcp@1"
+        }
       ],
       "commandPalette": [
-        { "command": "cursorAcp.addSelectionToChat", "when": "editorHasSelection" }
+        {
+          "command": "cursorAcp.addSelectionToChat",
+          "when": "editorHasSelection"
+        }
       ]
     },
     "keybindings": [
-      { "command": "cursorAcp.focus", "key": "ctrl+alt+c", "mac": "cmd+alt+c" },
-      { "command": "cursorAcp.addSelectionToChat", "key": "ctrl+alt+a", "mac": "cmd+alt+a", "when": "editorHasSelection" },
-      { "command": "cursorAcp.newSession", "key": "ctrl+alt+n", "mac": "cmd+alt+n", "when": "cursorAcp.viewFocused" }
+      {
+        "command": "cursorAcp.focus",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c"
+      },
+      {
+        "command": "cursorAcp.addSelectionToChat",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "cursorAcp.newSession",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "cursorAcp.viewFocused"
+      }
     ],
     "walkthroughs": [
       {
@@ -88,21 +250,31 @@
             "id": "install",
             "title": "Install the Cursor Agent CLI",
             "description": "Install the CLI and sign in once from a terminal.\n[Install instructions](https://cursor.com/docs/cli/installation)\n```bash\ncurl https://cursor.com/install -fsS | bash\nagent login\n```",
-            "media": { "markdown": "media/walkthrough/install.md" }
+            "media": {
+              "markdown": "media/walkthrough/install.md"
+            }
           },
           {
             "id": "configure",
             "title": "Point the extension at the CLI",
             "description": "By default the extension looks for `agent` on your PATH. If you use a wrapper script (for example to select an account), set the path in Settings.\n[Open Settings](command:cursorAcp.openSettings)",
-            "media": { "markdown": "media/walkthrough/configure.md" },
-            "completionEvents": ["onSettingChanged:cursorAcp.agentPath"]
+            "media": {
+              "markdown": "media/walkthrough/configure.md"
+            },
+            "completionEvents": [
+              "onSettingChanged:cursorAcp.agentPath"
+            ]
           },
           {
             "id": "chat",
             "title": "Start chatting",
             "description": "Open the Cursor Agent view and send a message. Press Enter to send, Shift+Enter for a new line, and type / for commands.\n[Open Cursor Agent](command:cursorAcp.focus)",
-            "media": { "markdown": "media/walkthrough/chat.md" },
-            "completionEvents": ["onView:cursorAcp.chat"]
+            "media": {
+              "markdown": "media/walkthrough/chat.md"
+            },
+            "completionEvents": [
+              "onView:cursorAcp.chat"
+            ]
           }
         ]
       }
@@ -118,14 +290,18 @@
         },
         "cursorAcp.agentArgs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "scope": "machine-overridable",
           "markdownDescription": "Extra arguments passed to the executable **before** `acp` (for example `[\"-e\", \"https://api2.cursor.sh\"]`)."
         },
         "cursorAcp.environment": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "default": {},
           "scope": "machine-overridable",
           "markdownDescription": "Extra environment variables for the agent process. Values override the extension host environment."
