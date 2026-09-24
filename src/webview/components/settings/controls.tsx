@@ -40,10 +40,11 @@ export function useSavedFlash(): [boolean, () => void] {
 // ---------------------------------------------------------------------------
 
 /** A titled group of rows: small heading above a bordered card. */
-export function SettingsGroup({ title, actions, children, id }: { title?: string; actions?: ComponentChildren; children: ComponentChildren; id?: string }) {
+export function SettingsGroup({ title, actions, description, children, id }: { title?: string; actions?: ComponentChildren; description?: ComponentChildren; children: ComponentChildren; id?: string }) {
   const headingId = title ? `group-${id ?? title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` : undefined;
+  const descId = headingId && description ? `${headingId}-desc` : undefined;
   return (
-    <section class="sgroup" aria-labelledby={headingId}>
+    <section class="sgroup" aria-labelledby={headingId} aria-describedby={descId}>
       {(title || actions) && (
         <div class="sgroup-head">
           {title && (
@@ -53,6 +54,11 @@ export function SettingsGroup({ title, actions, children, id }: { title?: string
           )}
           {actions && <div class="sgroup-actions">{actions}</div>}
         </div>
+      )}
+      {description && (
+        <p class="sgroup-desc" id={descId}>
+          {description}
+        </p>
       )}
       <div class="scard">{children}</div>
     </section>
@@ -79,13 +85,15 @@ interface RowProps {
    * Off for action buttons and read-only content, which keep their own text as their name.
    */
   labelFor?: boolean;
+  /** Extra class on the row. */
+  class?: string;
 }
 
-export function SettingRow({ id, label, description, settingKey, source, saved, control, wide, children, labelFor = true }: RowProps) {
+export function SettingRow({ id, label, description, settingKey, source, saved, control, wide, children, labelFor = true, class: cls }: RowProps) {
   const overridden = !!source && source !== "default";
   const descId = description ? `${id}-desc` : undefined;
   return (
-    <div class="srow">
+    <div class={cls ? `srow ${cls}` : "srow"}>
       <div class={`srow-main${wide ? " wide" : ""}`}>
         <div class="srow-text">
           <div class="srow-label-line">
@@ -134,9 +142,9 @@ export function SettingRow({ id, label, description, settingKey, source, saved, 
 // ---------------------------------------------------------------------------
 
 /** On/off switch. The row's label names it (via `id`). */
-export function Toggle({ id, checked, onChange, describedBy }: { id: string; checked: boolean; onChange: (next: boolean) => void; describedBy?: string }) {
+export function Toggle({ id, checked, onChange, describedBy, disabled, title }: { id: string; checked: boolean; onChange: (next: boolean) => void; describedBy?: string; disabled?: boolean; title?: string }) {
   return (
-    <button id={id} type="button" role="switch" aria-checked={checked} aria-describedby={describedBy} class={`toggle${checked ? " on" : ""}`} onClick={() => onChange(!checked)}>
+    <button id={id} type="button" role="switch" aria-checked={checked} aria-describedby={describedBy} disabled={disabled} title={title} class={`toggle${checked ? " on" : ""}`} onClick={() => onChange(!checked)}>
       <span class="toggle-thumb" aria-hidden="true" />
     </button>
   );
