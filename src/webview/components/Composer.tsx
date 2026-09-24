@@ -145,6 +145,7 @@ function ModelPicker() {
   const modelSettings = modelOptions.filter((o) => !isReasoningOption(o));
   const fast = modelSettings.find((o) => isSwitchOption(o) && isFastOption(o));
   const fastOn = !!fast && isOn(fast);
+  const context = modelSettings.find((o) => !isSwitchOption(o) && (/context/i.test(o.id) || /context/i.test(o.name)));
   // Auto is not a model in the list: it is a switch above it (Cursor picks the model per request).
   const auto = models.availableModels.find((m) => isAutoModel(m.modelId, m.name));
   const autoOn = !!auto && auto.modelId === models.currentModelId;
@@ -166,9 +167,18 @@ function ModelPicker() {
   };
   return (
     <>
-      <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={fastOn ? "Model (Fast mode on)" : "Model"}>
+      <button
+        ref={anchor}
+        type="button"
+        class="picker"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        title={["Model", context ? `${optionValueLabel(context)} context` : "", fastOn ? "Fast mode on" : ""].filter(Boolean).join(" · ")}
+      >
         {fastOn && <Icon name="zap" class="picker-fast" />}
         <span class="picker-label">{current?.name ?? models.currentModelId}</span>
+        {context && <span class="picker-sub">· {optionValueLabel(context)}</span>}
         <Icon name="chevron-down" class="picker-chevron" />
       </button>
       <Popover
