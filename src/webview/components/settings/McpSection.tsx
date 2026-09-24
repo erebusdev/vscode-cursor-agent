@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { ExtensionSettings, McpCliServer, McpPluginServer, McpStatus, McpUserConfigSource } from "../../../shared/protocol";
+import type { ExtensionSettings, McpCliServer, McpPluginServer, McpStatus } from "../../../shared/protocol";
 import { mcpNeedsApproval as needsApproval } from "../../../shared/settingsUi";
 import { getState, useSelector } from "../../store";
 import { post } from "../../vscode";
@@ -23,33 +23,26 @@ function tone(server: McpCliServer): "ok" | "warn" | "fail" | "muted" {
 // Cursor plugins
 // ---------------------------------------------------------------------------
 
-const SOURCE_TEXT: Record<McpUserConfigSource, string> = {
-  settings: "from settings",
-  environment: "from the agent environment setting",
-  agent: "from the agent process",
-  default: "default",
-};
-
 const MODE_OPTIONS = [
   {
     value: "auto",
     label: "Automatic",
-    hint: "Add every plugin server when the agent connects, except the ones switched off",
+    hint: "Add all plugin servers except those switched off",
   },
   {
     value: "manual",
     label: "Manual",
-    hint: "Only the switches below change mcp.json",
+    hint: "Add only the servers switched on",
   },
-  { value: "off", label: "Off", hint: "Leave mcp.json alone" },
+  { value: "off", label: "Off", hint: "Don't add plugin servers" },
 ] as const;
 
 type PluginMode = (typeof MODE_OPTIONS)[number]["value"];
 
 const MODE_DESC: Record<PluginMode, string> = {
-  auto: "Every plugin server is added when the agent connects. Switching one off leaves it out and removes only an entry the extension added.",
-  manual: "Nothing is added on its own; the switches below add or remove each server's entry.",
-  off: "The extension leaves mcp.json alone. The list below only shows what is there.",
+  auto: "All plugin servers are added, except those switched off.",
+  manual: "Only the servers switched on below are added.",
+  off: "Plugin servers are not added.",
 };
 
 function titleCase(name: string): string {
@@ -80,36 +73,36 @@ function pluginChip(server: McpPluginServer, reconnectNeeded: boolean): Chip {
     return {
       text: "Not in chat",
       tone: "muted",
-      title: "Not listed in the user-level mcp.json, so the agent does not load it",
+      title: "Not available in chat",
     };
   if (needsSignIn(server))
     return {
       text: "Needs sign-in",
       tone: "warn",
-      title: `The agent reports "${status}" for this folder. Sign in once per project folder.`,
+      title: `Agent status: ${status}`,
     };
   if (status && /error|fail|crash|unreachable/i.test(status))
     return {
       text: "Error",
       tone: "fail",
-      title: `The agent reports: ${status}`,
+      title: `Agent status: ${status}`,
     };
   if (status && /ready|connected|running|ok\b/i.test(status))
     return {
       text: "Ready",
       tone: "ok",
-      title: `The agent reports "${status}"`,
+      title: `Agent status: ${status}`,
     };
   if (status)
     return {
       text: status,
       tone: "muted",
-      title: `The agent reports "${status}"`,
+      title: `Agent status: ${status}`,
     };
   return {
     text: "Added",
     tone: "muted",
-    title: reconnectNeeded ? "Listed in mcp.json; reconnect so the agent loads it" : "Listed in mcp.json; the agent has not reported it yet",
+    title: reconnectNeeded ? "Reconnect to load it" : "Not reported by the agent yet",
   };
 }
 
@@ -127,10 +120,10 @@ function PluginRow({ server, several, mode, pending, reconnectNeeded, onToggle }
   const id = `mcp-plugin-${server.id}`;
   const toggleTitle =
     mode === "off"
-      ? "Plugin servers are off; choose Automatic or Manual above"
+      ? "Plugin servers are off"
       : on
-          ? "Available in chat: switch off to leave it out"
-          : "Not available in chat: switch on to add it to mcp.json";
+          ? "Available in chat"
+          : "Not available in chat";
   return (
     <SettingRow
       class="plugin-row"
@@ -148,7 +141,7 @@ function PluginRow({ server, several, mode, pending, reconnectNeeded, onToggle }
             {chip.text}
           </span>
           {needsSignIn(server) && server.enabled && (
-            <button type="button" class="button secondary small" title={`Run "agent mcp login ${server.id}" in a terminal in this folder`} onClick={() => post({ type: "mcp.plugins.login", id: server.id })}>
+            <button type="button" class="button secondary small" title="Sign in to this server" onClick={() => post({ type: "mcp.plugins.login", id: server.id })}>
               Sign in
             </button>
           )}
@@ -181,22 +174,14 @@ function PluginsGroup({ status, loading, settings }: { status: McpStatus | undef
     <SettingsGroup
       title="Cursor plugins"
       id="mcp-plugins"
-      description={
-        path ? (
-          <>
-            MCP servers that come with your Cursor plugins. Adds them to <code>{path}</code> ({SOURCE_TEXT[status?.userConfigSource ?? "default"]}) under the plugin's name, where the agent loads them with the sign-ins Cursor saved.
-          </>
-        ) : (
-          "MCP servers that come with your Cursor plugins, added to the agent's user-level mcp.json under the plugin's name, where the agent loads them with the sign-ins Cursor saved."
-        )
-      }
+      description="MCP servers that come with your Cursor plugins."
       actions={
         <>
           {mode !== "off" && off.length > 0 && plugins.length > 0 && (
             <button
               type="button"
               class="button secondary small"
-              title="Make every plugin server available in chat"
+              title="Turn on all plugin servers"
               disabled={loading}
               onClick={() =>
                 set(
@@ -208,15 +193,15 @@ function PluginsGroup({ status, loading, settings }: { status: McpStatus | undef
               Enable all
             </button>
           )}
-          <IconButton icon="go-to-file" label="Open the user-level mcp.json" disabled={!path} onClick={() => post({ type: "mcp.openUserConfig" })} />
+          <IconButton icon="go-to-file" label="Open mcp.json" disabled={!path} onClick={() => post({ type: "mcp.openUserConfig" })} />
         </>
       }
     >
       {status?.reconnectNeeded && (
         <div class="srow plugin-banner" role="status">
           <Icon name="info" />
-          <span class="plugin-banner-text">mcp.json changed. The agent reads it when it starts, so reconnect to apply.</span>
-          <button type="button" class="button primary small" title="Restart the agent and reopen this session" onClick={() => post({ type: "session.reconnect" })}>
+          <span class="plugin-banner-text">MCP servers changed. Reconnect to apply.</span>
+          <button type="button" class="button primary small" title="Restart the agent" onClick={() => post({ type: "session.reconnect" })}>
             <Icon name="debug-restart" /> Reconnect
           </button>
         </div>
@@ -236,7 +221,7 @@ function PluginsGroup({ status, loading, settings }: { status: McpStatus | undef
         </div>
       ) : plugins.length === 0 ? (
         <div class="srow">
-          <div class="list-empty">No Cursor plugins with MCP servers found in {status.pluginsDir ?? "the Cursor plugins folder"}.</div>
+          <div class="list-empty">No Cursor plugins with MCP servers found.</div>
         </div>
       ) : (
         plugins.map((p) => <PluginRow key={p.id} server={p} several={(perPlugin.get(p.pluginName) ?? 0) > 1} mode={mode} pending={pending[p.id]} reconnectNeeded={!!status.reconnectNeeded} onToggle={(next) => set([p.id], next)} />)
@@ -267,16 +252,16 @@ function ForwardedList({ status }: { status: McpStatus }) {
       description={
         status.projectSkipped
           ? `Project servers are not forwarded: ${status.projectSkipped}.`
-          : "Passed to the agent with every session, so they work without approving them in Cursor's terminal app. Project servers win over user ones with the same name."
+          : "Sent to the agent with every session."
       }
     >
       <ul class="status-list" id="mcp-forwarded" aria-label="Forwarded servers">
-        {status.forwarded.length === 0 && <li class="list-empty">None. Add servers to the project's mcp.json, or set a user-level file above.</li>}
+        {status.forwarded.length === 0 && <li class="list-empty">None.</li>}
         {status.forwarded.map((s) => (
           <li key={s.name} class="status-item">
             <Icon name="pass-filled" class="status-dot ok" />
             <span class="status-name">{s.name}</span>
-            <span class="status-tag" title={s.source === "project" ? "From this workspace's .cursor/mcp.json" : "From the user-level mcp.json set above"}>
+            <span class="status-tag" title={s.source === "project" ? "From this workspace" : "From your MCP config file"}>
               {s.source === "project" ? "Project" : "User"}
             </span>
             <span class="status-detail" title={`${TRANSPORT_LABEL[s.transport]}: ${s.target}`}>
@@ -304,12 +289,8 @@ function CliList({ status }: { status: McpStatus }) {
     <SettingRow
       id="mcp-cli"
       labelFor={false}
-      label="Reported by the CLI"
-      description={
-        <>
-          What <code>agent mcp list</code> says, including servers from your own <code>~/.cursor/mcp.json</code>. A project server that "needs approval" still works in chat when the extension forwards it.
-        </>
-      }
+      label="Reported by the agent"
+      description="Every MCP server the agent knows about."
     >
       {"error" in cli ? (
         <div class="probe-status fail" role="alert" id="mcp-cli">
@@ -317,8 +298,8 @@ function CliList({ status }: { status: McpStatus }) {
           <span>{cli.error}</span>
         </div>
       ) : (
-        <ul class="status-list" id="mcp-cli" aria-label="Servers reported by the CLI">
-          {cli.length === 0 && <li class="list-empty">The CLI reports no MCP servers.</li>}
+        <ul class="status-list" id="mcp-cli" aria-label="Servers reported by the agent">
+          {cli.length === 0 && <li class="list-empty">No MCP servers.</li>}
           {cli.map((s) => {
             const t = tone(s);
             return (
@@ -327,7 +308,7 @@ function CliList({ status }: { status: McpStatus }) {
                 <span class="status-name">{s.name}</span>
                 <span class="status-detail">{s.status}</span>
                 {s.forwarded && (
-                  <span class="status-tag" title={needsApproval(s) ? "The extension forwards this server, so it is available in chat" : "The extension also forwards this server"}>
+                  <span class="status-tag" title={needsApproval(s) ? "Available in chat" : "Also sent with every session"}>
                     Forwarded
                   </span>
                 )}
@@ -358,24 +339,23 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
         <BoolRow
           settings={settings}
           k="mcpForwardProjectServers"
-          label="Forward project servers"
-          description="Pass this workspace's .cursor/mcp.json servers to the agent with each session. Without this the CLI silently skips project servers that were never approved in its terminal app. Skipped in untrusted workspaces."
+          label="Project MCP servers"
+          description="Use this workspace's MCP servers in chat."
         />
         <TextRow
           settings={settings}
           k="mcpUserConfig"
-          label="User-level mcp.json"
-          description="The agent loads this file itself, with the sign-ins it saved, so the extension does not forward it. Leave empty to find it from HOME in the agent's environment setting, the running agent's HOME, or your home folder."
+          label="MCP config file"
+          description="Leave empty to use the default."
           placeholder={mcp.status?.userConfigPath ?? "~/.cursor/mcp.json"}
           mono
         />
         <SettingRow
           id="mcp-open-config"
           labelFor={false}
-          label="Project configuration"
-          description="This workspace's .cursor/mcp.json, created with an empty server list if it does not exist yet."
+          label="Project config file"
           control={
-            <button id="mcp-open-config" type="button" class="button secondary small" title="Open .cursor/mcp.json in the editor" onClick={() => post({ type: "mcp.openConfig" })}>
+            <button id="mcp-open-config" type="button" class="button secondary small" title="Open mcp.json" onClick={() => post({ type: "mcp.openConfig" })}>
               <Icon name="go-to-file" /> Open mcp.json
             </button>
           }
@@ -392,7 +372,7 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
                 <Spinner /> Checking…
               </span>
             )}
-            <IconButton icon="refresh" label="Refresh status" disabled={mcp.loading} onClick={() => post({ type: "mcp.status" })} />
+            <IconButton icon="refresh" label="Refresh" disabled={mcp.loading} onClick={() => post({ type: "mcp.status" })} />
           </>
         }
       >
@@ -404,7 +384,7 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
         ) : (
           <div class="srow">
             <div class="list-empty">
-              <Spinner /> Asking the CLI which servers it knows…
+              <Spinner /> Checking MCP servers…
             </div>
           </div>
         )}

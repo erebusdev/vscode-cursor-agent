@@ -17,12 +17,12 @@ import { McpSection } from "./McpSection";
 import { AgentArgsRow, AgentPathRow, ApprovalPolicyRow, BoolRow, EnvRow, ModelDefaultsRow, SafeListEditor, SendShortcutRow, TextRow } from "./rows";
 
 const SECTION_INFO: Record<SettingsSection, { label: string; icon: string; hint: string }> = {
-  general: { label: "General", icon: "settings", hint: "Sessions, sending, thinking blocks and notifications" },
-  agent: { label: "Agent", icon: "terminal", hint: "Where the Cursor Agent CLI is and how it is started" },
+  general: { label: "General", icon: "settings", hint: "Sessions, chat and notifications" },
+  agent: { label: "Agent", icon: "terminal", hint: "Agent path, arguments and environment" },
   approvals: { label: "Approvals", icon: "shield", hint: "What runs without asking" },
-  models: { label: "Models", icon: "sparkle", hint: "Defaults for new sessions and which models the picker shows" },
-  mcp: { label: "MCP servers", icon: "plug", hint: "Which MCP servers the agent gets and what the CLI reports" },
-  advanced: { label: "Advanced", icon: "tools", hint: "Protocol logging and the output channel" },
+  models: { label: "Models", icon: "sparkle", hint: "Default model and visible models" },
+  mcp: { label: "MCP servers", icon: "plug", hint: "MCP servers and Cursor plugins" },
+  advanced: { label: "Advanced", icon: "tools", hint: "Logging" },
 };
 
 /** Tracks a media query (the nav turns into a row of icons on narrow tabs). */
@@ -88,7 +88,7 @@ function Nav({ current }: { current: SettingsSection }) {
       </div>
       <div class="settings-nav-footer">
         {VERSION && <span class="settings-nav-version">Version {VERSION}</span>}
-        <button type="button" class="link-button" title="Open VS Code settings editor" aria-label="Open VS Code settings editor" onClick={() => post({ type: "openSettings" })}>
+        <button type="button" class="link-button" title="Open VS Code settings" aria-label="Open VS Code settings" onClick={() => post({ type: "openSettings" })}>
           <span>VS Code settings</span>
           <Icon name="link-external" />
         </button>
@@ -103,13 +103,13 @@ function GeneralPage({ settings }: { settings: ExtensionSettings }) {
   return (
     <>
       <SettingsGroup>
-        <BoolRow settings={settings} k="resumeLastSession" label="Resume last session" description="Reopen this workspace's last session when the chat starts." />
-        <BoolRow settings={settings} k="notifyWhenHidden" label="Notify when hidden" description="Show a VS Code notification when the agent needs permission or finishes while the chat is not visible." />
-        <BoolRow settings={settings} k="editorTitleButton" label="Editor title button" description="Show an Open Cursor button in the editor title bar." />
+        <BoolRow settings={settings} k="resumeLastSession" label="Resume last session" />
+        <BoolRow settings={settings} k="notifyWhenHidden" label="Notify when hidden" description="Notify when the agent needs you and the chat is hidden." />
+        <BoolRow settings={settings} k="editorTitleButton" label="Editor title button" description="Show a Cursor Agent button in the editor title bar." />
       </SettingsGroup>
       <SettingsGroup title="Chat">
         <SendShortcutRow settings={settings} />
-        <BoolRow settings={settings} k="showThoughts" label="Show thinking" description="Show the agent's reasoning blocks in the transcript." />
+        <BoolRow settings={settings} k="showThoughts" label="Show thinking" />
       </SettingsGroup>
     </>
   );
@@ -128,13 +128,13 @@ function AgentPage({ settings }: { settings: ExtensionSettings }) {
         <EnvRow settings={settings} onSaved={mark} />
       </SettingsGroup>
       <SettingsGroup title="Usage">
-        <TextRow settings={settings} k="configDir" label="Config directory" description="Cursor's config directory, holding auth.json. Only the usage panel reads it; leave empty to detect it from CURSOR_CONFIG_DIR, a wrapper script or ~/.cursor." placeholder="~/.cursor" mono />
+        <TextRow settings={settings} k="configDir" label="Config directory" description="Cursor's config folder, used by the usage panel." placeholder="~/.cursor" mono />
       </SettingsGroup>
       {changed && (
         <div class="settings-footer" role="status">
           <Icon name="info" />
-          <span>Changes to the agent path, arguments or environment take effect on the next connection.</span>
-          <button title="Restart the agent with the new settings" type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
+          <span>Changes apply on the next connection.</span>
+          <button title="Restart the agent" type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
             <Icon name="refresh" /> Reconnect now
           </button>
         </div>
@@ -175,14 +175,13 @@ function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
   return (
     <>
       <SettingsGroup>
-        <BoolRow settings={settings} k="protocolLogging" label="Protocol logging" description="Log every ACP JSON-RPC message to the Cursor Agent output channel. Useful when reporting a problem; noisy otherwise." />
+        <BoolRow settings={settings} k="protocolLogging" label="Protocol logging" description="Log agent messages for troubleshooting." />
         <SettingRow
           id="advanced-logs"
           labelFor={false}
           label="Logs"
-          description="The Cursor Agent output channel: connection, probe and MCP messages."
           control={
-            <button id="advanced-logs" type="button" class="button secondary small" title="Open the Cursor Agent output channel" onClick={() => post({ type: "openLogs" })}>
+            <button id="advanced-logs" type="button" class="button secondary small" title="Open the output channel" onClick={() => post({ type: "openLogs" })}>
               <Icon name="output" /> Show logs
             </button>
           }
