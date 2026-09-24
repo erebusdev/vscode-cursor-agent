@@ -4,10 +4,11 @@
  * manager pane; ticking a group is a bulk action over its models.
  */
 
-export type ModelGroup = "cursor" | "api";
+/** Auto routes to any model (Cursor's or third-party) and is billed as the model it picks, so it is its own group. */
+export type ModelGroup = "auto" | "cursor" | "api";
 
-/** Cursor's own model families: auto routing, Composer, Vega, Grok, and anything Cursor-prefixed. */
-const CURSOR_MODEL_ID = /^(auto\b|composer|vega|grok|cursor)/i;
+/** Cursor's own model families: Composer, Vega, Grok, and anything Cursor-prefixed. */
+const CURSOR_MODEL_ID = /^(composer|vega|grok|cursor)/i;
 
 export interface ModelVisibility {
   readonly hiddenModels: ReadonlyArray<string>;
@@ -16,6 +17,7 @@ export interface ModelVisibility {
 /** Group for a model id, preferring the usage API's list of Cursor-pool ids when available. */
 export function modelGroup(modelId: string, cursorModelIds?: ReadonlyArray<string>): ModelGroup {
   const base = modelId.replace(/\[.*$/, "");
+  if (/^auto\b/i.test(base)) return "auto";
   if (CURSOR_MODEL_ID.test(base)) return "cursor";
   // The usage API's list catches ids the prefix rule does not know about (it lags new releases, so it only ever adds).
   if (cursorModelIds?.some((id) => id === base || base.startsWith(`${id}-`) || id.startsWith(`${base}-`))) return "cursor";

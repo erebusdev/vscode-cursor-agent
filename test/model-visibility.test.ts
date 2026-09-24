@@ -9,7 +9,8 @@ describe("model visibility", () => {
     expect(modelGroup("composer-2", cursorIds)).toBe("cursor");
     expect(modelGroup("grok-4.5-high", cursorIds)).toBe("cursor");
     expect(modelGroup("claude-opus-5-5", cursorIds)).toBe("api");
-    expect(modelGroup("auto-smart", cursorIds)).toBe("cursor");
+    expect(modelGroup("auto-smart", cursorIds)).toBe("auto");
+    expect(modelGroup("auto")).toBe("auto");
     expect(modelGroup("grok-4.7[context=256k]")).toBe("cursor");
     expect(modelGroup("grok-4.7", cursorIds)).toBe("cursor");
     expect(modelGroup("vega-high")).toBe("cursor");

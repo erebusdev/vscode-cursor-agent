@@ -7,7 +7,8 @@ import { Checkbox } from "./SettingsView";
 import { Icon, IconButton } from "./ui";
 
 const GROUPS: ReadonlyArray<{ id: ModelGroup; title: string; blurb: string }> = [
-  { id: "cursor", title: "Cursor models", blurb: "Cursor's own models, including Grok. Count as Cursor usage." },
+  { id: "auto", title: "Auto", blurb: "Cursor picks the model per request, including third-party ones, and bills it as that model." },
+  { id: "cursor", title: "Cursor models", blurb: "Cursor's own models, including Grok and Composer. Count as Cursor usage." },
   { id: "api", title: "API models", blurb: "Third-party models. Count as API usage." },
 ];
 
@@ -117,7 +118,7 @@ export function ManageModelsView() {
           return (
             <section key={g.id} class="models-group" aria-labelledby={`models-${g.id}`}>
               <div class="models-group-head">
-                <GroupCheckbox id={`models-group-${g.id}`} label={g.title} members={members} hidden={hidden} />
+                {members.length > 1 ? <GroupCheckbox id={`models-group-${g.id}`} label={g.title} members={members} hidden={hidden} /> : <span class="models-group-spacer" />}
                 <h3 id={`models-${g.id}`} class="pane-heading">
                   {g.title}
                 </h3>

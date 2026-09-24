@@ -2275,6 +2275,10 @@ button.chip:disabled {
   margin: 0;
   flex: 1 1 auto;
 }
+.models-group-spacer {
+  width: 18px;
+  flex: none;
+}
 .models-group-count {
   font-size: 11px;
   color: var(--muted);
