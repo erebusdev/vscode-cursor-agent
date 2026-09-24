@@ -27,8 +27,12 @@
   ],
   "keywords": [
     "cursor",
+    "cursor-agent",
+    "cursor cli",
     "agent",
     "acp",
+    "agent client protocol",
+    "agent-client-protocol",
     "chat",
     "ai"
   ],
