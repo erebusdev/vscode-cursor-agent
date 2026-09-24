@@ -248,10 +248,10 @@ function ForwardedList({ status }: { status: McpStatus }) {
     <SettingRow
       id="mcp-forwarded"
       labelFor={false}
-      label="Forwarded by the extension"
+      label="Forwarded servers"
       description={
         status.projectSkipped
-          ? `Project servers are not forwarded: ${status.projectSkipped}.`
+          ? `Project servers not forwarded: ${status.projectSkipped}.`
           : "Sent to the agent with every session."
       }
     >
