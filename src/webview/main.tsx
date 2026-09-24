@@ -3,6 +3,7 @@ import type { ExtensionToWebview } from "../shared/protocol";
 import { App } from "./components/App";
 import { handleMessage } from "./store";
 import { post } from "./vscode";
+import { installTooltips } from "./tooltip";
 import "./styles.css";
 
 window.addEventListener("message", (e: MessageEvent<ExtensionToWebview>) => {
@@ -14,6 +15,7 @@ window.addEventListener("message", (e: MessageEvent<ExtensionToWebview>) => {
 const root = document.getElementById("root");
 if (root) {
   render(<App />, root);
+  installTooltips();
 }
 
 post({ type: "ready" });

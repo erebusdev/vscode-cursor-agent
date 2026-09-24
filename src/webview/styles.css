@@ -2066,6 +2066,24 @@ button.chip:disabled {
   opacity: 0.8;
 }
 
+/* --- Tooltip -------------------------------------------------------------- */
+
+.ui-tooltip {
+  position: fixed;
+  z-index: 300;
+  max-width: 320px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorHoverWidget-background, var(--card-bg));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.35));
+}
+
 /* --- Popover ------------------------------------------------------------- */
 
 .popover {
