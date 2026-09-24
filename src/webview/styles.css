@@ -1768,6 +1768,35 @@ button.chip:disabled {
 }
 .queued-list .queued-bar {
   margin: 0;
+  position: relative;
+}
+.queued-bar[draggable="true"] {
+  cursor: grab;
+}
+.queued-bar.dragging {
+  opacity: 0.4;
+}
+.queued-grip {
+  color: var(--muted);
+}
+.queued-bar.drop-before::before,
+.queued-bar.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--vscode-focusBorder);
+}
+.queued-bar.drop-before::before {
+  top: -3px;
+}
+.queued-bar.drop-after::after {
+  bottom: -3px;
+}
+.queued-actions .icon-button:disabled {
+  opacity: 0.35;
 }
 .queued-bar {
   display: flex;

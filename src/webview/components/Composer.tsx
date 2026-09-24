@@ -277,25 +277,68 @@ function OptionPill({ option }: { option: ConfigOption }) {
 // Composer
 // ---------------------------------------------------------------------------
 
-/** Messages waiting to go out after the current turn, in order, each with send-now / edit / remove. */
+const QUEUE_DRAG_TYPE = "application/x-cursor-queue";
+
+/** Messages waiting to go out after the current turn, in order. Rows can be dragged to reorder, or moved with the arrows. */
 function QueuedBar() {
   const queued = useSelector((s) => s.session.queued);
   const running = useSelector((s) => s.session.connection === "running" || s.session.connection === "cancelling");
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [dropAt, setDropAt] = useState<number | null>(null);
   if (!queued || queued.length === 0) return null;
+  const many = queued.length > 1;
+  const targetFor = (e: DragEvent, i: number) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2 ? i : i + 1;
+  };
+  const finishDrag = () => {
+    setDragging(null);
+    setDropAt(null);
+  };
   return (
     <div class="queued-list" role="status" aria-label="Queued messages">
       {queued.map((q, i) => {
         const preview = q.text.trim().replace(/\s+/g, " ") || `${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}`;
+        const indicator = dropAt === i ? " drop-before" : dropAt === i + 1 && i === queued.length - 1 ? " drop-after" : "";
         return (
-          <div key={i} class="queued-bar">
-            <Icon name="list-ordered" />
+          <div
+            key={i}
+            class={`queued-bar${dragging === i ? " dragging" : ""}${indicator}`}
+            draggable={many}
+            onDragStart={(e) => {
+              if (!many || !e.dataTransfer) return;
+              e.dataTransfer.setData(QUEUE_DRAG_TYPE, String(i));
+              e.dataTransfer.effectAllowed = "move";
+              setDragging(i);
+            }}
+            onDragEnd={finishDrag}
+            onDragOver={(e) => {
+              if (!e.dataTransfer?.types.includes(QUEUE_DRAG_TYPE)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDropAt(targetFor(e, i));
+            }}
+            onDragLeave={() => setDropAt(null)}
+            onDrop={(e) => {
+              const raw = e.dataTransfer?.getData(QUEUE_DRAG_TYPE);
+              if (!raw) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const from = Number(raw);
+              let to = targetFor(e, i);
+              if (to > from) to -= 1;
+              finishDrag();
+              if (Number.isFinite(from) && from !== to) post({ type: "queue.move", from, to });
+            }}
+          >
+            <Icon name={many ? "gripper" : "list-ordered"} class={many ? "queued-grip" : ""} />
             <span class="queued-label">{i === 0 && !running ? "Queued (stopped)" : `#${i + 1}`}</span>
             <span class="queued-text" title={q.text}>
               {preview}
               {q.attachmentCount > 0 && q.text.trim() ? ` · ${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}` : ""}
             </span>
             <span class="queued-actions">
-              {queued.length > 1 && (
+              {many && (
                 <>
                   <IconButton icon="arrow-up" label="Move up" disabled={i === 0} onClick={() => post({ type: "queue.move", from: i, to: i - 1 })} />
                   <IconButton icon="arrow-down" label="Move down" disabled={i === queued.length - 1} onClick={() => post({ type: "queue.move", from: i, to: i + 1 })} />

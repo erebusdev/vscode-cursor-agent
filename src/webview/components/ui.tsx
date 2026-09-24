@@ -11,7 +11,7 @@ export function Icon({ name, class: cls, title }: { name: string; class?: string
   return <i class={`codicon codicon-${name}${cls ? ` ${cls}` : ""}`} aria-hidden={title ? undefined : "true"} title={title} />;
 }
 
-type ButtonProps = Omit<JSX.HTMLAttributes<HTMLButtonElement>, "icon" | "label" | "ref"> & { icon: string; label: string; class?: string };
+type ButtonProps = Omit<JSX.HTMLAttributes<HTMLButtonElement>, "icon" | "label" | "ref"> & { icon: string; label: string; class?: string; disabled?: boolean };
 
 /** Icon-only button with an accessible label and tooltip. */
 export const IconButton = forwardRef<HTMLButtonElement, ButtonProps>(function IconButton({ icon, label, class: cls, children, ...rest }, ref) {
