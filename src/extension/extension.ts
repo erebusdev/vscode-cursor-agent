@@ -144,6 +144,8 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   };
 
+  // The login-shell PATH lookup is bounded (5 s); the agent and its MCP servers need it.
+  const envReady = prepareHostEnv(log);
   runtime = new SessionRuntime({
     cwd,
     workspaceName: workspace?.name ?? "(no folder)",
@@ -164,6 +166,9 @@ export function activate(context: vscode.ExtensionContext): void {
       beforeSpawn: (launch) => sync.beforeSpawn(launch),
       afterInitialize: (launch, pid) => sync.afterInitialize(launch, pid),
     },
+    // Every launch (startup resume, history list, reconnect) waits for the PATH lookup inside the runtime,
+    // so the startup resume below can be queued at once, ahead of anything a view asks for.
+    beforeConnect: () => envReady,
     storage,
     log: runtimeLogger,
     events: {
@@ -178,7 +183,6 @@ export function activate(context: vscode.ExtensionContext): void {
   // Capture full before/after texts for the native diff editor.
   attachDiffCapture(runtime.model, diffs);
 
-  const envReady = prepareHostEnv(log);
   host = new ChatHost(context, runtime, diffs, log, {
     mcpStatus: async () => {
       // `mcp list` and stdio commands need the login-shell PATH.
@@ -201,12 +205,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(host);
 
   let started = false;
-  const ensureStarted = async () => {
+  /**
+   * Opens the startup session once: the last session when resuming is on. Synchronous on purpose:
+   * the resume must be queued before whatever the caller does next (New Session, a prompt, the
+   * history list), or it would run after it and replace it. The runtime waits for the PATH lookup.
+   */
+  const ensureStarted = () => {
     if (started || !runtime) return;
     started = true;
-    // The login-shell PATH lookup is bounded (5 s); the agent and its MCP servers need it.
-    await envReady;
-    if (!runtime) return;
     if (!workspace) {
       runtime.model.addNotice("warning", "Open a folder to chat with the Cursor agent about it.", undefined, []);
       return;

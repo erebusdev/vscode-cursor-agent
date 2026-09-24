@@ -84,6 +84,11 @@ export interface SessionRuntimeOptions {
   /** Optional; when absent nothing is forwarded and the CLI loads its own config (approval-gated for project files). */
   readonly getMcpServers?: McpServersProvider;
   readonly launchHooks?: AgentLaunchHooks;
+  /**
+   * Awaited before every launch, ahead of reading the launch config (the login-shell PATH lookup).
+   * Starts can therefore be requested right away: they queue in order instead of racing the wait.
+   */
+  readonly beforeConnect?: () => Promise<void>;
   readonly storage: RuntimeStorage;
   readonly log: RuntimeLogger;
   readonly events: RuntimeEvents;
@@ -184,6 +189,8 @@ export class SessionRuntime {
 
   private connectionState: ConnectionState = "idle";
   private sessionId: string | undefined;
+  /** Cursor has this session on disk (it was resumed or received a prompt), so it can be loaded again. */
+  private sessionPersisted = false;
   private title: string | undefined;
   private modes: SessionState["modes"];
   private models: SessionState["models"];
@@ -334,6 +341,10 @@ export class SessionRuntime {
   private async connect(allowRestart = true): Promise<AcpConnection> {
     if (this.connection && !this.connection.isClosed && this.authenticated) return this.connection;
     if (this.disposed) throw new JsonRpcClosedError("initialize", "The extension is shutting down.");
+    if (this.options.beforeConnect && allowRestart) {
+      await this.options.beforeConnect();
+      if (this.disposed) throw new JsonRpcClosedError("initialize", "The extension is shutting down.");
+    }
     const launch = this.options.getLaunchConfig();
     const hooks = this.options.launchHooks;
     if (hooks?.beforeSpawn && allowRestart) {
@@ -619,6 +630,8 @@ export class SessionRuntime {
   private async loadSessionInternal(connection: AcpConnection, sessionId: string): Promise<void> {
     this.resetSessionState();
     this.sessionId = sessionId;
+    // Presumed on disk while it loads, so a reconnect meanwhile reloads it; a failed load resets this.
+    this.sessionPersisted = true;
     this.model.setReplay(true);
     this.setConnectionState("loading");
     let response: acp.LoadSessionResponse;
@@ -631,10 +644,11 @@ export class SessionRuntime {
     } catch (error) {
       this.model.setReplay(false);
       if (error instanceof JsonRpcRemoteError) {
-        // The session is gone (Cursor does not persist sessions that never received a prompt,
-        // and sessions can be deleted). Forget it and fall back to a fresh session.
+        // The session is gone for this agent (never prompted, deleted, or kept by a differently
+        // configured agent/profile). Fall back to a fresh session, but keep the stored id: forgetting
+        // it made every later window open a new session after one bad start. It is replaced as soon
+        // as a prompt is sent here or another session is resumed.
         this.options.log.warn(`Could not resume session ${sessionId}: ${error.message}. Starting a new session.`);
-        if (this.options.storage.getLastSessionId() === sessionId) this.options.storage.setLastSessionId(undefined);
         await this.newSessionInternal(connection);
         this.model.addNotice("info", "The previous session could not be resumed, so a new session was started.", describeError(error).text, []);
         return;
@@ -675,6 +689,7 @@ export class SessionRuntime {
     this.overridesVersion += 1;
     this.model.reset();
     this.sessionId = undefined;
+    this.sessionPersisted = false;
     this.title = undefined;
     this.modes = undefined;
     this.models = undefined;
@@ -791,9 +806,18 @@ export class SessionRuntime {
     await this.start(sessionId);
   }
 
+  /**
+   * The session to reopen after a reconnect or crash: the current one when Cursor has it on disk,
+   * a fresh one when the current session never got a prompt (it cannot be loaded), else the stored one.
+   */
+  private reopenTarget(): string | undefined {
+    if (this.sessionId) return this.sessionPersisted ? this.sessionId : undefined;
+    return this.options.storage.getLastSessionId();
+  }
+
   /** Re-spawns the agent and reloads the current session (if any). */
   async reconnect(): Promise<void> {
-    const sessionId = this.sessionId ?? this.options.storage.getLastSessionId();
+    const sessionId = this.reopenTarget();
     await this.teardownProcess();
     this.setConnectionState("idle");
     await this.start(sessionId);
@@ -872,7 +896,7 @@ export class SessionRuntime {
     }
     this.stoppedByUser = false;
     if (!this.hasSession) {
-      await this.start(this.sessionId ?? undefined);
+      await this.start(this.sessionId && this.sessionPersisted ? this.sessionId : undefined);
       if (!this.hasSession) return;
     }
     const connection = this.connection!;
@@ -904,6 +928,7 @@ export class SessionRuntime {
     if (blocks.length === 0) return;
 
     this.model.beginTurn(trimmed, uiAttachments);
+    this.sessionPersisted = true;
     this.options.storage.setLastSessionId(sessionId);
     this.setConnectionState("running");
     const request = connection.prompt({ sessionId, prompt: blocks });

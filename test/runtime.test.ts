@@ -12,11 +12,10 @@ import type * as acp from "@agentclientprotocol/sdk";
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 
-function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}, mcpServers?: () => Promise<acp.McpServer[]>, launchHooks?: AgentLaunchHooks) {
+function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}, mcpServers?: () => Promise<acp.McpServer[]>, launchHooks?: AgentLaunchHooks, store: { lastSession?: string } = {}, beforeConnect?: () => Promise<void>) {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
   const logs: string[] = [];
-  let lastSession: string | undefined;
   let meta: SessionMeta = { titles: {}, hidden: [] };
   const runtime = new SessionRuntime({
     cwd: here,
@@ -26,9 +25,10 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "
     getModelDefaults: () => modelDefaults,
     ...(mcpServers ? { getMcpServers: mcpServers } : {}),
     ...(launchHooks ? { launchHooks } : {}),
+    ...(beforeConnect ? { beforeConnect } : {}),
     storage: {
-      getLastSessionId: () => lastSession,
-      setLastSessionId: (id) => (lastSession = id),
+      getLastSessionId: () => store.lastSession,
+      setLastSessionId: (id) => (store.lastSession = id),
       getSessionMeta: () => meta,
       setSessionMeta: (m) => (meta = m),
     },
@@ -42,7 +42,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "
     },
   });
   const launches = () => logs.filter((l) => l.startsWith("Launching Cursor agent")).length;
-  return { runtime, messages, events, logs, launches, getLastSession: () => lastSession, getMeta: () => meta };
+  return { runtime, messages, events, logs, launches, getLastSession: () => store.lastSession, getMeta: () => meta };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
@@ -531,6 +531,180 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.connection).toBe("ready");
     const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>;
     expect(notice.text).toContain("Something went wrong");
+  });
+});
+
+describe("Resuming the last session in a new window", () => {
+  let dir: string | undefined;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  /** One window's session: prompts once in a new session and closes, leaving the id in `store`. */
+  async function previousWindow(env: NodeJS.ProcessEnv, store: { lastSession?: string }): Promise<string> {
+    const { runtime } = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    await runtime.start(store.lastSession);
+    await runtime.prompt("first", []);
+    const id = runtime.state.sessionId!;
+    await runtime.dispose();
+    return id;
+  }
+
+  function storeEnv(): NodeJS.ProcessEnv {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), "fake-agent-store-")));
+    return { FAKE_AGENT_STORE: join(dir, "sessions.json") };
+  }
+
+  it("resumes the session from the previous window in a fresh agent process", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+    expect(store.lastSession).toBe(s1);
+
+    const { runtime, logs } = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(runtime);
+    await runtime.start(store.lastSession);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider"]);
+    expect(logs).toContain(`Resumed session ${s1}`);
+  });
+
+  it("still resumes when the agent is restarted once after initialize", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime, launches, logs } = makeRuntime(env, "ask", {}, undefined, { afterInitialize: async () => true }, store);
+    active.push(runtime);
+    await runtime.start(store.lastSession);
+    expect(launches()).toBe(2);
+    expect(logs.some((l) => l.startsWith("Restarting the agent"))).toBe(true);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider"]);
+    expect(logs.some((l) => l.startsWith("New session"))).toBe(false);
+    expect(store.lastSession).toBe(s1);
+  });
+
+  it("resumes when the history list connects the agent first (restart included)", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime, launches, logs } = makeRuntime(env, "ask", {}, undefined, { afterInitialize: async () => true }, store);
+    active.push(runtime);
+    // The chat's history list asks for sessions as soon as the webview is up, before the start.
+    const list = runtime.listSessions();
+    const start = runtime.start(store.lastSession);
+    const [sessions] = await Promise.all([list, start]);
+    expect(sessions.map((s) => s.sessionId)).toContain(s1);
+    expect(launches()).toBe(2);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(logs.some((l) => l.startsWith("New session"))).toBe(false);
+  });
+
+  it("a resume requested while another start is in flight wins over it", async () => {
+    const env = { ...storeEnv(), FAKE_AGENT_NEW_DELAY_MS: "150" };
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime } = makeRuntime(env, "ask", {}, undefined, { afterInitialize: async () => true }, store);
+    active.push(runtime);
+    const fresh = runtime.start();
+    await waitFor(() => runtime.state.connection === "starting");
+    await Promise.all([fresh, runtime.start(store.lastSession)]);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider"]);
+  });
+
+  it("a resume that fails keeps the stored session, so a later window can still open it", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    // Evidence from the logs: one window ran a differently configured agent that did not know the
+    // session ("Could not resume … Invalid params"); every later window then started a new session.
+    const other = makeRuntime({ FAKE_AGENT_STORE: join(dir!, "other-profile.json") }, "ask", {}, undefined, undefined, store);
+    await other.runtime.start(store.lastSession);
+    expect(other.runtime.state.sessionId).not.toBe(s1);
+    expect(items(other.runtime).some((i) => i.type === "notice")).toBe(true);
+    await other.runtime.dispose();
+    expect(store.lastSession).toBe(s1);
+
+    const next = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(next.runtime);
+    await next.runtime.start(store.lastSession);
+    expect(next.runtime.state.sessionId).toBe(s1);
+  });
+
+  it("the startup resume is queued at once and later requests line up behind it", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    // The login-shell PATH lookup gates every launch; requests made meanwhile must keep their order.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const { runtime, launches } = makeRuntime(env, "ask", {}, undefined, undefined, store, () => gate);
+    active.push(runtime);
+    const start = runtime.start(store.lastSession);
+    const list = runtime.listSessions();
+    const turn = runtime.prompt("again", []);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(launches()).toBe(0);
+    open();
+    await Promise.all([start, list, turn]);
+    expect(launches()).toBe(1);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(lastAssistant(runtime)?.text).toBe("Echo: again!");
+
+    // A new session asked for while the startup resume is still waiting wins over it.
+    await runtime.dispose();
+    let open2!: () => void;
+    const gate2 = new Promise<void>((resolve) => (open2 = resolve));
+    const second = makeRuntime(env, "ask", {}, undefined, undefined, store, () => gate2);
+    active.push(second.runtime);
+    const resume = second.runtime.start(store.lastSession);
+    const fresh = second.runtime.newSession();
+    open2();
+    await Promise.all([resume, fresh]);
+    expect(second.runtime.state.sessionId).not.toBe(s1);
+    expect(items(second.runtime)).toEqual([]);
+  });
+
+  it("reconnecting a session that never got a prompt starts a new one instead of failing to load it", async () => {
+    const { runtime, logs } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const empty = runtime.state.sessionId;
+    await runtime.reconnect();
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).not.toBe(empty);
+    expect(items(runtime).some((i) => i.type === "notice")).toBe(false);
+    expect(logs.some((l) => l.startsWith("Could not resume"))).toBe(false);
+  });
+
+  it("remembers a session resumed from history, so the next window reopens it", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime } = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(runtime);
+    await runtime.start(store.lastSession);
+    await runtime.newSession();
+    await runtime.prompt("second", []);
+    const s2 = runtime.state.sessionId!;
+    expect(store.lastSession).toBe(s2);
+    await runtime.loadSession(s1);
+    expect(store.lastSession).toBe(s1);
+    await runtime.dispose();
+
+    const next = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(next.runtime);
+    await next.runtime.start(store.lastSession);
+    expect(next.runtime.state.sessionId).toBe(s1);
   });
 });
 

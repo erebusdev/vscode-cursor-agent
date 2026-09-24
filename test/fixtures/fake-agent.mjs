@@ -18,15 +18,26 @@
  *   FAKE_AGENT_CRASH_ON_INIT=1    prints to stderr and exits with code 2 on initialize
  *   FAKE_AGENT_LOAD_DELAY_MS=n    delay before the session/load response (default 20)
  *   FAKE_AGENT_NEW_DELAY_MS=n     delay before the session/new response (default 0)
+ *   FAKE_AGENT_STORE=<file.json>  keeps sessions in this file, so they survive a restart (like Cursor's own store)
  */
 import readline from "node:readline";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 
-const sessions = new Map();
-let nextId = 1000;
+const STORE = process.env.FAKE_AGENT_STORE;
+const stored = STORE && existsSync(STORE) ? JSON.parse(readFileSync(STORE, "utf8")) : undefined;
+const sessions = new Map(stored?.sessions ?? []);
+let nextId = stored?.nextId ?? 1000;
+// Session ids are unique per agent process (a restarted agent never reuses one), like Cursor's UUIDs.
+const idPrefix = randomBytes(3).toString("hex");
+function persist() {
+  if (STORE) writeFileSync(STORE, JSON.stringify({ nextId, sessions: [...sessions] }));
+}
 const pending = new Map();
 let cancelled = false;
 
 function send(msg) {
+  persist();
   process.stdout.write(JSON.stringify(msg) + "\n");
 }
 function notify(sessionId, update) {
@@ -253,7 +264,7 @@ rl.on("line", (line) => {
       else reply({});
       return;
     case "session/new": {
-      const sessionId = `s-${nextId++}`;
+      const sessionId = `s-${idPrefix}-${nextId++}`;
       sessions.set(sessionId, { cwd: params.cwd, history: [], mode: "agent", model: "model-a", title: undefined, mcpServers: params.mcpServers ?? [] });
       const newDelay = Number(process.env.FAKE_AGENT_NEW_DELAY_MS ?? "0");
       setTimeout(() => {
