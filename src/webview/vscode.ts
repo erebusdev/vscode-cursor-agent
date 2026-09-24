@@ -23,6 +23,8 @@ export interface PersistedState {
   history?: string[];
   expanded?: Record<string, boolean>;
   attachments?: PromptAttachmentInput[];
+  /** Settings tab: the section on screen (restored after a window reload). */
+  settingsSection?: string;
 }
 
 let cached: PersistedState | undefined;

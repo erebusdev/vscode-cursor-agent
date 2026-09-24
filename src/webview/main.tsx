@@ -1,6 +1,6 @@
 import { render } from "preact";
 import type { ExtensionToWebview } from "../shared/protocol";
-import { App } from "./components/App";
+import { App, isSettingsView } from "./components/App";
 import { handleMessage } from "./store";
 import { post } from "./vscode";
 import { installTooltips } from "./tooltip";
@@ -19,4 +19,5 @@ if (root) {
 }
 
 post({ type: "ready" });
-post({ type: "session.list" });
+// The session history is only shown by the chat.
+if (!isSettingsView()) post({ type: "session.list" });

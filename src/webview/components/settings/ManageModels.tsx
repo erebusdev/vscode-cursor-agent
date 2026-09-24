@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
-import type { SessionModel } from "../../shared/protocol";
-import { modelFamily, modelGroup, sortModelsByFamily, type ModelGroup } from "../../shared/modelVisibility";
-import { getState, useSelector } from "../store";
-import { post } from "../vscode";
-import { Checkbox } from "./SettingsView";
-import { Icon } from "./ui";
+import type { SessionModel } from "../../../shared/protocol";
+import { modelFamily, modelGroup, sortModelsByFamily, type ModelGroup } from "../../../shared/modelVisibility";
+import { getState, useSelector } from "../../store";
+import { post } from "../../vscode";
+import { Icon } from "../ui";
+import { Checkbox, SettingRow } from "./controls";
 
 const GROUPS: ReadonlyArray<{ id: ModelGroup; title: string; blurb: string }> = [
   { id: "auto", title: "Auto", blurb: "Cursor picks the model per request, including third-party ones, and bills it as that model." },
@@ -65,7 +65,7 @@ function GroupCheckbox({ id, label, members, hidden }: { id: string; label: stri
   );
 }
 
-/** Inline model manager, shown inside the settings Models tab. */
+/** Model visibility manager, shown in the settings tab's Models section. */
 export function ManageModels() {
   const models = useSelector((s) => s.session.models);
   const settings = useSelector((s) => s.settings);
@@ -83,20 +83,33 @@ export function ManageModels() {
   const hiddenCount = all.filter((m) => hidden.includes(m.modelId)).length;
 
   return (
-    <div class="models-manager">
-      <div class="models-manager-head">
-        <span class="setting-label">Visible models</span>
-        {hiddenCount > 0 && (
-          <button type="button" class="link-button" title="Show every model again" onClick={() => setHidden([])}>
+    <SettingRow
+      id="models-show-all"
+      label="Shown in the model picker"
+      description={
+        <>
+          Untick a model to hide it from the picker. A group's box ticks or unticks all of its models. New models Cursor adds stay visible until you hide them.
+          {usageLoading ? " Checking which models are Cursor's…" : ""}
+        </>
+      }
+      settingKey="hiddenModels"
+      control={
+        hiddenCount > 0 ? (
+          <button id="models-show-all" type="button" class="button secondary small" title="Show every model again" onClick={() => setHidden([])}>
             Show all ({hiddenCount} hidden)
           </button>
-        )}
-      </div>
-      <p class="setting-desc">
-        Untick a model to hide it from the picker. A group's box ticks or unticks all of its models. New models Cursor adds stay visible until you hide them.
-        {usageLoading ? " Checking which models are Cursor's…" : ""}
-      </p>
-      {all.length === 0 && <div class="pane-empty">No models reported yet. Connect to the agent first.</div>}
+        ) : undefined
+      }
+    >
+      {all.length === 0 && (
+        <div class="list-empty">
+          No models reported yet. Connect to the agent first.{" "}
+          <button type="button" class="link-button" title="Start the agent" onClick={() => post({ type: "session.reconnect" })}>
+            Connect
+          </button>
+        </div>
+      )}
+      <div class="models-grid">
       {GROUPS.map((g) => {
         const members = all.filter((m) => modelGroup(m.modelId, cursorIds) === g.id);
         if (members.length === 0) return null;
@@ -134,6 +147,7 @@ export function ManageModels() {
           </section>
         );
       })}
-    </div>
+      </div>
+    </SettingRow>
   );
 }

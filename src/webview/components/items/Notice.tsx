@@ -1,14 +1,14 @@
 import { memo } from "preact/compat";
 import type { NoticeAction, NoticeItem } from "../../../shared/protocol";
 import { post } from "../../vscode";
-import { setSettingsOpen } from "../../store";
+import { openSettings } from "../../store";
 import { Disclosure, Icon } from "../ui";
 
 const ACTIONS: Record<NoticeAction, { label: string; icon: string; send: () => void }> = {
   reconnect: { label: "Reconnect", icon: "refresh", send: () => post({ type: "session.reconnect" }) },
   retry: { label: "Retry", icon: "debug-restart", send: () => post({ type: "session.reconnect" }) },
   newSession: { label: "New session", icon: "add", send: () => post({ type: "session.new" }) },
-  openSettings: { label: "Settings", icon: "settings-gear", send: () => setSettingsOpen(true, "agent") },
+  openSettings: { label: "Settings", icon: "settings-gear", send: () => openSettings("agent") },
   openLogs: { label: "Logs", icon: "output", send: () => post({ type: "openLogs" }) },
 };
 

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
-import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, setSettingsOpen, useSelector } from "../store";
+import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, openSettings, useSelector } from "../store";
 import { visibleModels } from "../../shared/modelVisibility";
 import { getPersisted, persist, post } from "../vscode";
 import { readImageFile } from "../attachments";
@@ -203,13 +203,13 @@ function ModelPicker() {
           <button title="Use this model and its options for new sessions" type="button" class="link-button" onClick={() => post({ type: "model.saveDefault" })}>
             <Icon name="pin" /> Set as default
           </button>
-          <button title="Choose which models appear in this list"
+          <button title="Choose which models appear in this list (opens the Models settings)"
             type="button"
             class="link-button"
             onClick={() => {
               setOpen(false);
               setFilter("");
-              setSettingsOpen(true, "models");
+              openSettings("models");
             }}
           >
             <Icon name="settings" /> Manage models…{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}

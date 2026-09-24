@@ -3,6 +3,7 @@ import type {
   AgentProbe,
   ExtensionSettings,
   ExtensionToWebview,
+  McpStatus,
   PromptAttachmentInput,
   SessionState,
   SessionSummary,
@@ -10,7 +11,8 @@ import type {
   UiSettings,
   UsageSummary,
 } from "../shared/protocol";
-import { getPersisted, persist } from "./vscode";
+import { DEFAULT_SETTINGS_SECTION, parseSettingsSection, type SettingsSection } from "../shared/settingsUi";
+import { getPersisted, persist, post } from "./vscode";
 
 // ---------------------------------------------------------------------------
 // State
@@ -50,16 +52,16 @@ export interface StoreState {
   items: Map<string, ThreadItem>;
   sessions: SessionsState;
   usage: UsageState;
-  /** Full extension settings (for the in-app settings panel). */
+  /** Full extension settings (for the settings tab and the setup card). */
   extSettings: ExtensionSettings | undefined;
   /** Last agent executable probe. */
   probe: AgentProbe | undefined;
-  /** Whether the settings view is shown in place of the transcript. */
-  settingsOpen: boolean;
   /** Whether the detailed usage view is shown in place of the transcript. */
   usageOpen: boolean;
-  /** Tab the settings view should show when it (re)opens. */
-  settingsTab: "agent" | "approvals" | "models" | "behaviour" | "advanced";
+  /** Settings tab only: the section on screen. */
+  settingsSection: SettingsSection;
+  /** Settings tab only: last MCP status check. */
+  mcp: { readonly status: McpStatus | undefined; readonly loading: boolean };
   /** Progress of a guided setup step (installer / login running in a terminal). */
   setupStatus: { phase: "idle" | "installing" | "loggingIn"; text?: string };
   /** Latest @-mention file search results. */
@@ -93,9 +95,10 @@ const state: StoreState = {
   usage: { summary: undefined, loading: false },
   extSettings: undefined,
   probe: undefined,
-  settingsOpen: false,
   usageOpen: false,
-  settingsTab: "agent",
+  // The host writes the requested (or, after a reload, the persisted) section into the page.
+  settingsSection: parseSettingsSection(document.body?.dataset.section) ?? parseSettingsSection(getPersisted().settingsSection) ?? DEFAULT_SETTINGS_SECTION,
+  mcp: { status: undefined, loading: false },
   setupStatus: { phase: "idle" },
   fileResults: undefined,
   toasts: [],
@@ -242,18 +245,22 @@ export function clearAttachments(): void {
   setAttachments([]);
 }
 
-export function setSettingsOpen(open: boolean, tab?: StoreState["settingsTab"]): void {
-  if (tab) state.settingsTab = tab;
-  if (state.settingsOpen === open && !tab) return;
-  state.settingsOpen = open;
-  if (open) state.usageOpen = false;
+/** Opens the settings editor tab (from the chat), optionally on a section. */
+export function openSettings(section?: SettingsSection): void {
+  post(section ? { type: "settings.open", section } : { type: "settings.open" });
+}
+
+/** Settings tab: switch section (remembered so a reload restores it). */
+export function setSettingsSection(section: SettingsSection): void {
+  if (state.settingsSection === section) return;
+  state.settingsSection = section;
+  persist({ settingsSection: section });
   notify();
 }
 
 export function setUsageOpen(open: boolean): void {
   if (state.usageOpen === open) return;
   state.usageOpen = open;
-  if (open) state.settingsOpen = false;
   notify();
 }
 
@@ -336,8 +343,14 @@ export function handleMessage(msg: ExtensionToWebview): void {
       break;
     }
     case "showSettings": {
-      state.settingsOpen = true;
-      state.usageOpen = false;
+      // Only the settings tab acts on this; the chat ignores it.
+      if (!msg.section) return;
+      setSettingsSection(msg.section);
+      return;
+    }
+    case "mcpStatus": {
+      // Keep the last result on screen while a refresh runs.
+      state.mcp = { status: msg.status ?? (msg.loading ? state.mcp.status : undefined), loading: msg.loading };
       break;
     }
     case "usage": {

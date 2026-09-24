@@ -4,7 +4,7 @@ import { addAttachment, addToast, focusComposer, useSelector } from "../store";
 import { post } from "../vscode";
 import { Composer } from "./Composer";
 import { Header } from "./Header";
-import { SettingsView } from "./SettingsView";
+import { SettingsApp } from "./settings/SettingsApp";
 import { Toasts } from "./Toasts";
 import { Transcript } from "./Transcript";
 import { UsageView } from "./Usage";
@@ -57,8 +57,16 @@ function useDropZone() {
   return active;
 }
 
+/** True in the settings editor tab (the host marks its page with `data-view="settings"`). */
+export function isSettingsView(): boolean {
+  return document.body.dataset.view === "settings";
+}
+
 export function App() {
-  const settingsOpen = useSelector((s) => s.settingsOpen);
+  return isSettingsView() ? <SettingsApp /> : <ChatApp />;
+}
+
+function ChatApp() {
   const usageOpen = useSelector((s) => s.usageOpen);
   const dropping = useDropZone();
   return (
@@ -70,9 +78,7 @@ export function App() {
       )}
       <Header />
       <Toasts />
-      {settingsOpen ? (
-        <SettingsView />
-      ) : usageOpen ? (
+      {usageOpen ? (
         <UsageView />
       ) : (
         <>

@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
-import { getState, setSettingsOpen, useSelector } from "../store";
+import { getState, openSettings, useSelector } from "../store";
 import { post } from "../vscode";
-import { AgentPathControl } from "./SettingsView";
+import { AgentPathControl } from "./settings/rows";
 import { Icon, Spinner } from "./ui";
 
 const SETUP_PATTERN = /not found|no such file|enoent|not logged in|log ?in|sign ?in|authenticat|unauthori[sz]ed|cannot find|is not recognized/i;
@@ -101,7 +101,7 @@ export function SetupCard() {
         <button title="Try connecting to the agent again" type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name="plug" /> Connect
         </button>
-        <button title="Open the extension settings" type="button" class="button secondary" onClick={() => setSettingsOpen(true)}>
+        <button title="Open the Agent settings in an editor tab" type="button" class="button secondary" onClick={() => openSettings("agent")}>
           All settings
         </button>
       </div>
