@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { detectProcessHome, homeCandidatesFromPs, homeFromEnviron, planPluginSync, PluginMcpSync, resolveUserMcpConfig, safeToSync, type PluginSyncSettings } from "../src/extension/pluginSync";
@@ -225,5 +225,39 @@ describe("PluginMcpSync", () => {
     await sync.setSkillsEnabled(["sentry"], true, launch);
     expect(settings.skillsExclude).toEqual([]);
     expect(existsSync(join(cursorDir, "skills", "sentry-debug-issue", "SKILL.md"))).toBe(true);
+  });
+
+  it("reads plugins from the mcpUserConfig folder but links skills into the agent HOME's own .cursor", async () => {
+    const sharedHome = join(dir, "shared");
+    const mcp = install(sharedHome);
+    const sharedCursor = dirname(mcp);
+    const skill = join(sharedCursor, "plugins", "cache", "pub", "1", "sha", "skills", "sentry-debug-issue");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(skill, "SKILL.md"), "---\ndescription: Debug\n---\n");
+    const agentHome = join(dir, "agent-home");
+    mkdirSync(join(agentHome, ".cursor"), { recursive: true });
+    const { sync, logs } = make({ mode: "off", skills: true, userConfig: mcp }, agentHome);
+
+    // Before the agent HOME is known nothing is linked (the host's home could be the shared one).
+    await sync.beforeSpawn(launch);
+    expect(existsSync(join(dir, "vscode-home", ".cursor", "skills"))).toBe(false);
+    expect(sync.agentCursorDir(launch).source).toBe("default");
+
+    expect(await sync.afterInitialize(launch, 1)).toBe(true);
+    expect(readlinkSync(join(agentHome, ".cursor", "skills", "sentry-debug-issue"))).toBe(skill);
+    expect(existsSync(join(sharedCursor, "skills"))).toBe(false);
+    expect(sync.resolve(launch)).toMatchObject({ path: mcp, source: "settings" });
+
+    // A skills folder that is a link to a shared one is left alone, and says so once.
+    const agent2 = join(dir, "agent-2");
+    mkdirSync(join(agent2, ".cursor"), { recursive: true });
+    mkdirSync(join(dir, "personal-skills"));
+    symlinkSync(join(dir, "personal-skills"), join(agent2, ".cursor", "skills"));
+    const other = make({ mode: "off", skills: true, userConfig: mcp, environment: { HOME: agent2 } });
+    await other.sync.beforeSpawn(launch);
+    await other.sync.beforeSpawn(launch);
+    expect(readdirSync(join(dir, "personal-skills"))).toEqual([]);
+    expect(other.logs.filter((l) => l.includes("not linked")).length).toBe(1);
+    expect(logs.some((l) => l.includes("not linked"))).toBe(false);
   });
 });

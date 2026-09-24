@@ -320,7 +320,7 @@ function SkillsGroup({ status, loading, settings }: { status: McpStatus | undefi
       <SettingRow
         id="plugin-skills-on"
         label="Use plugin skills"
-        description="Adds them to the / menu in chat."
+        description={status?.pluginSkillsShared ? "Skills folder is shared; plugin skills not linked." : "Adds them to the / menu in chat."}
         control={<Toggle id="plugin-skills-on" checked={enabled} title={enabled ? "Plugin skills are on" : "Plugin skills are off"} onChange={(next) => updateSetting("pluginSkills", next)} />}
       />
       {!status ? (

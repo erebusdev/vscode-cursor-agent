@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { basename } from "node:path";
 import type { McpCliServer, McpConfigFileStatus, McpForwardedServer, McpPluginServer, McpPluginSkills, McpStatus } from "../shared/protocol";
 import { discoverPluginMcpServers, isServerEnabled, readUserMcp, type PluginMcpServer } from "./session/cursorPlugins";
-import { currentSkillPlan, discoverPluginSkills } from "./session/cursorPluginSkills";
+import { currentSkillPlan, discoverPluginSkills, skillTarget, type SkillTarget } from "./session/cursorPluginSkills";
 import type { PluginMode, ResolvedUserConfig } from "./pluginSync";
 import type { McpServersResult } from "./session/mcpConfig";
 import { resolveAgentExecutable } from "./acp/resolveExecutable";
@@ -93,12 +93,18 @@ export interface PluginStatusInput {
   readonly reconnectNeeded: boolean;
   readonly skills?: boolean;
   readonly skillsExclude?: ReadonlyArray<string>;
+  /** Where plugin skills are linked (the agent's own Cursor folder). */
+  readonly skillTarget?: SkillTarget;
+}
+
+function skillTargetFallback(cursorDir: string): SkillTarget {
+  return skillTarget(cursorDir, [cursorDir]);
 }
 
 /** Per plugin: its skills and commands, which are linked now, and which names are taken. */
-export function pluginSkillsStatus(cursorDir: string, enabled: boolean, exclude: ReadonlyArray<string>): { skills: McpPluginSkills[]; errors: string[] } {
+export function pluginSkillsStatus(cursorDir: string, target: SkillTarget, enabled: boolean, exclude: ReadonlyArray<string>): { skills: McpPluginSkills[]; errors: string[]; shared: boolean } {
   const discovery = discoverPluginSkills(cursorDir);
-  const plan = currentSkillPlan(cursorDir, discovery, exclude, enabled);
+  const plan = currentSkillPlan(target, discovery, exclude, enabled);
   const byPlugin = new Map<string, { skills: string[]; commands: string[]; linked: string[]; clashes: string[] }>();
   for (const { skill, state } of plan.entries) {
     const row = byPlugin.get(skill.pluginName) ?? { skills: [], commands: [], linked: [], clashes: [] };
@@ -110,11 +116,12 @@ export function pluginSkillsStatus(cursorDir: string, enabled: boolean, exclude:
   return {
     skills: [...byPlugin].map(([pluginName, row]) => ({ pluginName, ...row, excluded: exclude.includes(pluginName) })),
     errors: [...discovery.errors],
+    shared: !!plan.shared.skill,
   };
 }
 
 /** The plugin part of the status (without CLI statuses, which are filled in once `mcp list` answered). */
-export function pluginStatus(input: PluginStatusInput): Pick<McpStatus, "plugins" | "pluginMode" | "pluginsDir" | "pluginErrors" | "userConfigPath" | "userConfigSource" | "reconnectNeeded" | "pluginSkills" | "pluginSkillsOn"> {
+export function pluginStatus(input: PluginStatusInput): Pick<McpStatus, "plugins" | "pluginMode" | "pluginsDir" | "pluginErrors" | "userConfigPath" | "userConfigSource" | "reconnectNeeded" | "pluginSkills" | "pluginSkillsOn" | "pluginSkillsShared"> {
   const discovery = discoverPluginMcpServers(input.config.cursorDir);
   const errors = [...discovery.errors];
   let current: Readonly<Record<string, unknown>> = {};
@@ -124,11 +131,12 @@ export function pluginStatus(input: PluginStatusInput): Pick<McpStatus, "plugins
     errors.unshift(error instanceof Error ? error.message : String(error));
   }
   const exclude = new Set(input.exclude);
-  const skills = pluginSkillsStatus(input.config.cursorDir, input.skills ?? false, input.skillsExclude ?? []);
+  const skills = pluginSkillsStatus(input.config.cursorDir, input.skillTarget ?? skillTargetFallback(input.config.cursorDir), input.skills ?? false, input.skillsExclude ?? []);
   for (const e of skills.errors) if (!errors.includes(e)) errors.push(e);
   return {
     pluginSkills: skills.skills,
     pluginSkillsOn: input.skills ?? false,
+    ...(skills.shared ? { pluginSkillsShared: true } : {}),
     plugins: discovery.servers.map((s) => ({
       id: s.id,
       pluginName: s.pluginName,

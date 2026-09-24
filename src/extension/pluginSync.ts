@@ -23,9 +23,8 @@
 import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { homedir as osHomedir } from "node:os";
-import { existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
-import { applySkillPlan, currentSkillPlan, discoverPluginSkills } from "./session/cursorPluginSkills";
+import { applySkillPlan, currentSkillPlan, discoverPluginSkills, skillTarget, type SkillTarget } from "./session/cursorPluginSkills";
 import { discoverPluginMcpServers, isServerEnabled, readUserMcp, setPluginServers, type PluginDiscovery, type PluginMcpServer } from "./session/cursorPlugins";
 
 export type PluginMode = "auto" | "manual" | "off";
@@ -283,6 +282,7 @@ export class PluginMcpSync {
   private readonly homes = new Map<string, string>();
   /** Plugin skills and commands linked by the last skills sync, by slash command name. */
   private readonly linkedCommands = new Map<string, PluginCommandInfo>();
+  private readonly loggedShared = new Set<string>();
   private lastLaunch: LaunchIdentity | undefined;
   /** The file changed after the running agent read it (cleared when the agent restarts). */
   reconnectNeeded = false;
@@ -315,72 +315,99 @@ export class PluginMcpSync {
     await this.deps.store.update(MANAGED_KEY, all);
   }
 
-  /** Before spawning: sync when the file is already known (setting, environment setting or a remembered HOME). */
+  /**
+   * The agent's own Cursor folder, where plugin skills are linked: HOME in the
+   * environment setting, else the HOME seen on the agent process, else the
+   * extension host's home. Never the `mcpUserConfig` folder, which may be shared.
+   */
+  agentCursorDir(launch: LaunchIdentity | undefined = this.lastLaunch): { cursorDir: string; source: "environment" | "agent" | "default" } {
+    const settings = this.deps.settings();
+    const home = this.deps.homedir?.() ?? osHomedir();
+    const envHome = homeFromEnvironmentSetting(settings.environment, this.deps.windows ?? process.platform === "win32");
+    if (envHome) return { cursorDir: join(expandHome(envHome, home), ".cursor"), source: "environment" };
+    const agentHome = launch ? this.homes.get(launchKey(launch)) : undefined;
+    if (agentHome) return { cursorDir: join(agentHome, ".cursor"), source: "agent" };
+    return { cursorDir: join(home, ".cursor"), source: "default" };
+  }
+
+  /** Where plugin skills are linked, and every plugins folder their links may point into. */
+  skillTarget(launch: LaunchIdentity | undefined = this.lastLaunch, config: ResolvedUserConfig = this.resolve(launch)): SkillTarget {
+    const linkDir = this.agentCursorDir(launch).cursorDir;
+    return skillTarget(linkDir, [config.cursorDir, linkDir]);
+  }
+
+  /** Before spawning: sync what is already known (MCP file from settings or a remembered HOME; skills once the agent HOME is known). */
   async beforeSpawn(launch: LaunchIdentity): Promise<void> {
     this.lastLaunch = launch;
     this.reconnectNeeded = false;
     const config = this.resolve(launch);
-    if (config.source === "default") return;
-    await this.syncLogged(config);
+    const skillsKnown = this.agentCursorDir(launch).source !== "default";
+    if (config.source === "default" && !skillsKnown) return;
+    await this.syncLogged(config.source === "default" ? undefined : config, skillsKnown ? this.skillTarget(launch, config) : undefined);
   }
 
   /**
-   * After `initialize`: learn the agent's HOME and sync if that points at a
-   * different file than before. Returns true when the file changed, so the
-   * caller restarts the agent once to load it.
+   * After `initialize`: learn the agent's HOME and sync if that points at
+   * different folders than before. Returns true when something changed, so
+   * the caller restarts the agent once to load it.
    */
   async afterInitialize(launch: LaunchIdentity, pid: number | undefined): Promise<boolean> {
     this.lastLaunch = launch;
-    const before = this.resolve(launch);
-    if (before.source === "settings" || before.source === "environment") return false;
+    // HOME in the environment setting: everything was known, and synced, before spawning.
+    if (this.agentCursorDir(launch).source === "environment") return false;
     const key = launchKey(launch);
     const detected = await (this.deps.detectHome ?? ((p) => detectProcessHome(p)))(pid);
     if (!detected) {
-      // Not readable (Windows, or ps failed): the remembered or default file; a no-op when beforeSpawn already synced it.
-      return (await this.syncLogged(before)).changed;
+      // Not readable (Windows, or ps failed): the remembered or default folders; a no-op when beforeSpawn already synced them.
+      return (await this.syncLogged(this.resolve(launch), this.skillTarget(launch))).changed;
     }
     if (this.homes.get(key) === detected) return false;
     this.homes.set(key, detected);
     const stored = { ...(this.deps.store.get<Record<string, string>>(HOMES_KEY) ?? {}), [key]: detected };
     await this.deps.store.update(HOMES_KEY, stored);
     this.deps.log.info(`Agent HOME read from the agent process: ${detected}`);
-    return (await this.syncLogged(this.resolve(launch))).changed;
+    return (await this.syncLogged(this.resolve(launch), this.skillTarget(launch))).changed;
   }
 
   /** Connect-time sync: MCP servers in auto mode, then plugin skills. Changed when either changed. */
-  private async syncLogged(config: ResolvedUserConfig): Promise<{ changed: boolean }> {
+  private async syncLogged(config: ResolvedUserConfig | undefined, target: SkillTarget | undefined): Promise<{ changed: boolean }> {
     let changed = false;
-    if (this.deps.settings().mode === "auto") {
+    if (config && this.deps.settings().mode === "auto") {
       const outcome = await this.sync(config);
       if (outcome.error) this.deps.log.warn(`Cursor plugin MCP servers: ${outcome.error}`);
       if (outcome.added.length) this.deps.log.info(`Added Cursor plugin MCP servers to ${config.path}: ${outcome.added.join(", ")}`);
       if (outcome.removed.length) this.deps.log.info(`Removed Cursor plugin MCP servers from ${config.path}: ${outcome.removed.join(", ")}`);
       changed = outcome.changed;
     }
-    const skills = this.syncSkills(config);
-    return { changed: changed || skills.changed };
+    if (target) changed = this.syncSkills(this.resolve(this.lastLaunch), target).changed || changed;
+    return { changed };
   }
 
   /**
-   * Links the plugin skills and commands into the agent's Cursor folder, or
-   * removes the links when the feature is off. Logs what it did.
+   * Links the plugin skills and commands (found next to the MCP config) into
+   * the agent's own Cursor folder, or removes the links when the feature is
+   * off. Shared folders are left alone. Logs what it did.
    */
-  syncSkills(config: ResolvedUserConfig = this.resolve()): SyncOutcome {
+  syncSkills(config: ResolvedUserConfig = this.resolve(), target: SkillTarget = this.skillTarget(this.lastLaunch, config)): SyncOutcome {
     const settings = this.deps.settings();
     const enabled = settings.skills ?? false;
     this.linkedCommands.clear();
-    if (!existsSync(join(config.cursorDir, "plugins"))) return UNCHANGED;
     try {
       const discovery = discoverPluginSkills(config.cursorDir);
-      const plan = currentSkillPlan(config.cursorDir, discovery, settings.skillsExclude ?? [], enabled, this.deps.windows);
-      const result = applySkillPlan(config.cursorDir, plan, this.deps.windows);
+      const plan = currentSkillPlan(target, discovery, settings.skillsExclude ?? [], enabled, this.deps.windows);
+      for (const reason of Object.values(plan.shared)) {
+        if (!reason || this.loggedShared.has(reason)) continue;
+        this.loggedShared.add(reason);
+        this.deps.log.info(`Plugin skills not linked: ${reason}`);
+      }
+      const result = applySkillPlan(target, plan, this.deps.windows);
       const added = new Set(result.added.map((n) => n.replace(/[.]md$/, "")));
       for (const { skill, state } of plan.entries) {
         if (state === "linked" || (state === "missing" && added.has(skill.name))) this.linkedCommands.set(skill.name, { pluginName: skill.pluginName, ...(skill.description ? { description: skill.description } : {}) });
       }
       for (const error of result.errors) this.deps.log.warn(`Cursor plugin skills: ${error}`);
-      if (result.added.length) this.deps.log.info(`Linked Cursor plugin skills into ${config.cursorDir}: ${result.added.join(", ")}`);
-      if (result.removed.length) this.deps.log.info(`Removed Cursor plugin skill links from ${config.cursorDir}: ${result.removed.join(", ")}`);
+      if (result.added.length) this.deps.log.info(`Linked Cursor plugin skills into ${target.linkDir}: ${result.added.join(", ")}`);
+      if (result.removed.length) this.deps.log.info(`Removed Cursor plugin skill links from ${target.linkDir}: ${result.removed.join(", ")}`);
       const clashes = plan.entries.filter((e) => e.state === "clash").map((e) => `${e.skill.pluginName}/${e.skill.name}`);
       if (clashes.length) this.deps.log.info(`Plugin skills skipped because the name is taken: ${clashes.join(", ")}`);
       return { changed: result.changed, added: result.added, removed: result.removed, ...(result.errors.length ? { error: result.errors.join("; ") } : {}) };
@@ -405,7 +432,8 @@ export class PluginMcpSync {
       if (!enabled) exclude.add(plugin);
     }
     await this.deps.setSkillsExclude?.([...exclude].sort());
-    const outcome = this.syncSkills(this.resolve(launch ?? this.lastLaunch));
+    const which = launch ?? this.lastLaunch;
+    const outcome = this.syncSkills(this.resolve(which), this.skillTarget(which));
     if (outcome.changed) this.reconnectNeeded = true;
     return outcome;
   }

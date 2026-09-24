@@ -555,6 +555,8 @@ export interface McpStatus {
   /** Plugins that come with skills or commands, and whether linking them is on. */
   readonly pluginSkills?: ReadonlyArray<McpPluginSkills>;
   readonly pluginSkillsOn?: boolean;
+  /** The agent's skills folder is shared (a link or a git repository), so nothing is linked into it. */
+  readonly pluginSkillsShared?: boolean;
 }
 
 // ---------------------------------------------------------------------------

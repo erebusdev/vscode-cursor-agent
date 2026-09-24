@@ -80,7 +80,7 @@ async function mcpStatus(cwd: string | undefined, log: { warn(m: string): void }
       ? {
           plugins: () => {
             const settings = pluginSettings();
-            return { mode: settings.mode, exclude: settings.exclude, config: sync.resolve(launch), reconnectNeeded: sync.reconnectNeeded, skills: settings.skills, skillsExclude: settings.skillsExclude };
+            return { mode: settings.mode, exclude: settings.exclude, config: sync.resolve(launch), reconnectNeeded: sync.reconnectNeeded, skills: settings.skills, skillsExclude: settings.skillsExclude, skillTarget: sync.skillTarget(launch) };
           },
         }
       : {}),
@@ -204,7 +204,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (outcome.error) throw new Error(outcome.error);
     },
     syncPluginSkills: async () => {
-      const outcome = sync.syncSkills(sync.resolve(launchConfig()));
+      const launch = launchConfig();
+      const outcome = sync.syncSkills(sync.resolve(launch), sync.skillTarget(launch));
       if (outcome.changed) sync.reconnectNeeded = true;
       if (outcome.error) throw new Error(outcome.error);
     },

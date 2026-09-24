@@ -9,8 +9,14 @@
  * each plugin command into `commands/` (not on Windows, where file links need
  * extra rights).
  *
+ * Plugins are read from the Cursor folder that holds them (it may be shared
+ * through the `cursorAcp.mcpUserConfig` setting); links always go into the
+ * agent's own `<agent HOME>/.cursor`. A skills or commands folder that is
+ * itself a link, or that sits in a git repository, is shared with something
+ * else and is never written to.
+ *
  * Ownership: an entry is the extension's iff it is a link whose target lies
- * inside `<cursor dir>/plugins/`. Real folders and files, and links anywhere
+ * inside a known plugins folder. Real folders and files, and links anywhere
  * else, are the user's and are never touched; a plugin skill whose name is
  * taken by one of them is skipped and reported.
  *
@@ -205,6 +211,35 @@ export function readLinkEntries(dir: string, kind: PluginSkillKind, pluginsDirs:
 
 export type SkillState = "linked" | "missing" | "clash" | "off";
 
+/**
+ * Why a skills or commands folder must not be written to, or undefined when
+ * it is the agent's own: it is a link (the whole folder shared), or it lies in
+ * a git repository (the folder or its parent has `.git`, unless the parent is
+ * the agent's Cursor folder itself). A missing folder is fine: it is created.
+ */
+export function sharedFolderReason(dir: string, agentCursorDir: string): string | undefined {
+  try {
+    if (lstatSync(dir).isSymbolicLink()) return `${dir} is a link to a shared folder`;
+  } catch {
+    return undefined;
+  }
+  try {
+    const real = realpathSync(dir);
+    if (real !== join(realpathSync(dirname(dir)), basename(dir))) return `${dir} is a link to a shared folder`;
+    if (existsSync(join(real, ".git"))) return `${dir} is a git repository`;
+    let cursorReal = agentCursorDir;
+    try {
+      cursorReal = realpathSync(agentCursorDir);
+    } catch {
+      // Not there yet.
+    }
+    if (dirname(real) !== cursorReal && existsSync(join(dirname(real), ".git"))) return `${dir} is inside a git repository`;
+  } catch {
+    return `${dir} could not be checked`;
+  }
+  return undefined;
+}
+
 export interface SkillPlanEntry {
   readonly skill: PluginSkill;
   /** linked: in place; missing: will be linked; clash: the name is taken; off: switched off. */
@@ -228,6 +263,8 @@ export interface SkillPlanInput {
   readonly enabled: boolean;
   /** Commands are not linked on Windows (file links need extra rights there). */
   readonly commandsSupported?: boolean;
+  /** Folders that must not be written to (shared): their kind is left alone entirely. */
+  readonly blocked?: { readonly skill?: boolean; readonly command?: boolean };
   readonly targetExists?: (path: string) => boolean;
   readonly windows?: boolean;
 }
@@ -257,7 +294,7 @@ export function planSkillSync(input: SkillPlanInput): SkillSyncPlan {
   const claimed = { skill: new Set<string>(), command: new Set<string>() };
   for (const skill of input.discovery.skills) {
     if (skill.kind === "command" && !commandsSupported) continue;
-    if (!input.enabled || isExcluded(skill, input.exclude)) {
+    if (!input.enabled || isExcluded(skill, input.exclude) || input.blocked?.[skill.kind]) {
       entries.push({ skill, state: "off" });
       continue;
     }
@@ -279,6 +316,7 @@ export function planSkillSync(input: SkillPlanInput): SkillSyncPlan {
   const known = { skill: new Set<string>(), command: new Set<string>() };
   for (const s of input.discovery.skills) known[s.kind].add(s.name);
   for (const kind of ["skill", "command"] as const) {
+    if (input.blocked?.[kind]) continue;
     for (const [name, entry] of kind === "skill" ? input.skills : input.commands) {
       if (!entry.managed || kept[kind].has(name)) continue;
       // Keep links of plugins that are listed but not downloaded yet, unless they are broken.
@@ -308,26 +346,46 @@ export function commandsDir(cursorDir: string): string {
   return join(cursorDir, "commands");
 }
 
-/** Reads both folders and plans against them. */
-export function currentSkillPlan(cursorDir: string, discovery: PluginSkillDiscovery, exclude: ReadonlyArray<string>, enabled: boolean, windows = process.platform === "win32"): SkillSyncPlan {
-  const dirs = pluginsDirVariants(cursorDir);
-  return planSkillSync({
+export interface SkillTarget {
+  /** The agent's own Cursor folder (`<agent HOME>/.cursor`): links go into its `skills/` and `commands/`. */
+  readonly linkDir: string;
+  /** Every plugins folder a link of ours may point into (the discovery one and the agent's own). */
+  readonly pluginsDirs: ReadonlyArray<string>;
+}
+
+export function skillTarget(linkDir: string, pluginsCursorDirs: ReadonlyArray<string>): SkillTarget {
+  return { linkDir, pluginsDirs: [...new Set(pluginsCursorDirs.flatMap(pluginsDirVariants))] };
+}
+
+export interface CurrentSkillPlan extends SkillSyncPlan {
+  /** Why nothing is written to the skills or commands folder, when it is shared. */
+  readonly shared: { readonly skill?: string; readonly command?: string };
+}
+
+/** Reads both folders and plans against them; shared folders are left out. */
+export function currentSkillPlan(target: SkillTarget, discovery: PluginSkillDiscovery, exclude: ReadonlyArray<string>, enabled: boolean, windows = process.platform === "win32"): CurrentSkillPlan {
+  const skillReason = sharedFolderReason(skillsDir(target.linkDir), target.linkDir);
+  const commandReason = sharedFolderReason(commandsDir(target.linkDir), target.linkDir);
+  const plan = planSkillSync({
     discovery,
-    skills: readLinkEntries(skillsDir(cursorDir), "skill", dirs, windows),
-    commands: readLinkEntries(commandsDir(cursorDir), "command", dirs, windows),
+    skills: skillReason ? new Map() : readLinkEntries(skillsDir(target.linkDir), "skill", target.pluginsDirs, windows),
+    commands: commandReason ? new Map() : readLinkEntries(commandsDir(target.linkDir), "command", target.pluginsDirs, windows),
     exclude,
     enabled,
     windows,
+    blocked: { skill: !!skillReason, command: !!commandReason },
   });
+  return { ...plan, shared: { ...(skillReason ? { skill: skillReason } : {}), ...(commandReason ? { command: commandReason } : {}) } };
 }
 
 /** Removes and creates the links of a plan. Each failure is reported and the rest carries on. */
-export function applySkillPlan(cursorDir: string, plan: SkillSyncPlan, windows = process.platform === "win32"): SkillSyncResult {
+export function applySkillPlan(target: SkillTarget, plan: SkillSyncPlan, windows = process.platform === "win32"): SkillSyncResult {
+  const cursorDir = target.linkDir;
   const added: string[] = [];
   const removed: string[] = [];
   const errors: string[] = [];
   const pathOf = (kind: PluginSkillKind, name: string) => (kind === "skill" ? join(skillsDir(cursorDir), name) : join(commandsDir(cursorDir), `${name}.md`));
-  const dirs = pluginsDirVariants(cursorDir);
+  const dirs = target.pluginsDirs;
   for (const { kind, name } of plan.remove) {
     const path = pathOf(kind, name);
     try {
@@ -343,6 +401,9 @@ export function applySkillPlan(cursorDir: string, plan: SkillSyncPlan, windows =
     const path = pathOf(skill.kind, skill.name);
     try {
       mkdirSync(dirname(path), { recursive: true });
+      // Re-check right before writing: never into a shared folder.
+      const reason = sharedFolderReason(dirname(path), cursorDir);
+      if (reason) throw new Error(reason);
       if (skill.kind === "skill" && !statSync(skill.source).isDirectory()) throw new Error("not a folder");
       symlinkSync(skill.source, path, skill.kind === "skill" ? (windows ? "junction" : "dir") : "file");
       added.push(skill.kind === "skill" ? skill.name : `${skill.name}.md`);
