@@ -118,7 +118,7 @@ describe("PluginMcpSync", () => {
       log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
       detectHome: async () => detected,
       homedir: () => join(dir, "vscode-home"),
-      windows: false,
+      windows: process.platform === "win32",
     });
     return { sync, state, logs, settings: current };
   }

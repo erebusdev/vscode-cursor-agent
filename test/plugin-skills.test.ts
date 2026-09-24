@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { applySkillPlan, currentSkillPlan, discoverPluginSkills, frontmatterDescription, isPluginTarget, planSkillSync, readLinkEntries, sharedFolderReason, skillTarget, type LinkEntry, type PluginSkill } from "../src/extension/session/cursorPluginSkills";
+
+/** Filesystem tests run with the host's rules; Windows links folders as junctions, which need absolute targets. */
+const WIN = process.platform === "win32";
+/** Commands are single files; Windows needs extra rights to link files, so the extension skips them there. */
+const onHost = (names: string[]) => (WIN ? names.filter((n) => !n.endsWith(".md")) : names);
+function link(target: string, path: string): void {
+  symlinkSync(WIN ? resolve(dirname(path), target) : target, path, WIN ? "junction" : "dir");
+}
 
 let dir: string;
 let cursorDir: string;
@@ -107,11 +115,11 @@ describe("ownership of skills entries", () => {
     const skills = join(cursorDir, "skills");
     mkdirSync(join(skills, "my-own"), { recursive: true });
     mkdirSync(join(dir, "elsewhere", "shared"), { recursive: true });
-    symlinkSync(join(dir, "elsewhere", "shared"), join(skills, "shared"));
-    symlinkSync(join(pluginRoot("579"), "skills", "sentry-debug-issue"), join(skills, "sentry-debug-issue"));
+    link(join(dir, "elsewhere", "shared"), join(skills, "shared"));
+    link(join(pluginRoot("579"), "skills", "sentry-debug-issue"), join(skills, "sentry-debug-issue"));
     // Relative link into plugins counts too.
-    symlinkSync(join("..", "plugins", "cache", "cursor-public", "407", "sha1", "skills", "wrangler"), join(skills, "wrangler"));
-    const entries = readLinkEntries(skills, "skill", [join(cursorDir, "plugins")], false);
+    link(join("..", "plugins", "cache", "cursor-public", "407", "sha1", "skills", "wrangler"), join(skills, "wrangler"));
+    const entries = readLinkEntries(skills, "skill", [join(cursorDir, "plugins")], WIN);
     expect(entries.get("my-own")).toEqual({ managed: false });
     expect(entries.get("shared")).toEqual({ managed: false });
     expect(entries.get("sentry-debug-issue")).toEqual({ managed: true, target: join(pluginRoot("579"), "skills", "sentry-debug-issue") });
@@ -188,34 +196,34 @@ describe("applying the skill sync", () => {
     mkdirSync(join(cursorDir, "skills", "wrangler"), { recursive: true }); // the user's own skill of the same name
     write(join(cursorDir, "skills", "wrangler", "SKILL.md"), skillMd("Mine"));
     const discovery = discoverPluginSkills(cursorDir);
-    const plan = currentSkillPlan(own(), discovery, [], true, false);
+    const plan = currentSkillPlan(own(), discovery, [], true, WIN);
     expect(plan.entries.filter((e) => e.state === "clash").map((e) => e.skill.name)).toEqual(["wrangler"]);
-    const result = applySkillPlan(own(), plan, false);
+    const result = applySkillPlan(own(), plan, WIN);
     expect(result.errors).toEqual([]);
-    expect(result.added).toEqual(["build-agent.md", "docs-canvas", "sentry-debug-issue", "sentry-get-started"]);
+    expect(result.added).toEqual(onHost(["build-agent.md", "docs-canvas", "sentry-debug-issue", "sentry-get-started"]));
     expect(readlinkSync(join(cursorDir, "skills", "sentry-debug-issue"))).toBe(join(pluginRoot("579"), "skills", "sentry-debug-issue"));
     expect(existsSync(join(cursorDir, "skills", "sentry-debug-issue", "SKILL.md"))).toBe(true);
-    expect(lstatSync(join(cursorDir, "commands", "build-agent.md")).isSymbolicLink()).toBe(true);
+    if (!WIN) expect(lstatSync(join(cursorDir, "commands", "build-agent.md")).isSymbolicLink()).toBe(true);
 
     // Nothing left to do.
-    const again = currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, false);
+    const again = currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, WIN);
     expect(again.add).toEqual([]);
     expect(again.remove).toEqual([]);
 
-    const off = applySkillPlan(own(), currentSkillPlan(own(), discovery, [], false, false), false);
-    expect(off.removed).toEqual(["docs-canvas", "sentry-debug-issue", "sentry-get-started", "build-agent.md"]);
+    const off = applySkillPlan(own(), currentSkillPlan(own(), discovery, [], false, WIN), WIN);
+    expect(off.removed).toEqual(onHost(["docs-canvas", "sentry-debug-issue", "sentry-get-started", "build-agent.md"]));
     expect(existsSync(join(cursorDir, "skills", "wrangler", "SKILL.md"))).toBe(true);
     expect(existsSync(join(cursorDir, "skills", "sentry-debug-issue"))).toBe(false);
   });
 
   it("relinks when a plugin moves to a new version", () => {
     fixture();
-    applySkillPlan(own(), currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, false), false);
+    applySkillPlan(own(), currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, WIN), WIN);
     write(join(pluginRoot("579", "sha2"), "skills", "sentry-debug-issue", "SKILL.md"), skillMd("New"));
     manifest([{ name: "sentry", pluginId: "579", sha: "sha2", skill: ["skills/sentry-debug-issue/SKILL.md"] }]);
-    const result = applySkillPlan(own(), currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, false), false);
+    const result = applySkillPlan(own(), currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, WIN), WIN);
     expect(result.added).toEqual(["sentry-debug-issue"]);
-    expect([...result.removed].sort()).toEqual(["build-agent.md", "docs-canvas", "sentry-debug-issue", "sentry-get-started", "wrangler"]);
+    expect([...result.removed].sort()).toEqual(onHost(["build-agent.md", "docs-canvas", "sentry-debug-issue", "sentry-get-started", "wrangler"]));
     expect(readlinkSync(join(cursorDir, "skills", "sentry-debug-issue"))).toBe(join(pluginRoot("579", "sha2"), "skills", "sentry-debug-issue"));
   });
 });
@@ -226,19 +234,19 @@ describe("where plugin skills are linked", () => {
     const agentCursor = join(dir, "agent-home", ".cursor");
     mkdirSync(join(agentCursor, "plugins"), { recursive: true });
     const target = skillTarget(agentCursor, [cursorDir, agentCursor]);
-    const result = applySkillPlan(target, currentSkillPlan(target, discoverPluginSkills(cursorDir), [], true, false), false);
+    const result = applySkillPlan(target, currentSkillPlan(target, discoverPluginSkills(cursorDir), [], true, WIN), WIN);
     expect(result.errors).toEqual([]);
     expect(readlinkSync(join(agentCursor, "skills", "wrangler"))).toBe(join(pluginRoot("407"), "skills", "wrangler"));
     expect(existsSync(join(cursorDir, "skills"))).toBe(false);
     expect(existsSync(join(cursorDir, "commands"))).toBe(false);
     // A link into the agent's own plugins folder is ours too.
     mkdirSync(join(agentCursor, "plugins", "x", "old"), { recursive: true });
-    symlinkSync(join(agentCursor, "plugins", "x", "old"), join(agentCursor, "skills", "old-skill"));
-    const again = currentSkillPlan(target, discoverPluginSkills(cursorDir), [], true, false);
+    link(join(agentCursor, "plugins", "x", "old"), join(agentCursor, "skills", "old-skill"));
+    const again = currentSkillPlan(target, discoverPluginSkills(cursorDir), [], true, WIN);
     expect(again.add).toEqual([]);
     expect(again.remove).toEqual([{ kind: "skill", name: "old-skill" }]);
     // Knowing only the agent's plugins folder, links into the shared one are foreign and never removed.
-    const narrow = currentSkillPlan(skillTarget(agentCursor, [agentCursor]), discoverPluginSkills(cursorDir), [], false, false);
+    const narrow = currentSkillPlan(skillTarget(agentCursor, [agentCursor]), discoverPluginSkills(cursorDir), [], false, WIN);
     expect(narrow.remove).toEqual([{ kind: "skill", name: "old-skill" }]);
   });
 
@@ -247,18 +255,18 @@ describe("where plugin skills are linked", () => {
     const shared = join(dir, "shared-skills");
     mkdirSync(join(shared, "mine"), { recursive: true });
     mkdirSync(cursorDir, { recursive: true });
-    symlinkSync(shared, join(cursorDir, "skills"));
-    const plan = currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, false);
+    link(shared, join(cursorDir, "skills"));
+    const plan = currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, WIN);
     expect(plan.shared.skill).toMatch(/link to a shared folder/);
     expect(plan.shared.command).toBeUndefined();
-    const result = applySkillPlan(own(), plan, false);
-    expect(result.added).toEqual(["build-agent.md"]); // the real commands folder still gets its link
+    const result = applySkillPlan(own(), plan, WIN);
+    expect(result.added).toEqual(onHost(["build-agent.md"])); // the real commands folder still gets its link
     expect(readdirSync(shared)).toEqual(["mine"]);
 
     rmSync(join(cursorDir, "skills"));
     mkdirSync(join(cursorDir, "skills", ".git"), { recursive: true });
     expect(sharedFolderReason(join(cursorDir, "skills"), cursorDir)).toMatch(/git repository/);
-    expect(currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, false).add.map((s) => s.name)).toEqual([]);
+    expect(currentSkillPlan(own(), discoverPluginSkills(cursorDir), [], true, WIN).add.map((s) => s.name)).toEqual([]);
     rmSync(join(cursorDir, "skills", ".git"), { recursive: true });
     // A repository around the skills folder that is not the agent's Cursor folder counts too.
     const repo = join(dir, "repo");
