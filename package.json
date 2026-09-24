@@ -2,7 +2,7 @@
   "name": "cursor-agent",
   "displayName": "Cursor Agent (VSCode ACP)",
   "description": "The Cursor Agent CLI inside VS Code: streaming chat, tool calls, diffs, permissions, sessions.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "erebuslabs",
   "license": "MIT",
   "author": {
