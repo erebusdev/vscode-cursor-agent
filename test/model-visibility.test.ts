@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isModelHidden, modelGroup, visibleModels } from "../src/shared/modelVisibility";
+import { isModelHidden, modelFamily, modelGroup, sortModelsByFamily, visibleModels } from "../src/shared/modelVisibility";
 
 const models = [{ modelId: "auto-smart" }, { modelId: "composer-2" }, { modelId: "grok-4.7" }, { modelId: "claude-opus-5-5" }, { modelId: "gpt-5.5" }];
 const cursorIds = ["default", "composer-2", "composer-2-fast", "grok-4.5", "grok-4.5-high"];
@@ -24,5 +24,16 @@ describe("model visibility", () => {
 
   it("shows everything when nothing is hidden, so new models appear by default", () => {
     expect(visibleModels(models, undefined, { hiddenModels: [] })).toHaveLength(models.length);
+  });
+});
+
+describe("family ordering", () => {
+  it("derives families and keeps them together, newest first", () => {
+    expect(modelFamily("claude-opus-5-5")).toBe("claude-opus");
+    expect(modelFamily("gpt-5.5")).toBe("gpt");
+    expect(modelFamily("grok-4.7[context=256k]")).toBe("grok");
+    expect(modelFamily("auto-smart")).toBe("auto");
+    const ids = ["gpt-5", "claude-sonnet-4-5", "grok-4.5", "claude-sonnet-5", "gpt-5.5", "auto-smart", "grok-4.7"];
+    expect(sortModelsByFamily(ids.map((modelId) => ({ modelId }))).map((m) => m.modelId)).toEqual(["auto-smart", "claude-sonnet-5", "claude-sonnet-4-5", "gpt-5.5", "gpt-5", "grok-4.7", "grok-4.5"]);
   });
 });

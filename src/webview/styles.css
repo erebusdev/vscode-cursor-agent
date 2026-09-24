@@ -2279,6 +2279,14 @@ button.chip:disabled {
   font-size: 11px;
   color: var(--muted);
 }
+.models-family {
+  margin: 6px 0 1px 26px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
 .models-row {
   display: flex;
   align-items: center;

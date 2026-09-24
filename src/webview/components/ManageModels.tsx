@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { SessionModel } from "../../shared/protocol";
-import { modelGroup, type ModelGroup } from "../../shared/modelVisibility";
+import { modelFamily, modelGroup, sortModelsByFamily, type ModelGroup } from "../../shared/modelVisibility";
 import { getState, setModelsOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Checkbox } from "./SettingsView";
@@ -124,9 +124,27 @@ export function ManageModelsView() {
                 <span class="models-group-count">{members.filter((m) => !hidden.includes(m.modelId)).length}/{members.length}</span>
               </div>
               <p class="pane-note">{g.blurb}</p>
-              {members.map((m) => (
-                <ModelRow key={m.modelId} model={m} current={m.modelId === models?.currentModelId} hidden={hidden.includes(m.modelId)} />
-              ))}
+              {(() => {
+                const sorted = sortModelsByFamily(members);
+                const counts = new Map<string, number>();
+                for (const m of sorted) counts.set(modelFamily(m.modelId), (counts.get(modelFamily(m.modelId)) ?? 0) + 1);
+                let lastFamily = "";
+                return sorted.map((m) => {
+                  const family = modelFamily(m.modelId);
+                  const showLabel = family !== lastFamily && (counts.get(family) ?? 0) > 1;
+                  lastFamily = family;
+                  return (
+                    <>
+                      {showLabel && (
+                        <div key={`fam-${family}`} class="models-family">
+                          {family.replace(/-/g, " ")}
+                        </div>
+                      )}
+                      <ModelRow key={m.modelId} model={m} current={m.modelId === models?.currentModelId} hidden={hidden.includes(m.modelId)} />
+                    </>
+                  );
+                });
+              })()}
             </section>
           );
         })}
