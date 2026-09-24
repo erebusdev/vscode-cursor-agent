@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { AgentProbe, ExtensionSettings, SettingsKey } from "../../shared/protocol";
-import { setSettingsOpen, useSelector } from "../store";
+import { setModelsOpen, setSettingsOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Icon, IconButton, Spinner } from "./ui";
 
@@ -409,6 +409,64 @@ function SafeListRow({ settings }: { settings: ExtensionSettings }) {
   );
 }
 
+function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) {
+  const [saved, flash] = useSavedFlash();
+  const models = useSelector((s) => s.session.models);
+  const modelOptions = useSelector((s) => s.session.modelOptions);
+  const name = settings.defaultModel ? (models?.availableModels.find((m) => m.modelId === settings.defaultModel)?.name ?? settings.defaultModel) : "Cursor's current default";
+  const opts = Object.entries(settings.defaultModelOptions);
+  const currentName = models ? (models.availableModels.find((m) => m.modelId === models.currentModelId)?.name ?? models.currentModelId) : undefined;
+  return (
+    <SettingRow
+      id="setting-defaultModel"
+      settingKey="defaultModel"
+      label="Defaults for new sessions"
+      description="Every new session starts with this model and these options. Changes made inside a session apply to that session only."
+      source={settings.sources.defaultModel !== "default" ? settings.sources.defaultModel : settings.sources.defaultModelOptions}
+      saved={saved}
+    >
+      <div class="model-defaults">
+        <div class="model-defaults-line">
+          <span class="model-defaults-key">Model</span>
+          <span class="model-defaults-value">{name}</span>
+        </div>
+        <div class="model-defaults-line">
+          <span class="model-defaults-key">Options</span>
+          <span class="model-defaults-value">{opts.length ? opts.map(([k, v]) => `${k}: ${typeof v === "boolean" ? (v ? "on" : "off") : v}`).join(" · ") : "none"}</span>
+        </div>
+        <div class="settings-links">
+          <button
+            title={currentName ? `Use ${currentName}${modelOptions.length ? " and its current options" : ""} for new sessions` : "Connect to a session first"}
+            type="button"
+            class="link-button"
+            disabled={!models}
+            onClick={() => {
+              post({ type: "model.saveDefault" });
+              flash();
+            }}
+          >
+            <Icon name="pin" /> Use the current session's model and options
+          </button>
+          {(settings.defaultModel || opts.length > 0) && (
+            <button
+              title="Let new sessions use whatever the Cursor CLI defaults to"
+              type="button"
+              class="link-button"
+              onClick={() => {
+                updateSetting("defaultModel", "");
+                updateSetting("defaultModelOptions", {});
+                flash();
+              }}
+            >
+              <Icon name="discard" /> Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </SettingRow>
+  );
+}
+
 type BoolKey = "resumeLastSession" | "sendWithCtrlEnter" | "showThoughts" | "notifyWhenHidden" | "protocolLogging";
 
 function BoolRow({ settings, k, label, description }: { settings: ExtensionSettings; k: BoolKey; label: string; description: ComponentChildren }) {
@@ -571,6 +629,18 @@ export function SettingsView() {
               </h3>
               <ApprovalPolicyRow settings={settings} />
               <SafeListRow settings={settings} />
+            </section>
+
+            <section class="settings-section" aria-labelledby="settings-models">
+              <h3 id="settings-models" class="settings-heading">
+                Models
+              </h3>
+              <ModelDefaultsRow settings={settings} />
+              <div class="settings-links">
+                <button title="Choose which models appear in the picker" type="button" class="link-button" onClick={() => setModelsOpen(true)}>
+                  <Icon name="list-selection" /> Manage visible models
+                </button>
+              </div>
             </section>
 
             <section class="settings-section" aria-labelledby="settings-behaviour">

@@ -289,6 +289,18 @@ export class ChatHost implements vscode.Disposable {
         case "approvals.set":
           this.runtime.setApprovalPolicy(message.policy);
           return;
+        case "model.saveDefault": {
+          const state = this.runtime.state;
+          if (!state.models) return;
+          const options: Record<string, string | boolean> = {};
+          for (const o of state.modelOptions) options[o.id] = o.currentValue;
+          await updateExtensionSetting("defaultModel", state.models.currentModelId);
+          await updateExtensionSetting("defaultModelOptions", options);
+          this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+          const name = state.models.availableModels.find((m) => m.modelId === state.models!.currentModelId)?.name ?? state.models.currentModelId;
+          this.send({ type: "toast", level: "info", text: `New sessions will start with ${name}${Object.keys(options).length ? " and its current options" : ""}.` });
+          return;
+        }
         case "question.respond":
           this.runtime.respondToQuestion(message.requestId, message.answers);
           return;

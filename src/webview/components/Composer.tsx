@@ -133,6 +133,7 @@ function ApprovalsPicker() {
 
 function ModelPicker() {
   const models = useSelector((s) => s.session.models);
+  const modelOptions = useSelector((s) => s.session.modelOptions);
   const visibility = useSelector((s) => s.settings);
   const cursorIds = useSelector((s) => s.usage.summary?.autoModels);
   const [open, setOpen] = useState(false);
@@ -146,8 +147,9 @@ function ModelPicker() {
   const filtered = q ? shown.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : shown;
   return (
     <>
-      <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Model">
+      <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={`Model and options${modelOptions.length ? `: ${modelOptions.map((o) => `${o.name} ${optionValueLabel(o)}`).join(", ")}` : ""}`}>
         <span class="picker-label">{current?.name ?? models.currentModelId}</span>
+        {headlineOption(modelOptions) && <span class="picker-sub">· {optionValueLabel(headlineOption(modelOptions)!)}</span>}
         <Icon name="chevron-down" class="picker-chevron" />
       </button>
       <Popover
@@ -190,7 +192,18 @@ function ModelPicker() {
           }}
           emptyText="No matching models"
         />
+        {modelOptions.length > 0 && (
+          <div class="model-options" role="group" aria-label={`Options for ${current?.name ?? models.currentModelId}`}>
+            <div class="popover-subheading">Options for {current?.name ?? models.currentModelId}</div>
+            {modelOptions.map((o) => (
+              <OptionRow key={o.id} option={o} />
+            ))}
+          </div>
+        )}
         <div class="popover-footer">
+          <button title="Use this model and its options for new sessions" type="button" class="link-button" onClick={() => post({ type: "model.saveDefault" })}>
+            <Icon name="pin" /> Set as default
+          </button>
           <button title="Choose which models appear in this list"
             type="button"
             class="link-button"
@@ -214,68 +227,55 @@ function optionValueLabel(o: ConfigOption): string {
   return match?.name ?? String(o.currentValue);
 }
 
-/** "Fast: Fast" reads badly; when the selected value's name repeats the option name, show it alone. */
-function optionPillLabel(o: ConfigOption): { name: string; value: string } | { name: string } {
-  const value = optionValueLabel(o);
-  return value.trim().toLowerCase() === o.name.trim().toLowerCase() ? { name: o.name } : { name: o.name, value };
+
+/** The option worth showing in the model button itself: the reasoning/effort one if there is one. */
+function headlineOption(options: ReadonlyArray<ConfigOption>): ConfigOption | undefined {
+  return options.find((o) => o.category === "thought_level" || /effort|reasoning|thinking/i.test(o.id) || /effort|reasoning|thinking/i.test(o.name));
 }
 
-function OptionPill({ option }: { option: ConfigOption }) {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-  const anchor = useRef<HTMLButtonElement>(null);
+/** One option of the current model, edited in place inside the model popover. */
+function OptionRow({ option }: { option: ConfigOption }) {
+  const [text, setText] = useState(String(option.currentValue));
   const isBool = option.type === "boolean" || typeof option.currentValue === "boolean";
   const isSelect = !isBool && option.options.length > 0;
-  const choices = isBool
-    ? [
-        { id: "true", label: "On", selected: option.currentValue === true },
-        { id: "false", label: "Off", selected: option.currentValue === false },
-      ]
-    : option.options.map((x) => ({ id: x.value, label: x.name, description: x.description, selected: x.value === option.currentValue }));
-
-  const select = (id: string) => {
-    setOpen(false);
-    const value: string | boolean = isBool ? id === "true" : id;
+  const set = (value: string | boolean) => {
     if (value !== option.currentValue) post({ type: "config.set", configId: option.id, value });
   };
-
   return (
-    <>
-      <button ref={anchor} type="button" class="picker pill" aria-haspopup={isSelect || isBool ? "listbox" : "dialog"} aria-expanded={open} onClick={() => setOpen(!open)} title={option.description ?? option.name}>
-        {"value" in optionPillLabel(option) ? (
-          <>
-            <span class="pill-name">{option.name}:</span> <span class="picker-label">{optionValueLabel(option)}</span>
-          </>
-        ) : (
-          <span class="picker-label">{option.name}</span>
-        )}
-      </button>
-      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label={option.name} role={isSelect || isBool ? "listbox" : "dialog"} minWidth={180}>
-        {isSelect || isBool ? (
-          <PopoverList options={choices} onSelect={select} />
-        ) : (
-          <form
-            class="popover-form"
-            onSubmit={(e) => {
+    <label class="model-option-row" title={option.description ?? option.name}>
+      <span class="model-option-name">{option.name}</span>
+      {isBool ? (
+        <select class="select-input" value={option.currentValue ? "true" : "false"} onChange={(e) => set((e.currentTarget as HTMLSelectElement).value === "true")}>
+          <option value="true">On</option>
+          <option value="false">Off</option>
+        </select>
+      ) : isSelect ? (
+        <select class="select-input" value={String(option.currentValue)} onChange={(e) => set((e.currentTarget as HTMLSelectElement).value)}>
+          {option.options.map((x) => (
+            <option key={x.value} value={x.value} title={x.description}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          class="text-input model-option-input"
+          value={text}
+          aria-label={option.name}
+          onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)}
+          onBlur={() => set(text)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
               e.preventDefault();
-              setOpen(false);
-              post({ type: "config.set", configId: option.id, value: text });
-            }}
-          >
-            <input type="text" class="text-input" data-autofocus aria-label={option.name} placeholder={String(option.currentValue)} value={text} onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)} />
-            <button title="Apply this value" type="submit" class="button primary small">
-              Set
-            </button>
-          </form>
-        )}
-      </Popover>
-    </>
+              set(text);
+            }
+          }}
+        />
+      )}
+    </label>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Composer
-// ---------------------------------------------------------------------------
 
 const QUEUE_DRAG_TYPE = "application/x-cursor-queue";
 
@@ -765,9 +765,6 @@ export function Composer() {
             <ModePicker />
             <ModelPicker />
             <ApprovalsPicker />
-            {session.modelOptions.map((o) => (
-              <OptionPill key={o.id} option={o} />
-            ))}
           </div>
           <div class="composer-toolbar-right">
             {running ? (

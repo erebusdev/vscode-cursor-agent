@@ -2193,6 +2193,64 @@ button.chip:disabled {
   border-top: 1px solid var(--border);
   padding: 4px 8px;
   font-size: 12px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.popover-subheading {
+  padding: 4px 8px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.model-options {
+  border-top: 1px solid var(--border);
+  padding: 2px 0 4px;
+}
+.model-option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: default;
+}
+.model-option-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-option-row .select-input,
+.model-option-input {
+  flex: 0 0 auto;
+  max-width: 55%;
+}
+.model-defaults {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+.model-defaults-line {
+  display: flex;
+  gap: 8px;
+}
+.model-defaults-key {
+  color: var(--muted);
+  flex: none;
+  width: 52px;
+}
+.model-defaults-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.picker-sub {
+  color: var(--muted);
+  margin-left: 2px;
 }
 .popover-footer .link-button {
   display: inline-flex;

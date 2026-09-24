@@ -8,23 +8,21 @@ import { SessionRuntime, type ModelPreferences, type SessionMeta } from "../src/
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 
-function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask") {
+function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}) {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
   const logs: string[] = [];
   let lastSession: string | undefined;
-  let prefs: ModelPreferences = {};
   let meta: SessionMeta = { titles: {}, hidden: [] };
   const runtime = new SessionRuntime({
     cwd: here,
     workspaceName: "test",
     getLaunchConfig: () => ({ command: process.execPath, args: [FAKE_AGENT], env: { ...process.env, ...extraEnv }, protocolLogging: false }),
     getApprovalConfig: () => ({ policy: approvalPolicy, safeList: DEFAULT_SAFE_LIST }),
+    getModelDefaults: () => modelDefaults,
     storage: {
       getLastSessionId: () => lastSession,
       setLastSessionId: (id) => (lastSession = id),
-      getModelPreferences: () => prefs,
-      setModelPreferences: (p) => (prefs = p),
       getSessionMeta: () => meta,
       setSessionMeta: (m) => (meta = m),
     },
@@ -38,7 +36,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "
     },
   });
   const launches = () => logs.filter((l) => l.startsWith("Launching Cursor agent")).length;
-  return { runtime, messages, events, logs, launches, getLastSession: () => lastSession, getPrefs: () => prefs };
+  return { runtime, messages, events, logs, launches, getLastSession: () => lastSession, getMeta: () => meta };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
@@ -381,20 +379,36 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(notice?.text ?? runtime.state.lastError).toContain("not logged in");
   });
 
-  it("switches mode and model, persisting model preferences", async () => {
-    const { runtime, getPrefs } = makeRuntime();
+  it("switches mode and model, remembering the choice per session", async () => {
+    const { runtime, getMeta } = makeRuntime();
     active.push(runtime);
     await runtime.start();
     await runtime.setMode("ask");
     expect(runtime.state.modes?.currentModeId).toBe("ask");
     await runtime.setModel("model-b");
     expect(runtime.state.models?.currentModelId).toBe("model-b");
-    expect(getPrefs().modelId).toBe("model-b");
+    const id = runtime.state.sessionId!;
+    expect(getMeta().models?.[id]?.modelId).toBe("model-b");
     expect(runtime.state.modelOptions).toEqual([]);
     await runtime.setModel("model-a");
     await runtime.setConfigOption("effort", "low");
     expect(runtime.state.modelOptions[0]?.currentValue).toBe("low");
-    expect(getPrefs()).toEqual({ modelId: "model-a", options: { effort: "low" } });
+    expect(getMeta().models?.[id]).toEqual({ modelId: "model-a", options: { effort: "low" } });
+  });
+
+  it("applies the settings defaults to new sessions and a session's own choice on resume", async () => {
+    const { runtime } = makeRuntime({}, "ask", { modelId: "model-a", options: { effort: "low" } });
+    active.push(runtime);
+    await runtime.start();
+    expect(runtime.state.models?.currentModelId).toBe("model-a");
+    expect(runtime.state.modelOptions[0]?.currentValue).toBe("low");
+    await runtime.prompt("hello", []);
+    const first = runtime.state.sessionId!;
+    await runtime.setModel("model-b");
+    await runtime.newSession();
+    expect(runtime.state.models?.currentModelId).toBe("model-a");
+    await runtime.loadSession(first);
+    expect(runtime.state.models?.currentModelId).toBe("model-b");
   });
 
   it("publishes the changed-files summary once per finished edit, not per update", async () => {

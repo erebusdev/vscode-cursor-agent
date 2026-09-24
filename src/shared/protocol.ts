@@ -425,6 +425,10 @@ export interface ExtensionSettings {
   readonly safeList: ReadonlyArray<string>;
   readonly hiddenModels: ReadonlyArray<string>;
   readonly hiddenModelGroups: ReadonlyArray<"cursor" | "api">;
+  /** Model used for new sessions; empty = whatever Cursor's CLI currently defaults to. */
+  readonly defaultModel: string;
+  /** Option values (effort, context, fast…) applied to new sessions. */
+  readonly defaultModelOptions: Readonly<Record<string, string | boolean>>;
   /** Where the effective values come from, per key: "default" | "user" | "workspace" | "remote". */
   readonly sources: Readonly<Record<string, "default" | "user" | "workspace" | "remote">>;
 }
@@ -469,6 +473,7 @@ export type WebviewToExtension =
   | { readonly type: "queue.move"; readonly from: number; readonly to: number }
   | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string; readonly scope?: "session" }
   | { readonly type: "approvals.set"; readonly policy: ApprovalPolicy }
+  | { readonly type: "model.saveDefault" }
   | { readonly type: "question.respond"; readonly requestId: string; readonly answers: ReadonlyArray<QuestionAnswer> }
   | { readonly type: "question.skip"; readonly requestId: string }
   | { readonly type: "plan.respond"; readonly requestId: string; readonly accepted: boolean; readonly reason?: string }

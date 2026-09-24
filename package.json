@@ -413,6 +413,24 @@
           },
           "default": [],
           "markdownDescription": "Hide a whole group of models from the picker: `cursor` (Cursor's own models, billed as Cursor usage) or `api` (third-party models billed as API usage)."
+        },
+        "cursorAcp.defaultModel": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Model for new sessions (a model id from the picker). Empty uses whatever the Cursor CLI currently defaults to. Changing the model inside a session only affects that session; use *Set as default* in the model picker to update this."
+        },
+        "cursorAcp.defaultModelOptions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "default": {},
+          "scope": "resource",
+          "markdownDescription": "Per-model option values applied to new sessions, keyed by option id, e.g. `{ \"effort\": \"high\" }`. Cursor's CLI stores these globally, so the extension re-applies them for every new session and remembers each session's own values on resume."
         }
       }
     }

@@ -30,13 +30,13 @@ export interface ModelPreferences {
 export interface SessionMeta {
   readonly titles: Readonly<Record<string, string>>;
   readonly hidden: ReadonlyArray<string>;
+  /** Each session's own model and option choices, re-applied on resume (Cursor stores them globally). */
+  readonly models?: Readonly<Record<string, ModelPreferences>>;
 }
 
 export interface RuntimeStorage {
   getLastSessionId(): string | undefined;
   setLastSessionId(sessionId: string | undefined): void;
-  getModelPreferences(): ModelPreferences;
-  setModelPreferences(prefs: ModelPreferences): void;
   getSessionMeta(): SessionMeta;
   setSessionMeta(meta: SessionMeta): void;
 }
@@ -66,6 +66,8 @@ export interface SessionRuntimeOptions {
   readonly getLaunchConfig: () => AgentLaunchConfig;
   /** Approval defaults from settings; read on every session start and permission request. */
   readonly getApprovalConfig: () => { policy: ApprovalPolicy; safeList: ReadonlyArray<string> };
+  /** Model + option defaults for new sessions, from settings. */
+  readonly getModelDefaults: () => ModelPreferences;
   readonly storage: RuntimeStorage;
   readonly log: RuntimeLogger;
   readonly events: RuntimeEvents;
@@ -550,7 +552,8 @@ export class SessionRuntime {
     this.applySessionSetup(response);
     this.setConnectionState("ready");
     await this.refreshModelCatalog();
-    await this.applyModelPreferences();
+    await this.applyModelPreferences(this.options.getModelDefaults());
+    this.rememberSessionModel();
     this.options.log.info(`New session ${response.sessionId}`);
   }
 
@@ -587,6 +590,9 @@ export class SessionRuntime {
     this.options.storage.setLastSessionId(sessionId);
     this.setConnectionState("ready");
     await this.refreshModelCatalog();
+    // Cursor keeps model/options globally, so put back what this session was using.
+    const remembered = this.options.storage.getSessionMeta().models?.[sessionId];
+    if (remembered) await this.applyModelPreferences(remembered);
     // session/load does not return the title; recover it from the session list when available.
     if (!this.title && this.initializeResult?.agentCapabilities?.sessionCapabilities?.list) {
       try {
@@ -684,12 +690,23 @@ export class SessionRuntime {
     }
   }
 
-  private async applyModelPreferences(): Promise<void> {
-    const prefs = this.options.storage.getModelPreferences();
-    if (!prefs.modelId || !this.models) return;
-    if (!this.models.availableModels.some((m) => m.modelId === prefs.modelId)) return;
+  /** Writes the current model and option values under the current session id. */
+  private rememberSessionModel(): void {
+    const sessionId = this.sessionId;
+    if (!sessionId || !this.models) return;
+    const options: Record<string, string | boolean> = {};
+    for (const o of this.currentModelOptions()) options[o.id] = o.currentValue;
+    const meta = this.options.storage.getSessionMeta();
+    this.options.storage.setSessionMeta({ ...meta, models: { ...(meta.models ?? {}), [sessionId]: { modelId: this.models.currentModelId, options } } });
+  }
+
+  private async applyModelPreferences(prefs: ModelPreferences): Promise<void> {
+    if (!this.models) return;
+    if (prefs.modelId && !this.models.availableModels.some((m) => m.modelId === prefs.modelId)) {
+      this.options.log.warn(`Default model ${prefs.modelId} is not available; keeping ${this.models.currentModelId}.`);
+    }
     try {
-      if (prefs.modelId !== this.models.currentModelId) {
+      if (prefs.modelId && prefs.modelId !== this.models.currentModelId && this.models.availableModels.some((m) => m.modelId === prefs.modelId)) {
         await this.setModel(prefs.modelId, false);
       }
       for (const [configId, value] of Object.entries(prefs.options ?? {})) {
@@ -1143,12 +1160,9 @@ export class SessionRuntime {
       const response = await connection.setConfigOption({ sessionId: this.sessionId, configId: "model", value: modelId });
       if (response.configOptions) this.applyConfigOptions(response.configOptions);
       if (this.models) this.models = { ...this.models, currentModelId: modelId };
-      if (persist) {
-        const prefs = this.options.storage.getModelPreferences();
-        this.options.storage.setModelPreferences({ modelId, options: prefs.modelId === modelId ? prefs.options : {} });
-      }
       this.publishState();
       await this.refreshModelCatalog();
+      if (persist) this.rememberSessionModel();
     } catch (error) {
       this.toastError("Could not switch model", error);
     }
@@ -1165,15 +1179,9 @@ export class SessionRuntime {
         const modelId = this.models.currentModelId;
         this.setModelOptionOverrides(modelId, { ...(this.modelOptionOverrides.get(modelId) ?? {}), [configId]: value });
       }
-      if (persist && this.models) {
-        const prefs = this.options.storage.getModelPreferences();
-        this.options.storage.setModelPreferences({
-          modelId: this.models.currentModelId,
-          options: { ...(prefs.modelId === this.models.currentModelId ? prefs.options : {}), [configId]: value },
-        });
-      }
       this.publishState();
       await this.refreshModelCatalog();
+      if (persist) this.rememberSessionModel();
     } catch (error) {
       this.toastError("Could not update option", error);
     }

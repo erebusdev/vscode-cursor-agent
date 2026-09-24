@@ -4,7 +4,7 @@ import { AGENT_PATH_KEY } from "./platform";
 import { DEFAULT_SAFE_LIST } from "./session/approvals";
 import type { ApprovalPolicy } from "../shared/protocol";
 import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
-import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences, type SessionMeta } from "./session/SessionRuntime";
+import { SessionRuntime, type AgentLaunchConfig, type SessionMeta } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
 import type { WebviewToExtension } from "../shared/protocol";
 
@@ -57,8 +57,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const storage = {
     getLastSessionId: () => context.workspaceState.get<string>(`cursorAcp.lastSession:${cwd}`),
     setLastSessionId: (id: string | undefined) => void context.workspaceState.update(`cursorAcp.lastSession:${cwd}`, id),
-    getModelPreferences: () => context.globalState.get<ModelPreferences>("cursorAcp.modelPreferences", {}),
-    setModelPreferences: (prefs: ModelPreferences) => void context.globalState.update("cursorAcp.modelPreferences", prefs),
     getSessionMeta: () => context.globalState.get<SessionMeta>("cursorAcp.sessionMeta", { titles: {}, hidden: [] }),
     setSessionMeta: (meta: SessionMeta) => void context.globalState.update("cursorAcp.sessionMeta", meta),
   };
@@ -78,6 +76,11 @@ export function activate(context: vscode.ExtensionContext): void {
     workspaceName: workspace?.name ?? "(no folder)",
     ...(vscode.env.remoteName ? { remoteName: vscode.env.remoteName } : {}),
     getLaunchConfig: launchConfig,
+    getModelDefaults: () => {
+      const config = vscode.workspace.getConfiguration("cursorAcp");
+      const modelId = config.get<string>("defaultModel", "").trim();
+      return { ...(modelId ? { modelId } : {}), options: config.get<Record<string, string | boolean>>("defaultModelOptions", {}) };
+    },
     getApprovalConfig: () => {
       const config = vscode.workspace.getConfiguration("cursorAcp");
       return { policy: config.get<ApprovalPolicy>("approvalPolicy", "safe"), safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]) };
