@@ -277,29 +277,35 @@ function OptionPill({ option }: { option: ConfigOption }) {
 // Composer
 // ---------------------------------------------------------------------------
 
-/** The message waiting to go out after the current turn, with edit / send-now / remove. */
+/** Messages waiting to go out after the current turn, in order, each with send-now / edit / remove. */
 function QueuedBar() {
   const queued = useSelector((s) => s.session.queued);
   const running = useSelector((s) => s.session.connection === "running" || s.session.connection === "cancelling");
-  if (!queued) return null;
-  const preview = queued.text.trim().replace(/\s+/g, " ") || `${queued.attachmentCount} attachment${queued.attachmentCount === 1 ? "" : "s"}`;
+  if (!queued || queued.length === 0) return null;
   return (
-    <div class="queued-bar" role="status" aria-label="Queued message">
-      <Icon name="list-ordered" />
-      <span class="queued-label">{running ? "Queued" : "Queued (stopped)"}</span>
-      <span class="queued-text" title={queued.text}>
-        {preview}
-        {queued.attachmentCount > 0 && queued.text.trim() ? ` · ${queued.attachmentCount} attachment${queued.attachmentCount === 1 ? "" : "s"}` : ""}
-      </span>
-      <span class="queued-actions">
-        <button type="button" class="link-button" title="Interrupt the current turn and send this now" onClick={() => post({ type: "queue.sendNow" })}>
-          Send now
-        </button>
-        <button type="button" class="link-button" title="Put it back in the composer" onClick={() => post({ type: "queue.edit" })}>
-          Edit
-        </button>
-        <IconButton icon="close" label="Remove queued message" onClick={() => post({ type: "queue.clear" })} />
-      </span>
+    <div class="queued-list" role="status" aria-label="Queued messages">
+      {queued.map((q, i) => {
+        const preview = q.text.trim().replace(/\s+/g, " ") || `${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}`;
+        return (
+          <div key={i} class="queued-bar">
+            <Icon name="list-ordered" />
+            <span class="queued-label">{i === 0 && !running ? "Queued (stopped)" : `#${i + 1}`}</span>
+            <span class="queued-text" title={q.text}>
+              {preview}
+              {q.attachmentCount > 0 && q.text.trim() ? ` · ${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}` : ""}
+            </span>
+            <span class="queued-actions">
+              <button type="button" class="link-button" title="Interrupt the current turn and send this now" onClick={() => post({ type: "queue.sendNow", index: i })}>
+                Send now
+              </button>
+              <button type="button" class="link-button" title="Put it back in the composer" onClick={() => post({ type: "queue.edit", index: i })}>
+                Edit
+              </button>
+              <IconButton icon="close" label="Remove queued message" onClick={() => post({ type: "queue.clear", index: i })} />
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1760,6 +1760,15 @@ button.chip:disabled {
   font-weight: 600;
   pointer-events: none;
 }
+.queued-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 0 4px;
+}
+.queued-list .queued-bar {
+  margin: 0;
+}
 .queued-bar {
   display: flex;
   align-items: center;

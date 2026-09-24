@@ -181,8 +181,8 @@ export class SessionRuntime {
   private agentVersion: string | undefined;
 
   private activePrompt: Promise<acp.PromptResponse> | undefined;
-  /** Message queued while a turn runs; sent automatically when the turn ends (unless the user stopped it). */
-  private queued: { text: string; attachments: PromptAttachmentInput[] } | undefined;
+  /** Messages queued while a turn runs, in order; sent one per turn when a turn ends (unless the user stopped it). */
+  private queue: Array<{ text: string; attachments: PromptAttachmentInput[] }> = [];
   /** Set when the user pressed Stop, so a queued message waits instead of firing into the cancelled turn. */
   private stoppedByUser = false;
   /** Client-side approval policy for the current session (starts from the settings default). */
@@ -235,7 +235,7 @@ export class SessionRuntime {
       ...(this.loginUrl ? { loginUrl: this.loginUrl } : {}),
       changedFiles: this.model.changedFiles(),
       ...(this.model.turnStart ? { turnStartedAt: this.model.turnStart } : {}),
-      ...(this.queued ? { queued: { text: this.queued.text, attachmentCount: this.queued.attachments.length } } : {}),
+      ...(this.queue.length > 0 ? { queued: this.queue.map((q) => ({ text: q.text, attachmentCount: q.attachments.length })) } : {}),
       approvalPolicy: this.approvalPolicy,
       sessionAllowed: [...this.sessionAllowed],
     };
@@ -773,7 +773,7 @@ export class SessionRuntime {
     if (this.isRunning) {
       if (mode === "queue") {
         // One prompt at a time per ACP session: hold the message and send it when this turn ends.
-        this.queued = { text, attachments: [...attachments] };
+        this.queue.push({ text, attachments: [...attachments] });
         this.publishState();
         return;
       }
@@ -841,31 +841,32 @@ export class SessionRuntime {
           this.setConnectionState("ready");
           this.options.events.turnFinished(stopReason);
         }
-        // A queued message follows on its own unless the user explicitly stopped the turn, in which
-        // case it stays queued so they can reconsider it.
-        if (this.queued && !this.stoppedByUser && !this.disposed) {
-          const next = this.queued;
-          this.queued = undefined;
+        // The next queued message follows on its own unless the user explicitly stopped the turn, in
+        // which case the queue stays put so they can reconsider it.
+        if (this.queue.length > 0 && !this.stoppedByUser && !this.disposed) {
+          const next = this.queue.shift()!;
           void this.prompt(next.text, next.attachments);
         }
       }
     }
   }
 
-  /** Sends the queued message now, interrupting the current turn if there is one. */
-  async sendQueuedNow(): Promise<void> {
-    const next = this.queued;
+  /** Sends a queued message now, interrupting the current turn if there is one. */
+  async sendQueuedNow(index = 0): Promise<void> {
+    const next = this.takeQueued(index);
     if (!next) return;
-    this.queued = undefined;
-    this.publishState();
     await this.prompt(next.text, next.attachments, "interrupt");
   }
 
-  /** Removes and returns the queued message (for editing in the composer). */
-  takeQueued(): { text: string; attachments: PromptAttachmentInput[] } | undefined {
-    const next = this.queued;
+  /** Removes and returns one queued message (for editing in the composer); no index clears the whole queue. */
+  takeQueued(index?: number): { text: string; attachments: PromptAttachmentInput[] } | undefined {
+    if (index === undefined) {
+      this.queue = [];
+      this.publishState();
+      return undefined;
+    }
+    const [next] = this.queue.splice(index, 1);
     if (!next) return undefined;
-    this.queued = undefined;
     this.publishState();
     return next;
   }

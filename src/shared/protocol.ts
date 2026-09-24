@@ -347,8 +347,8 @@ export interface SessionState {
   /** Files touched by edit tools in this session, for the "changes" summary. */
   readonly changedFiles: ReadonlyArray<{ readonly path: string; readonly displayPath: string; readonly additions: number; readonly deletions: number }>;
   readonly turnStartedAt?: number;
-  /** A message waiting to be sent when the current turn ends. */
-  readonly queued?: { readonly text: string; readonly attachmentCount: number };
+  /** Messages waiting to be sent, in order, when the current turn ends. */
+  readonly queued?: ReadonlyArray<{ readonly text: string; readonly attachmentCount: number }>;
   /** Client-side approval policy for this session. */
   readonly approvalPolicy?: ApprovalPolicy;
   /** Commands / tools allowed for the rest of this session via "Allow for session". */
@@ -463,9 +463,9 @@ export type WebviewToExtension =
   | { readonly type: "ready" }
   | { readonly type: "prompt"; readonly text: string; readonly attachments: ReadonlyArray<PromptAttachmentInput>; readonly mode?: "queue" | "interrupt" }
   | { readonly type: "cancel" }
-  | { readonly type: "queue.sendNow" }
-  | { readonly type: "queue.edit" }
-  | { readonly type: "queue.clear" }
+  | { readonly type: "queue.sendNow"; readonly index: number }
+  | { readonly type: "queue.edit"; readonly index: number }
+  | { readonly type: "queue.clear"; readonly index?: number }
   | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string; readonly scope?: "session" }
   | { readonly type: "approvals.set"; readonly policy: ApprovalPolicy }
   | { readonly type: "question.respond"; readonly requestId: string; readonly answers: ReadonlyArray<QuestionAnswer> }

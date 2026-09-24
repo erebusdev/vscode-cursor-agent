@@ -148,11 +148,15 @@ describe("SessionRuntime against a fake ACP agent", () => {
     const turn = runtime.prompt("sleep 300", []);
     await waitFor(() => runtime.state.connection === "running");
     await runtime.prompt("hello after", []);
-    expect(runtime.state.queued).toEqual({ text: "hello after", attachmentCount: 0 });
+    await runtime.prompt("and then this", []);
+    expect(runtime.state.queued).toEqual([
+      { text: "hello after", attachmentCount: 0 },
+      { text: "and then this", attachmentCount: 0 },
+    ]);
     await turn;
     await waitFor(() => runtime.state.queued === undefined && runtime.state.connection === "ready");
     const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
-    expect(users.map((u) => u.text)).toEqual(["sleep 300", "hello after"]);
+    expect(users.map((u) => u.text)).toEqual(["sleep 300", "hello after", "and then this"]);
   });
 
   it("keeps a queued prompt when the user stops the turn, and sends it on demand", async () => {
@@ -165,8 +169,8 @@ describe("SessionRuntime against a fake ACP agent", () => {
     await runtime.cancel();
     await turn;
     expect(runtime.state.connection).toBe("ready");
-    expect(runtime.state.queued?.text).toBe("later");
-    await runtime.sendQueuedNow();
+    expect(runtime.state.queued?.[0]?.text).toBe("later");
+    await runtime.sendQueuedNow(0);
     await waitFor(() => runtime.state.connection === "ready" && runtime.state.queued === undefined);
     const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
     expect(users.map((u) => u.text)).toEqual(["sleep 20000", "later"]);
