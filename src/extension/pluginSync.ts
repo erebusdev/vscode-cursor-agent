@@ -354,9 +354,9 @@ export class PluginMcpSync {
    * removes only entries the extension added; on takes them off the list and
    * syncs. Manual mode: writes or removes the entries directly.
    */
-  async setEnabled(ids: ReadonlyArray<string>, enabled: boolean): Promise<SyncOutcome> {
+  async setEnabled(ids: ReadonlyArray<string>, enabled: boolean, launch?: LaunchIdentity): Promise<SyncOutcome> {
     const settings = this.deps.settings();
-    const config = this.resolve();
+    const config = this.resolve(launch ?? this.lastLaunch);
     if (settings.mode === "off") return UNCHANGED;
     let outcome: SyncOutcome;
     if (settings.mode === "auto") {

@@ -99,7 +99,11 @@ describe("plugin MCP discovery", () => {
 
     cloudPlugin(cursorDir, "broken", "1", { ".mcp.json": "{ not json" });
     cloudPlugin(cursorDir, "odd", "2", { ".mcp.json": { mcpServers: { nothing: { type: "http" } } } });
-    manifest(cursorDir, [{ name: "broken", pluginId: "1" }, { name: "odd", pluginId: "2" }, { name: "missing", pluginId: "3" }]);
+    manifest(cursorDir, [
+      { name: "broken", pluginId: "1" },
+      { name: "odd", pluginId: "2" },
+      { name: "missing", pluginId: "3" },
+    ]);
     const found = discoverPluginMcpServers(cursorDir);
     expect(found.servers).toEqual([]);
     expect(found.errors).toHaveLength(3);

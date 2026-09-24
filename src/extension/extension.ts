@@ -186,7 +186,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return mcpStatus(workspace?.cwd, log);
     },
     setPluginServers: async (ids, enabled) => {
-      const outcome = await sync.setEnabled(ids, enabled);
+      const outcome = await sync.setEnabled(ids, enabled, launchConfig());
       if (outcome.added.length) log.info(`Added Cursor plugin MCP servers: ${outcome.added.join(", ")}`);
       if (outcome.removed.length) log.info(`Removed Cursor plugin MCP servers: ${outcome.removed.join(", ")}`);
     },
