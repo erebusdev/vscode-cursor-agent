@@ -86,7 +86,7 @@ export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv)
       state: "notFound",
       configuredPath,
       error: configuredPath.trim() ? `"${configuredPath.trim()}" was not found.` : `Neither ${describeDefaultAgentCommands()} was found on PATH.`,
-      hint: "Install the Cursor Agent CLI (curl https://cursor.com/install -fsS | bash) or point this at the executable / wrapper script.",
+      hint: "Install the Cursor Agent CLI or set its path.",
       checkedAt,
     };
   }
@@ -101,7 +101,7 @@ export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv)
           configuredPath,
           resolvedPath: resolved,
           error: `Could not run "${resolved} --version": ${describeExecError(error)}`,
-          hint: (stderr || "").trim().slice(0, 300) || "Check that the file is executable and that the wrapper forwards arguments.",
+          hint: (stderr || "").trim().slice(0, 300) || "Check that the file is executable.",
           checkedAt,
         });
         return;
