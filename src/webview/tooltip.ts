@@ -82,6 +82,8 @@ export function installTooltips(): void {
       const el = targetOf(e);
       if (!el) return hide();
       if (el === current && !box.hidden) return;
+      // Buttons with a hover card (data-hover-card) show the card on hover; the tooltip is for keyboard focus.
+      if (el.hasAttribute("data-hover-card")) return hide();
       schedule(el, SHOW_DELAY_MS);
     },
     true,
