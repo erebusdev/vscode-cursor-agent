@@ -58,6 +58,8 @@ export interface StoreState {
   settingsOpen: boolean;
   /** Whether the detailed usage view is shown in place of the transcript. */
   usageOpen: boolean;
+  /** Progress of a guided setup step (installer / login running in a terminal). */
+  setupStatus: { phase: "idle" | "installing" | "loggingIn"; text?: string };
   /** Latest @-mention file search results. */
   fileResults: FileResults | undefined;
   toasts: ReadonlyArray<Toast>;
@@ -91,6 +93,7 @@ const state: StoreState = {
   probe: undefined,
   settingsOpen: false,
   usageOpen: false,
+  setupStatus: { phase: "idle" },
   fileResults: undefined,
   toasts: [],
   attachments: getPersisted().attachments ?? [],
@@ -311,6 +314,10 @@ export function handleMessage(msg: ExtensionToWebview): void {
     }
     case "files.results": {
       state.fileResults = { requestId: msg.requestId, query: msg.query, files: msg.files };
+      break;
+    }
+    case "setupStatus": {
+      state.setupStatus = msg.status;
       break;
     }
     case "showSettings": {

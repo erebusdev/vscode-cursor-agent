@@ -247,12 +247,13 @@ describe("SessionRuntime against a fake ACP agent", () => {
     active.push(runtime);
     await runtime.start();
     expect(runtime.state.connection).toBe("error");
-    expect(runtime.state.lastError).toContain("authentication failed");
-    expect(events.some((e) => e.startsWith("unavailable:") && e.includes("authentication failed"))).toBe(true);
+    expect(runtime.state.lastError).toContain("not logged in");
+    expect(runtime.state.authRequired).toBe(true);
+    expect(events.some((e) => e.startsWith("unavailable:") && e.includes("not logged in"))).toBe(true);
     // Once the transcript has content, failures are reported inline as notices.
     await runtime.prompt("hello", []);
     const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }> | undefined;
-    expect(notice?.text ?? runtime.state.lastError).toContain("authentication failed");
+    expect(notice?.text ?? runtime.state.lastError).toContain("not logged in");
   });
 
   it("switches mode and model, persisting model preferences", async () => {

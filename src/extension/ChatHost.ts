@@ -13,6 +13,7 @@ import { MessageBatcher } from "./MessageBatcher";
 import { fetchCursorUsage } from "./session/usage";
 import { probeAgent, readExtensionSettings, resetExtensionSetting, updateExtensionSetting } from "./settings";
 import { AGENT_PATH_KEY } from "./platform";
+import { SetupController, type SetupStatus } from "./setup";
 
 function isSubsequence(needle: string, haystack: string): boolean {
   let i = 0;
@@ -190,6 +191,7 @@ export class ChatHost implements vscode.Disposable {
         // One-off messages sent before this webview existed were not delivered; replay the essentials.
         void webview.postMessage({ type: "extensionSettings", settings: readExtensionSettings() } satisfies ExtensionToWebview);
         if (this.lastProbe) void webview.postMessage({ type: "agentProbe", probe: this.lastProbe } satisfies ExtensionToWebview);
+        if (this.setupStatus.phase !== "idle") void webview.postMessage({ type: "setupStatus", status: this.setupStatus } satisfies ExtensionToWebview);
         else if (this.runtime.state.connection === "error") void this.probe();
         if (!this.firstReadyFired) {
           this.firstReadyFired = true;
@@ -339,6 +341,12 @@ export class ChatHost implements vscode.Disposable {
         case "settings.probe":
           await this.probe();
           return;
+        case "setup.install":
+          this.setup.install(this.setupOptions());
+          return;
+        case "setup.login":
+          await this.setup.login(this.setupOptions());
+          return;
         case "settings.browseAgent": {
           const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFolders: false, openLabel: "Use as Cursor Agent executable", title: "Select the Cursor Agent CLI (or a wrapper script)" });
           const uri = picked?.[0];
@@ -394,6 +402,26 @@ export class ChatHost implements vscode.Disposable {
   }
 
   private lastProbe: AgentProbe | undefined;
+  private readonly setup = new SetupController();
+  private setupStatus: SetupStatus = { phase: "idle" };
+
+  private setupOptions() {
+    const settings = readExtensionSettings();
+    return {
+      configuredPath: settings[AGENT_PATH_KEY],
+      configDir: settings.configDir,
+      env: { ...process.env, ...settings.environment } as NodeJS.ProcessEnv,
+      onStatus: (status: SetupStatus) => {
+        this.setupStatus = status;
+        this.send({ type: "setupStatus", status });
+      },
+      onReady: () => {
+        void this.probe();
+        void this.runtime.reconnect();
+      },
+      log: (message: string) => this.log.info(message),
+    };
+  }
 
   /** Resolves the configured executable and reads its version; results go to the settings panel. */
   async probe(): Promise<void> {
@@ -568,6 +596,7 @@ export class ChatHost implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.setup.dispose();
     this.batcher.dispose();
     for (const pending of this.pendingNotifications.values()) clearTimeout(pending.timer);
     this.pendingNotifications.clear();

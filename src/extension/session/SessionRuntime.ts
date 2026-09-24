@@ -84,6 +84,7 @@ interface StartRequest {
 const SESSION_LOAD_TIMEOUT_MS = 90_000;
 const CANCEL_TIMEOUT_MS = 15_000;
 const STARTUP_TIMEOUT_MS = 60_000;
+const AUTHENTICATE_TIMEOUT_MS = 5 * 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -173,6 +174,9 @@ export class SessionRuntime {
   private readonly modelOptionOverrides = new Map<string, Record<string, string | boolean>>();
   private availableCommands: SessionState["availableCommands"] = [];
   private lastError: string | undefined;
+  /** Cursor reported that no login exists on this machine (authenticate failed / "Authentication required"). */
+  private authRequired = false;
+  private loginUrl: string | undefined;
   private agentVersion: string | undefined;
 
   private activePrompt: Promise<acp.PromptResponse> | undefined;
@@ -217,6 +221,8 @@ export class SessionRuntime {
       availableCommands: this.availableCommands,
       pendingPermissions: this.pendingPermissions.size,
       ...(this.lastError ? { lastError: this.lastError } : {}),
+      ...(this.authRequired ? { authRequired: true } : {}),
+      ...(this.loginUrl ? { loginUrl: this.loginUrl } : {}),
       changedFiles: this.model.changedFiles(),
       ...(this.model.turnStart ? { turnStartedAt: this.model.turnStart } : {}),
     };
@@ -340,15 +346,23 @@ export class SessionRuntime {
       const authMethod = init.authMethods?.find((m) => m.id === "cursor_login") ?? init.authMethods?.[0];
       if (authMethod) {
         try {
-          await connection.authenticate(authMethod.id);
+          // When no login exists Cursor tries to open a browser from inside authenticate and, if it
+          // can, blocks until the user finishes; if it cannot, it fails fast with the login URL.
+          await withTimeout(connection.authenticate(authMethod.id), AUTHENTICATE_TIMEOUT_MS, "Cursor did not finish logging in within 5 minutes.");
         } catch (error) {
+          const text = describeError(error).text;
+          const url = /https?:\/\/\S+/.exec(text)?.[0];
+          this.authRequired = true;
+          this.loginUrl = url;
           throw new AgentProcessError(
-            `Cursor authentication failed: ${describeError(error).text}`,
-            "Run `agent login` in a terminal (using the same wrapper/profile) and then reconnect.",
+            "Cursor is not logged in on this machine.",
+            url ? `Open the login link and sign in, then connect again.` : "Run `agent login` in a terminal (using the same wrapper/profile) and then connect again.",
           );
         }
       }
       this.authenticated = true;
+      this.authRequired = false;
+      this.loginUrl = undefined;
       return connection;
     } catch (error) {
       // Retire this connection silently; the caller reports the startup error. Only touch the
@@ -500,7 +514,8 @@ export class SessionRuntime {
       this.options.log.error(`Failed to start session: ${text}${detail ? `\n${detail}` : ""}`);
       this.lastError = text;
       this.sessionId = undefined;
-      if (error instanceof AgentProcessError && this.model.getItems().length === 0) {
+      if (/authentication required|not logged in/i.test(`${text}\n${detail ?? ""}`)) this.authRequired = true;
+      if ((error instanceof AgentProcessError || this.authRequired) && this.model.getItems().length === 0) {
         // Missing executable / not logged in on a fresh view: the UI shows a setup card instead of a notice.
         this.setConnectionState("error");
         this.options.events.agentUnavailable?.(text);

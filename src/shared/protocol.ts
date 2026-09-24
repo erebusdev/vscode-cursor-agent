@@ -336,6 +336,10 @@ export interface SessionState {
   readonly availableCommands: ReadonlyArray<AvailableCommand>;
   readonly pendingPermissions: number;
   readonly lastError?: string;
+  /** The CLI is installed but not logged in on this machine. */
+  readonly authRequired?: boolean;
+  /** Login URL Cursor handed back when it could not open a browser itself. */
+  readonly loginUrl?: string;
   /** Files touched by edit tools in this session, for the "changes" summary. */
   readonly changedFiles: ReadonlyArray<{ readonly path: string; readonly displayPath: string; readonly additions: number; readonly deletions: number }>;
   readonly turnStartedAt?: number;
@@ -466,6 +470,8 @@ export type WebviewToExtension =
   | { readonly type: "settings.probe" }
   | { readonly type: "settings.browseAgent" }
   | { readonly type: "settings.reset"; readonly key: SettingsKey }
+  | { readonly type: "setup.install" }
+  | { readonly type: "setup.login" }
   | { readonly type: "files.search"; readonly query: string; readonly requestId: number };
 
 // ---------------------------------------------------------------------------
@@ -487,5 +493,6 @@ export type ExtensionToWebview =
   | { readonly type: "extensionSettings"; readonly settings: ExtensionSettings }
   | { readonly type: "agentProbe"; readonly probe: AgentProbe }
   | { readonly type: "showSettings" }
+  | { readonly type: "setupStatus"; readonly status: { readonly phase: "idle" | "installing" | "loggingIn"; readonly text?: string } }
   | { readonly type: "files.results"; readonly requestId: number; readonly query: string; readonly files: ReadonlyArray<{ readonly path: string; readonly name: string }> }
   | { readonly type: "toast"; readonly level: "info" | "warning" | "error"; readonly text: string };
