@@ -261,6 +261,16 @@ export function setSettingsSection(section: SettingsSection): void {
   notify();
 }
 
+/** Opens (or reveals) the session history editor tab. */
+export function openHistory(): void {
+  post({ type: "history.open" });
+}
+
+/** Resumes a session in the chat (no-op for the one already open). */
+export function resumeSession(sessionId: string): void {
+  if (sessionId !== state.session.sessionId) post({ type: "session.load", sessionId });
+}
+
 export function setUsageOpen(open: boolean): void {
   if (state.usageOpen === open) return;
   state.usageOpen = open;
@@ -328,7 +338,9 @@ export function handleMessage(msg: ExtensionToWebview): void {
       break;
     }
     case "sessions": {
-      state.sessions = { list: msg.sessions, loading: msg.loading, error: msg.error };
+      // A refresh starts with an empty "loading" message; keep showing the last list until the new one arrives.
+      const list = msg.loading && msg.sessions.length === 0 ? state.sessions.list : msg.sessions;
+      state.sessions = { list, loading: msg.loading, error: msg.error };
       break;
     }
     case "extensionSettings": {
