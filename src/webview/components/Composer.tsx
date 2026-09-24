@@ -35,7 +35,7 @@ function AttachmentChips() {
         <span key={`${a.kind}:${a.label}:${i}`} class={`chip chip-removable${a.kind === "image" ? " chip-image" : ""}`} title={a.path ?? a.label}>
           {a.kind === "image" && a.data && a.mimeType ? <img src={`data:${a.mimeType};base64,${a.data}`} alt={a.label} /> : <Icon name={a.kind === "selection" ? "selection" : a.kind === "image" ? "file-media" : "file"} />}
           <span class="chip-label">{a.label}</span>
-          <button type="button" class="chip-remove" aria-label={`Remove ${a.label}`} onClick={() => removeAttachment(i)}>
+          <button type="button" class="chip-remove" title="Remove attachment" aria-label={`Remove ${a.label}`} onClick={() => removeAttachment(i)}>
             <Icon name="close" />
           </button>
         </span>

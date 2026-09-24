@@ -154,7 +154,7 @@ export function CommitInput({ id, value, placeholder, mono, ariaLabel, onCommit 
 
 export function Checkbox({ id, checked, onChange, label }: { id: string; checked: boolean; onChange: (next: boolean) => void; label: string }) {
   return (
-    <button id={id} type="button" role="checkbox" aria-checked={checked} aria-label={label} class={`checkbox${checked ? " checked" : ""}`} onClick={() => onChange(!checked)}>
+    <button id={id} type="button" role="checkbox" aria-checked={checked} aria-label={label} title={label} class={`checkbox${checked ? " checked" : ""}`} onClick={() => onChange(!checked)}>
       {checked && <Icon name="check" />}
     </button>
   );
