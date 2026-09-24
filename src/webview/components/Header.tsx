@@ -1,11 +1,12 @@
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../../shared/protocol";
+import { parseTime, recentSessions, sessionLabel } from "../../shared/sessionHistory";
 import { pluralize, relativeTime } from "../format";
-import { openSettings, useSelector } from "../store";
+import { openHistory, openSettings, resumeSession, useSelector } from "../store";
 import { post } from "../vscode";
 import { Popover } from "./Popover";
 import { UsageButton } from "./Usage";
-import { ChangeCounts, Icon, IconButton, Spinner } from "./ui";
+import { ChangeCounts, Icon, IconButton, Spinner, useNow } from "./ui";
 
 const STATUS_LABEL: Record<ConnectionState, string> = {
   idle: "Idle",
@@ -116,124 +117,145 @@ function SettingsGear() {
   return <IconButton icon="settings-gear" label="Settings (opens in an editor tab)" onClick={() => openSettings()} />;
 }
 
-type HistoryGroup = "Today" | "Yesterday" | "This week" | "Older";
-const HISTORY_GROUPS: ReadonlyArray<HistoryGroup> = ["Today", "Yesterday", "This week", "Older"];
-const DAY_MS = 86_400_000;
+const HISTORY_HOVER_OPEN_MS = 250;
+const HISTORY_HOVER_CLOSE_MS = 250;
+const HISTORY_RECENT = 8;
+/** Opening the overlay re-lists sessions at most this often. */
+const HISTORY_REFRESH_MS = 10_000;
 
-function parseTime(input: string | undefined): number | undefined {
-  if (!input) return undefined;
-  const t = Date.parse(input);
-  return Number.isFinite(t) ? t : undefined;
-}
-
-/** Bucket a session by calendar day relative to `now`; unknown dates fall into "Older". */
-function historyGroup(updatedAt: string | undefined, now: number): HistoryGroup {
-  const t = parseTime(updatedAt);
-  if (t === undefined) return "Older";
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
-  const today = startOfToday.getTime();
-  if (t >= today) return "Today";
-  if (t >= today - DAY_MS) return "Yesterday";
-  if (t >= today - 6 * DAY_MS) return "This week";
-  return "Older";
-}
-
-function fullDateTime(updatedAt: string | undefined): string | undefined {
-  const t = parseTime(updatedAt);
-  return t === undefined ? undefined : new Date(t).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
-}
-
+/**
+ * Header history button. Hovering shows the recent sessions in a card that
+ * never takes focus; clicking (or Enter/Space) opens the history editor tab.
+ * ArrowDown opens the same list as a keyboard menu.
+ */
 function HistoryButton() {
   const sessions = useSelector((s) => s.sessions);
   const currentId = useSelector((s) => s.session.sessionId);
-  const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState("");
+  const [open, setOpen] = useState<false | "hover" | "menu">(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  const openMenu = () => {
+  const timer = useRef<number | undefined>(undefined);
+  const listedAt = useRef(0);
+  const now = useNow(open !== false, 30_000);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (open !== "hover") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const refresh = () => {
+    if (Date.now() - listedAt.current < HISTORY_REFRESH_MS) return;
+    listedAt.current = Date.now();
     post({ type: "session.list" });
-    setOpen(true);
+  };
+  const hold = () => window.clearTimeout(timer.current);
+  const show = () => {
+    hold();
+    if (open) return;
+    timer.current = window.setTimeout(() => {
+      refresh();
+      setOpen("hover");
+    }, HISTORY_HOVER_OPEN_MS);
+  };
+  const hide = () => {
+    hold();
+    if (open === "menu") return;
+    timer.current = window.setTimeout(() => setOpen(false), HISTORY_HOVER_CLOSE_MS);
   };
   const close = () => {
+    hold();
     setOpen(false);
-    setFilter("");
   };
-  const load = (sessionId: string) => {
+  const openTab = () => {
     close();
-    if (sessionId !== currentId) post({ type: "session.load", sessionId });
+    openHistory();
+  };
+  const pick = (sessionId: string) => {
+    close();
+    resumeSession(sessionId);
   };
 
-  const q = filter.trim().toLowerCase();
-  const filtered = q ? sessions.list.filter((s) => (s.title?.trim() || s.sessionId).toLowerCase().includes(q)) : sessions.list;
-  const now = Date.now();
-  const groups = HISTORY_GROUPS.map((name) => ({ name, items: filtered.filter((s) => historyGroup(s.updatedAt, now) === name) })).filter((g) => g.items.length > 0);
-  const ready = !sessions.loading && !sessions.error;
+  const recent = recentSessions(sessions.list, HISTORY_RECENT);
+  const visible = sessions.list.filter((s) => !s.hidden).length;
+  const more = visible - recent.length;
+  const menu = open === "menu";
 
   return (
     <>
-      <IconButton ref={anchor} icon="history" label="Session history" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? close() : openMenu())} />
-      <Popover anchor={anchor} open={open} onClose={close} label="Session history" role="listbox" align="end" minWidth={260} class="history-popover">
-        <div class="popover-heading">
-          Recent sessions {sessions.loading && <Spinner class="section-spinner" />}
-        </div>
-        <input
-          type="text"
-          class="text-input popover-filter"
-          placeholder="Filter sessions…"
-          aria-label="Filter sessions"
-          title="Filter sessions by title. Enter opens the first match."
-          data-autofocus
-          value={filter}
-          onInput={(e) => setFilter((e.currentTarget as HTMLInputElement).value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && filtered.length > 0) {
-              e.preventDefault();
-              load(filtered[0]!.sessionId);
-            }
-          }}
-        />
-        {sessions.error && <div class="popover-empty error">{sessions.error}</div>}
-        {ready && sessions.list.length === 0 && <div class="popover-empty">No sessions yet.</div>}
-        {ready && sessions.list.length > 0 && filtered.length === 0 && <div class="popover-empty">No matching sessions</div>}
-        <div class="popover-list">
-          {groups.map((g) => (
-            <div key={g.name} role="group" aria-label={g.name} class="popover-group">
-              <div class="popover-heading popover-subheading" aria-hidden="true">
-                {g.name}
-              </div>
-              {g.items.map((s) => {
+      <IconButton
+        ref={anchor}
+        icon="history"
+        label="Session history"
+        class={open ? "active" : undefined}
+        aria-haspopup="menu"
+        aria-expanded={menu}
+        data-hover-card=""
+        onClick={openTab}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || (e.key === "ArrowUp" && open)) {
+            e.preventDefault();
+            hold();
+            refresh();
+            setOpen("menu");
+          }
+        }}
+      />
+      <Popover
+        anchor={anchor}
+        open={open !== false}
+        onClose={close}
+        label="Recent sessions"
+        role={menu ? "menu" : "dialog"}
+        align="end"
+        class="history-hover-popover"
+        manageFocus={menu}
+      >
+        <div class="history-hover" onMouseEnter={hold} onMouseLeave={hide}>
+          <div class="popover-heading">
+            Recent sessions {sessions.loading && <Spinner class="section-spinner" />}
+          </div>
+          {sessions.error && <div class="popover-empty error">{sessions.error}</div>}
+          {!sessions.loading && !sessions.error && recent.length === 0 && <div class="popover-empty">No sessions yet in this folder.</div>}
+          {recent.length > 0 && (
+            <div class="popover-list history-hover-list">
+              {recent.map((s) => {
                 const current = s.sessionId === currentId;
-                const label = s.title?.trim() || s.sessionId.slice(0, 8);
-                const when = fullDateTime(s.updatedAt);
-                const tooltip = [current ? `${label} (current session)` : label, when, s.cwd ?? `Session id: ${s.sessionId}`].filter(Boolean).join("\n");
+                const label = sessionLabel(s);
+                const t = parseTime(s.updatedAt);
+                const when = t === undefined ? undefined : new Date(t).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+                const tooltip = [current ? `${label} (current session)` : `Resume “${label}”`, when].filter(Boolean).join("\n");
                 return (
-                  <div key={s.sessionId} class="popover-row">
-                    <button type="button" role="option" aria-selected={current} class={`popover-item${current ? " selected" : ""}`} title={tooltip} onClick={() => load(s.sessionId)}>
-                      <span class="popover-item-check">
-                        <Icon name={current ? "check" : "comment-discussion"} />
-                      </span>
-                      <span class="popover-item-main">
-                        <span class="popover-item-label">{label}</span>
-                        {s.updatedAt && <span class="popover-item-desc">{relativeTime(s.updatedAt, now)}</span>}
-                      </span>
-                    </button>
-                    <span class="popover-row-actions">
-                      <IconButton
-                        icon="edit"
-                        label="Rename session"
-                        onClick={() => {
-                          close();
-                          post({ type: "session.rename", sessionId: s.sessionId });
-                        }}
-                      />
-                      <IconButton icon="copy" label={`Copy session id ${s.sessionId}`} onClick={() => post({ type: "copy", text: s.sessionId })} />
-                      <IconButton icon="eye-closed" label="Hide from history" onClick={() => post({ type: "session.hide", sessionId: s.sessionId })} />
+                  <button
+                    key={s.sessionId}
+                    type="button"
+                    role={menu ? "menuitem" : undefined}
+                    aria-current={current ? "true" : undefined}
+                    class={`popover-item history-hover-item${current ? " selected" : ""}`}
+                    title={tooltip}
+                    onClick={() => pick(s.sessionId)}
+                  >
+                    <span class="popover-item-check">
+                      <Icon name={current ? "check" : "comment"} />
                     </span>
-                  </div>
+                    <span class="popover-item-label">{label}</span>
+                    <span class="history-hover-time">{current ? "Current" : relativeTime(s.updatedAt, now)}</span>
+                  </button>
                 );
               })}
             </div>
-          ))}
+          )}
+          <div class="history-hover-footer">
+            <span class="history-hover-more">{more > 0 ? `${more} more` : ""}</span>
+            <button type="button" role={menu ? "menuitem" : undefined} class="link-button" title="Open the history tab: search, rename, hide and resume sessions" onClick={openTab}>
+              All history…
+            </button>
+          </div>
         </div>
       </Popover>
     </>
