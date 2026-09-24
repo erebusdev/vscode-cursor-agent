@@ -809,51 +809,50 @@ button.chip:disabled {
 .welcome-status.error {
   color: var(--red);
 }
-.recent-sessions {
-  max-width: 100%;
-}
-.recent-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+/* One quiet line under the hero: resume the last session, open the history. */
+.welcome-actions {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.recent-row {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 6px;
-  text-align: left;
-  border-radius: var(--radius-sm);
+  justify-content: center;
+  gap: 2px 6px;
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--muted);
 }
-.recent-row:hover {
+.welcome-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+.welcome-action .codicon {
+  flex: none;
+  font-size: 13px;
+}
+.welcome-action:hover {
+  color: var(--vscode-foreground);
   background: var(--hover-bg);
 }
-.recent-icon {
-  color: var(--muted);
-  font-size: 14px;
+.welcome-action:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 1px;
+  color: var(--vscode-foreground);
 }
-.recent-title {
-  flex: 1 1 auto;
+.welcome-action-title {
   min-width: 0;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--vscode-foreground);
 }
-.recent-time {
-  color: var(--muted);
-  font-size: 11px;
-  flex: none;
-}
-.recent-error {
-  color: var(--red);
-  font-size: 12px;
-}
-.recent-empty {
-  font-size: 12px;
+.welcome-sep {
+  opacity: 0.6;
 }
 
 /* --- User message -------------------------------------------------------- */
@@ -2352,8 +2351,65 @@ button.chip:disabled {
 .model-popover .popover-list {
   max-height: 260px;
 }
-.history-popover .popover-list {
+/* Header history hover card: recent sessions and a link to the history tab. */
+.history-hover-popover {
+  width: 300px;
+}
+.history-hover {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.history-hover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   max-height: 300px;
+}
+.history-hover-item {
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+}
+.history-hover-item .popover-item-check {
+  margin-top: 0;
+  color: var(--muted);
+}
+.history-hover-item.selected .popover-item-check {
+  color: var(--vscode-textLink-foreground, var(--focus));
+}
+.history-hover-item .popover-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.history-hover-time {
+  flex: none;
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.history-hover-item:focus-visible .history-hover-time {
+  color: inherit;
+}
+.history-hover-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 8px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+.history-hover-footer .link-button {
+  font-size: 12px;
+}
+.history-hover-footer .link-button:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 .popover-subheading {
   padding: 6px 6px 2px;
