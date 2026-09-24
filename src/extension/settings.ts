@@ -6,6 +6,7 @@ import { execFile, type ExecFileException } from "node:child_process";
 import type { AgentProbe, ExtensionSettings, SettingsKey } from "../shared/protocol";
 import { describeDefaultAgentCommands, resolveAgentExecutable } from "./acp/resolveExecutable";
 import { AGENT_PATH_KEY } from "./platform";
+import { planLaunch } from "./acp/windowsLaunch";
 
 const SECTION = "cursorAcp";
 
@@ -79,8 +80,10 @@ export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv)
     };
   }
   const resolved = found.path;
+  // Same launch rules as the real session (Windows .cmd shims cannot be exec'd directly).
+  const plan = planLaunch(resolved, ["--version"], env);
   return new Promise<AgentProbe>((resolve) => {
-    const child = execFile(resolved, ["--version"], { env, timeout: PROBE_TIMEOUT_MS, maxBuffer: 256 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+    const child = execFile(plan.file, [...plan.args], { env: plan.env ? { ...env, ...plan.env } : env, timeout: PROBE_TIMEOUT_MS, maxBuffer: 256 * 1024, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments ?? false }, (error, stdout, stderr) => {
       if (error) {
         resolve({
           state: "failed",
