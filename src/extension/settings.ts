@@ -23,7 +23,7 @@ function sourceOf(inspect: ReturnType<vscode.WorkspaceConfiguration["inspect"]>)
 
 export function readExtensionSettings(): ExtensionSettings {
   const config = vscode.workspace.getConfiguration(SECTION);
-  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "mcpForwardProjectServers", "mcpUserConfig", "mcpPluginServers", "mcpPluginExclude", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "editorTitleButton", "protocolLogging", "approvalPolicy", "safeList", "hiddenModels", "defaultModel", "defaultModelOptions"];
+  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "mcpForwardProjectServers", "mcpUserConfig", "mcpPluginServers", "mcpPluginExclude", "pluginSkills", "pluginSkillsExclude", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "editorTitleButton", "protocolLogging", "approvalPolicy", "safeList", "hiddenModels", "defaultModel", "defaultModelOptions"];
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
@@ -37,6 +37,8 @@ export function readExtensionSettings(): ExtensionSettings {
     mcpUserConfig: config.get<string>("mcpUserConfig", ""),
     mcpPluginServers: config.get<"auto" | "manual" | "off">("mcpPluginServers", "auto"),
     mcpPluginExclude: config.get<string[]>("mcpPluginExclude", []),
+    pluginSkills: config.get<boolean>("pluginSkills", true),
+    pluginSkillsExclude: config.get<string[]>("pluginSkillsExclude", []),
     resumeLastSession: config.get<boolean>("resumeLastSession", true),
     sendWithCtrlEnter: config.get<boolean>("sendWithCtrlEnter", false),
     showThoughts: config.get<boolean>("showThoughts", true),

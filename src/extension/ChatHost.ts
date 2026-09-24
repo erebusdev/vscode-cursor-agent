@@ -53,6 +53,10 @@ export interface ChatHostServices {
   readonly setPluginServers: (ids: ReadonlyArray<string>, enabled: boolean) => Promise<void>;
   /** Runs the automatic plugin server sync now. */
   readonly syncPluginServers: () => Promise<void>;
+  /** A plugin's skills on or off (see cursorPluginSkills.ts). */
+  readonly setPluginSkills: (plugins: ReadonlyArray<string>, enabled: boolean) => Promise<void>;
+  /** Links or unlinks plugin skills after the setting changed. */
+  readonly syncPluginSkills: () => Promise<void>;
   /** The agent's user-level mcp.json. */
   readonly userMcpConfigPath: () => string;
   /** The workspace folder (MCP sign-ins are saved per folder). */
@@ -482,6 +486,15 @@ export class ChatHost implements vscode.Disposable {
             await this.refreshMcpStatus();
           }
           return;
+        case "plugins.skills.set":
+          try {
+            await this.services.setPluginSkills(message.plugins, message.enabled);
+          } catch (error) {
+            this.log.warn(`Plugin skills: ${error instanceof Error ? error.message : String(error)}`);
+          } finally {
+            await this.refreshMcpStatus();
+          }
+          return;
         case "mcp.plugins.login": {
           const settings = readExtensionSettings();
           const error = await this.setup.mcpLogin({
@@ -526,6 +539,10 @@ export class ChatHost implements vscode.Disposable {
           if (message.key === "mcpPluginServers") {
             // Switching to automatic applies it right away; the page shows the new state either way.
             if (message.value === "auto") await this.services.syncPluginServers().catch((error: unknown) => this.log.warn(`Plugin MCP sync failed: ${error instanceof Error ? error.message : String(error)}`));
+            await this.refreshMcpStatus();
+          }
+          if (message.key === "pluginSkills") {
+            await this.services.syncPluginSkills().catch((error: unknown) => this.log.warn(`Plugin skills: ${error instanceof Error ? error.message : String(error)}`));
             await this.refreshMcpStatus();
           }
           return;

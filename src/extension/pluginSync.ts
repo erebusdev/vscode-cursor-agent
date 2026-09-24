@@ -14,12 +14,18 @@
  *
  * In "auto" mode every plugin server that is not excluded is added on
  * connect; entries the extension added are remembered per file so turning a
- * server off only ever removes what the extension wrote. No `vscode` import.
+ * server off only ever removes what the extension wrote.
+ *
+ * Plugin skills and commands are linked into the same Cursor folder on
+ * connect (see session/cursorPluginSkills.ts); both count towards the one
+ * agent restart. No `vscode` import.
  */
 import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { homedir as osHomedir } from "node:os";
+import { existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
+import { applySkillPlan, currentSkillPlan, discoverPluginSkills } from "./session/cursorPluginSkills";
 import { discoverPluginMcpServers, isServerEnabled, readUserMcp, setPluginServers, type PluginDiscovery, type PluginMcpServer } from "./session/cursorPlugins";
 
 export type PluginMode = "auto" | "manual" | "off";
@@ -222,6 +228,10 @@ export interface PluginSyncSettings {
   readonly exclude: ReadonlyArray<string>;
   readonly userConfig: string;
   readonly environment: Readonly<Record<string, string>>;
+  /** Link plugin skills and commands into the agent's Cursor folder (`cursorAcp.pluginSkills`); off removes the links. */
+  readonly skills?: boolean;
+  /** Plugin names, or `plugin/skill`, left out (`cursorAcp.pluginSkillsExclude`). */
+  readonly skillsExclude?: ReadonlyArray<string>;
 }
 
 export interface KeyValueStore {
@@ -233,12 +243,20 @@ export interface PluginSyncDeps {
   readonly settings: () => PluginSyncSettings;
   /** Persists the exclude list (the `cursorAcp.mcpPluginExclude` setting). */
   readonly setExclude: (ids: ReadonlyArray<string>) => Promise<void>;
+  /** Persists the skills exclude list (the `cursorAcp.pluginSkillsExclude` setting). */
+  readonly setSkillsExclude?: (entries: ReadonlyArray<string>) => Promise<void>;
   /** The extension's global state. */
   readonly store: KeyValueStore;
   readonly log: { info(message: string): void; warn(message: string): void };
   readonly detectHome?: (pid: number | undefined) => Promise<string | undefined>;
   readonly homedir?: () => string;
   readonly windows?: boolean;
+}
+
+/** What the slash menu shows for a command that comes from a plugin. */
+export interface PluginCommandInfo {
+  readonly pluginName: string;
+  readonly description?: string;
 }
 
 export interface LaunchIdentity {
@@ -263,6 +281,8 @@ export function launchKey(launch: LaunchIdentity): string {
 
 export class PluginMcpSync {
   private readonly homes = new Map<string, string>();
+  /** Plugin skills and commands linked by the last skills sync, by slash command name. */
+  private readonly linkedCommands = new Map<string, PluginCommandInfo>();
   private lastLaunch: LaunchIdentity | undefined;
   /** The file changed after the running agent read it (cleared when the agent restarts). */
   reconnectNeeded = false;
@@ -299,7 +319,6 @@ export class PluginMcpSync {
   async beforeSpawn(launch: LaunchIdentity): Promise<void> {
     this.lastLaunch = launch;
     this.reconnectNeeded = false;
-    if (this.deps.settings().mode !== "auto") return;
     const config = this.resolve(launch);
     if (config.source === "default") return;
     await this.syncLogged(config);
@@ -312,29 +331,82 @@ export class PluginMcpSync {
    */
   async afterInitialize(launch: LaunchIdentity, pid: number | undefined): Promise<boolean> {
     this.lastLaunch = launch;
-    const settings = this.deps.settings();
     const before = this.resolve(launch);
     if (before.source === "settings" || before.source === "environment") return false;
     const key = launchKey(launch);
     const detected = await (this.deps.detectHome ?? ((p) => detectProcessHome(p)))(pid);
     if (!detected) {
       // Not readable (Windows, or ps failed): the remembered or default file; a no-op when beforeSpawn already synced it.
-      return settings.mode === "auto" ? (await this.syncLogged(before)).changed : false;
+      return (await this.syncLogged(before)).changed;
     }
     if (this.homes.get(key) === detected) return false;
     this.homes.set(key, detected);
     const stored = { ...(this.deps.store.get<Record<string, string>>(HOMES_KEY) ?? {}), [key]: detected };
     await this.deps.store.update(HOMES_KEY, stored);
     this.deps.log.info(`Agent HOME read from the agent process: ${detected}`);
-    if (settings.mode !== "auto") return false;
     return (await this.syncLogged(this.resolve(launch))).changed;
   }
 
-  private async syncLogged(config: ResolvedUserConfig): Promise<SyncOutcome> {
-    const outcome = await this.sync(config);
-    if (outcome.error) this.deps.log.warn(`Cursor plugin MCP servers: ${outcome.error}`);
-    if (outcome.added.length) this.deps.log.info(`Added Cursor plugin MCP servers to ${config.path}: ${outcome.added.join(", ")}`);
-    if (outcome.removed.length) this.deps.log.info(`Removed Cursor plugin MCP servers from ${config.path}: ${outcome.removed.join(", ")}`);
+  /** Connect-time sync: MCP servers in auto mode, then plugin skills. Changed when either changed. */
+  private async syncLogged(config: ResolvedUserConfig): Promise<{ changed: boolean }> {
+    let changed = false;
+    if (this.deps.settings().mode === "auto") {
+      const outcome = await this.sync(config);
+      if (outcome.error) this.deps.log.warn(`Cursor plugin MCP servers: ${outcome.error}`);
+      if (outcome.added.length) this.deps.log.info(`Added Cursor plugin MCP servers to ${config.path}: ${outcome.added.join(", ")}`);
+      if (outcome.removed.length) this.deps.log.info(`Removed Cursor plugin MCP servers from ${config.path}: ${outcome.removed.join(", ")}`);
+      changed = outcome.changed;
+    }
+    const skills = this.syncSkills(config);
+    return { changed: changed || skills.changed };
+  }
+
+  /**
+   * Links the plugin skills and commands into the agent's Cursor folder, or
+   * removes the links when the feature is off. Logs what it did.
+   */
+  syncSkills(config: ResolvedUserConfig = this.resolve()): SyncOutcome {
+    const settings = this.deps.settings();
+    const enabled = settings.skills ?? false;
+    this.linkedCommands.clear();
+    if (!existsSync(join(config.cursorDir, "plugins"))) return UNCHANGED;
+    try {
+      const discovery = discoverPluginSkills(config.cursorDir);
+      const plan = currentSkillPlan(config.cursorDir, discovery, settings.skillsExclude ?? [], enabled, this.deps.windows);
+      const result = applySkillPlan(config.cursorDir, plan, this.deps.windows);
+      const added = new Set(result.added.map((n) => n.replace(/[.]md$/, "")));
+      for (const { skill, state } of plan.entries) {
+        if (state === "linked" || (state === "missing" && added.has(skill.name))) this.linkedCommands.set(skill.name, { pluginName: skill.pluginName, ...(skill.description ? { description: skill.description } : {}) });
+      }
+      for (const error of result.errors) this.deps.log.warn(`Cursor plugin skills: ${error}`);
+      if (result.added.length) this.deps.log.info(`Linked Cursor plugin skills into ${config.cursorDir}: ${result.added.join(", ")}`);
+      if (result.removed.length) this.deps.log.info(`Removed Cursor plugin skill links from ${config.cursorDir}: ${result.removed.join(", ")}`);
+      const clashes = plan.entries.filter((e) => e.state === "clash").map((e) => `${e.skill.pluginName}/${e.skill.name}`);
+      if (clashes.length) this.deps.log.info(`Plugin skills skipped because the name is taken: ${clashes.join(", ")}`);
+      return { changed: result.changed, added: result.added, removed: result.removed, ...(result.errors.length ? { error: result.errors.join("; ") } : {}) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.deps.log.warn(`Cursor plugin skills: ${message}`);
+      return { ...UNCHANGED, error: message };
+    }
+  }
+
+  /** The plugin a slash command comes from, when the extension linked it. */
+  commandInfo(name: string): PluginCommandInfo | undefined {
+    return this.linkedCommands.get(name);
+  }
+
+  /** The per-plugin skills switch: edits the exclude list and relinks. */
+  async setSkillsEnabled(plugins: ReadonlyArray<string>, enabled: boolean, launch?: LaunchIdentity): Promise<SyncOutcome> {
+    const exclude = new Set(this.deps.settings().skillsExclude ?? []);
+    for (const plugin of plugins) {
+      // On clears single-skill entries of the plugin too; off adds the plugin.
+      for (const entry of [...exclude]) if (entry === plugin || entry.startsWith(`${plugin}/`)) exclude.delete(entry);
+      if (!enabled) exclude.add(plugin);
+    }
+    await this.deps.setSkillsExclude?.([...exclude].sort());
+    const outcome = this.syncSkills(this.resolve(launch ?? this.lastLaunch));
+    if (outcome.changed) this.reconnectNeeded = true;
     return outcome;
   }
 

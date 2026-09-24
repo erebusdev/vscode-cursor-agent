@@ -390,6 +390,21 @@
           "scope": "machine-overridable",
           "markdownDescription": "Plugin MCP servers left out in automatic mode."
         },
+        "cursorAcp.pluginSkills": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine-overridable",
+          "markdownDescription": "Make the skills from your Cursor plugins available in chat."
+        },
+        "cursorAcp.pluginSkillsExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Plugins whose skills are left out (a plugin name, or `plugin/skill`)."
+        },
         "cursorAcp.editorTitleButton": {
           "type": "boolean",
           "default": true,

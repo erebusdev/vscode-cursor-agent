@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { detectProcessHome, homeCandidatesFromPs, homeFromEnviron, planPluginSync, PluginMcpSync, resolveUserMcpConfig, safeToSync, type PluginSyncSettings } from "../src/extension/pluginSync";
@@ -111,6 +111,9 @@ describe("PluginMcpSync", () => {
       setExclude: async (ids) => {
         (current as { exclude: ReadonlyArray<string> }).exclude = ids;
       },
+      setSkillsExclude: async (entries) => {
+        (current as { skillsExclude?: ReadonlyArray<string> }).skillsExclude = entries;
+      },
       store: { get: <T>(k: string) => state.get(k) as T | undefined, update: (k, v) => void state.set(k, v) },
       log: { info: (m) => logs.push(m), warn: (m) => logs.push(m) },
       detectHome: async () => detected,
@@ -197,5 +200,30 @@ describe("PluginMcpSync", () => {
     expect(readFileSync(mcp, "utf8")).toBe("{ nope");
     expect(logs.join("\n")).toMatch(/not valid JSON/);
     expect(await sync.sync({ path: join(dirname(mcp), "other.json"), cursorDir: dirname(mcp), source: "agent" })).toMatchObject({ changed: false, error: expect.stringMatching(/not a .cursor\/mcp.json/) });
+  });
+
+  it("links plugin skills on connect in any MCP mode, counts them towards the restart, and unlinks per plugin", async () => {
+    const agentHome = join(dir, "agent-home");
+    const mcp = install(agentHome);
+    const cursorDir = dirname(mcp);
+    const skill = join(cursorDir, "plugins", "cache", "pub", "1", "sha", "skills", "sentry-debug-issue");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(skill, "SKILL.md"), "---\ndescription: Debug a Sentry issue\n---\n");
+    const { sync, settings } = make({ mode: "off", skills: true }, agentHome);
+    await sync.beforeSpawn(launch);
+    expect(await sync.afterInitialize(launch, 1)).toBe(true);
+    expect(servers(mcp)).toEqual(["github"]); // MCP mode off: mcp.json untouched
+    expect(lstatSync(join(cursorDir, "skills", "sentry-debug-issue")).isSymbolicLink()).toBe(true);
+    expect(sync.commandInfo("sentry-debug-issue")).toEqual({ pluginName: "sentry", description: "Debug a Sentry issue" });
+
+    const outcome = await sync.setSkillsEnabled(["sentry"], false, launch);
+    expect(settings.skillsExclude).toEqual(["sentry"]);
+    expect(outcome.removed).toEqual(["sentry-debug-issue"]);
+    expect(sync.reconnectNeeded).toBe(true);
+    expect(existsSync(join(cursorDir, "skills", "sentry-debug-issue"))).toBe(false);
+    expect(sync.commandInfo("sentry-debug-issue")).toBeUndefined();
+    await sync.setSkillsEnabled(["sentry"], true, launch);
+    expect(settings.skillsExclude).toEqual([]);
+    expect(existsSync(join(cursorDir, "skills", "sentry-debug-issue", "SKILL.md"))).toBe(true);
   });
 });

@@ -84,6 +84,8 @@ export interface SessionRuntimeOptions {
   /** Optional; when absent nothing is forwarded and the CLI loads its own config (approval-gated for project files). */
   readonly getMcpServers?: McpServersProvider;
   readonly launchHooks?: AgentLaunchHooks;
+  /** The plugin a slash command comes from (a plugin skill the extension linked), for the slash menu. */
+  readonly describeCommand?: (name: string) => { readonly pluginName: string; readonly description?: string } | undefined;
   /**
    * Awaited before every launch, ahead of reading the launch config (the login-shell PATH lookup).
    * Starts can therefore be requested right away: they queue in order instead of racing the wait.
@@ -1206,11 +1208,17 @@ export class SessionRuntime {
     }
     switch (update.sessionUpdate) {
       case "available_commands_update":
-        this.availableCommands = update.availableCommands.map((c) => ({
-          name: c.name,
-          description: c.description,
-          ...(c.input && "hint" in c.input && c.input.hint ? { hint: c.input.hint } : {}),
-        }));
+        this.availableCommands = update.availableCommands.map((c) => {
+          const plugin = this.options.describeCommand?.(c.name);
+          // Cursor shows a command file's first line ("---" when it has frontmatter) as its description.
+          const description = plugin?.description && (!c.description || /^-{3,}/.test(c.description.trim())) ? plugin.description : c.description;
+          return {
+            name: c.name,
+            description,
+            ...(c.input && "hint" in c.input && c.input.hint ? { hint: c.input.hint } : {}),
+            ...(plugin ? { plugin: plugin.pluginName } : {}),
+          };
+        });
         this.publishState();
         return;
       case "current_mode_update":

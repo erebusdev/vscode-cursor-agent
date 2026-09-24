@@ -321,6 +321,8 @@ export interface AvailableCommand {
   readonly name: string;
   readonly description: string;
   readonly hint?: string;
+  /** The Cursor plugin it comes from, when the extension linked it (see cursorPluginSkills.ts). */
+  readonly plugin?: string;
 }
 
 export interface SessionSummary {
@@ -431,6 +433,10 @@ export interface ExtensionSettings {
   readonly mcpPluginServers: "auto" | "manual" | "off";
   /** Plugin server ids (`plugin-<plugin>-<server>`) that auto mode leaves out. */
   readonly mcpPluginExclude: ReadonlyArray<string>;
+  /** Link Cursor plugin skills and commands into the agent's Cursor folder (see cursorPluginSkills.ts). */
+  readonly pluginSkills: boolean;
+  /** Plugin names, or `plugin/skill`, whose skills are left out. */
+  readonly pluginSkillsExclude: ReadonlyArray<string>;
   readonly resumeLastSession: boolean;
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;
@@ -508,6 +514,19 @@ export interface McpPluginServer {
   readonly cliStatus?: string;
 }
 
+/** The skills and commands that come with one Cursor plugin. */
+export interface McpPluginSkills {
+  readonly pluginName: string;
+  readonly skills: ReadonlyArray<string>;
+  readonly commands: ReadonlyArray<string>;
+  /** Linked into the agent's Cursor folder now. */
+  readonly linked: ReadonlyArray<string>;
+  /** Skipped because a skill or command of that name already exists. */
+  readonly clashes: ReadonlyArray<string>;
+  /** The whole plugin is on the exclude list. */
+  readonly excluded: boolean;
+}
+
 /** Where the user-level mcp.json path came from. */
 export type McpUserConfigSource = "settings" | "environment" | "agent" | "default";
 
@@ -531,8 +550,11 @@ export interface McpStatus {
   /** The resolved user-level mcp.json, and how it was found. */
   readonly userConfigPath?: string;
   readonly userConfigSource?: McpUserConfigSource;
-  /** The user-level mcp.json changed after the running agent read it. */
+  /** The user-level mcp.json or the plugin skill links changed after the running agent read them. */
   readonly reconnectNeeded?: boolean;
+  /** Plugins that come with skills or commands, and whether linking them is on. */
+  readonly pluginSkills?: ReadonlyArray<McpPluginSkills>;
+  readonly pluginSkillsOn?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -589,6 +611,8 @@ export type WebviewToExtension =
   | { readonly type: "mcp.openConfig" }
   /** Makes Cursor plugin servers available in chat or not (see pluginSync.ts). */
   | { readonly type: "mcp.plugins.set"; readonly ids: ReadonlyArray<string>; readonly enabled: boolean }
+  /** Makes a plugin's skills available in chat or not. */
+  | { readonly type: "plugins.skills.set"; readonly plugins: ReadonlyArray<string>; readonly enabled: boolean }
   /** Runs `agent mcp login <id>` in a terminal in the workspace folder. */
   | { readonly type: "mcp.plugins.login"; readonly id: string }
   /** Opens the resolved user-level mcp.json. */

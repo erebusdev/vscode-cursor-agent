@@ -80,7 +80,7 @@ async function mcpStatus(cwd: string | undefined, log: { warn(m: string): void }
       ? {
           plugins: () => {
             const settings = pluginSettings();
-            return { mode: settings.mode, exclude: settings.exclude, config: sync.resolve(launch), reconnectNeeded: sync.reconnectNeeded };
+            return { mode: settings.mode, exclude: settings.exclude, config: sync.resolve(launch), reconnectNeeded: sync.reconnectNeeded, skills: settings.skills, skillsExclude: settings.skillsExclude };
           },
         }
       : {}),
@@ -95,6 +95,8 @@ function pluginSettings() {
     exclude: config.get<string[]>("mcpPluginExclude", []).filter((id) => typeof id === "string"),
     userConfig: config.get<string>("mcpUserConfig", ""),
     environment: config.get<Record<string, string>>("environment", {}),
+    skills: config.get<boolean>("pluginSkills", true),
+    skillsExclude: config.get<string[]>("pluginSkillsExclude", []).filter((entry) => typeof entry === "string"),
   };
 }
 
@@ -123,6 +125,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const sync = new PluginMcpSync({
     settings: pluginSettings,
     setExclude: (ids) => updateExtensionSetting("mcpPluginExclude", [...ids]),
+    setSkillsExclude: (entries) => updateExtensionSetting("pluginSkillsExclude", [...entries]),
     store: context.globalState,
     log: { info: (m) => log.info(m), warn: (m) => log.warn(m) },
   });
@@ -166,6 +169,8 @@ export function activate(context: vscode.ExtensionContext): void {
       beforeSpawn: (launch) => sync.beforeSpawn(launch),
       afterInitialize: (launch, pid) => sync.afterInitialize(launch, pid),
     },
+    // Plugin skills linked by the sync get a plugin label in the slash menu.
+    describeCommand: (name) => sync.commandInfo(name),
     // Every launch (startup resume, history list, reconnect) waits for the PATH lookup inside the runtime,
     // so the startup resume below can be queued at once, ahead of anything a view asks for.
     beforeConnect: () => envReady,
@@ -193,6 +198,15 @@ export function activate(context: vscode.ExtensionContext): void {
       const outcome = await sync.setEnabled(ids, enabled, launchConfig());
       if (outcome.added.length) log.info(`Added Cursor plugin MCP servers: ${outcome.added.join(", ")}`);
       if (outcome.removed.length) log.info(`Removed Cursor plugin MCP servers: ${outcome.removed.join(", ")}`);
+    },
+    setPluginSkills: async (plugins, enabled) => {
+      const outcome = await sync.setSkillsEnabled(plugins, enabled, launchConfig());
+      if (outcome.error) throw new Error(outcome.error);
+    },
+    syncPluginSkills: async () => {
+      const outcome = sync.syncSkills(sync.resolve(launchConfig()));
+      if (outcome.changed) sync.reconnectNeeded = true;
+      if (outcome.error) throw new Error(outcome.error);
     },
     syncPluginServers: async () => {
       const outcome = await sync.sync(sync.resolve(launchConfig()));
