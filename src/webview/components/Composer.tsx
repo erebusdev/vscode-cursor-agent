@@ -141,6 +141,10 @@ function ModelPicker() {
   const anchor = useRef<HTMLButtonElement>(null);
   if (!models || models.availableModels.length === 0) return null;
   const current = models.availableModels.find((m) => m.modelId === models.currentModelId);
+  // Fast, context and other model settings live here; reasoning has its own control next to the model.
+  const modelSettings = modelOptions.filter((o) => !isReasoningOption(o));
+  const fast = modelSettings.find((o) => isSwitchOption(o) && isFastOption(o));
+  const fastOn = !!fast && isOn(fast);
   // Auto is not a model in the list: it is a switch above it (Cursor picks the model per request).
   const auto = models.availableModels.find((m) => isAutoModel(m.modelId, m.name));
   const autoOn = !!auto && auto.modelId === models.currentModelId;
@@ -162,9 +166,9 @@ function ModelPicker() {
   };
   return (
     <>
-      <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={`Model and options${modelOptions.length ? `: ${modelOptions.map((o) => `${o.name} ${optionValueLabel(o)}`).join(", ")}` : ""}`}>
+      <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={fastOn ? "Model (Fast mode on)" : "Model"}>
+        {fastOn && <Icon name="zap" class="picker-fast" />}
         <span class="picker-label">{current?.name ?? models.currentModelId}</span>
-        {headlineOption(modelOptions) && <span class="picker-sub">· {optionValueLabel(headlineOption(modelOptions)!)}</span>}
         <Icon name="chevron-down" class="picker-chevron" />
       </button>
       <Popover
@@ -218,10 +222,9 @@ function ModelPicker() {
           }}
           emptyText="No matching models"
         />
-        {modelOptions.length > 0 && (
-          <div class="model-options" role="group" aria-label={`Options for ${current?.name ?? models.currentModelId}`}>
-            <div class="popover-subheading">Options for {current?.name ?? models.currentModelId}</div>
-            {modelOptions.map((o) => (
+        {modelSettings.length > 0 && (
+          <div class="model-options" role="group" aria-label={`Settings for ${current?.name ?? models.currentModelId}`}>
+            {modelSettings.map((o) => (
               <OptionRow key={o.id} option={o} />
             ))}
           </div>
@@ -247,6 +250,65 @@ function ModelPicker() {
   );
 }
 
+function isSwitchOption(o: ConfigOption): boolean {
+  return o.type === "boolean" || typeof o.currentValue === "boolean" || isTrueFalse(o.options.map((x) => x.value));
+}
+
+function isOn(o: ConfigOption): boolean {
+  return o.currentValue === true || o.currentValue === "true";
+}
+
+const isFastOption = (o: ConfigOption) => /fast/i.test(o.id) || /fast/i.test(o.name);
+
+/** Reasoning options (effort, reasoning level, thinking): they get their own control next to the model. */
+function isReasoningOption(o: ConfigOption): boolean {
+  return o.category === "thought_level" || /effort|reasoning|thinking/i.test(o.id) || /effort|reasoning|thinking/i.test(o.name);
+}
+
+/** The current model's reasoning level as its own control, like T3 Code: one click to open, one to choose. */
+function ReasoningPicker() {
+  const models = useSelector((s) => s.session.models);
+  const modelOptions = useSelector((s) => s.session.modelOptions);
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const reasoning = modelOptions.filter(isReasoningOption);
+  if (reasoning.length === 0) return null;
+  const modelName = models?.availableModels.find((m) => m.modelId === models.currentModelId)?.name ?? models?.currentModelId ?? "this model";
+  const selects = reasoning.filter((o) => !isSwitchOption(o) && o.options.length > 0);
+  const switches = reasoning.filter((o) => isSwitchOption(o) || o.options.length === 0);
+  const parts = [...selects.map(optionValueLabel), ...switches.filter((o) => isSwitchOption(o) && !isOn(o) && selects.length === 0).map((o) => `No ${o.name.toLowerCase()}`), ...switches.filter((o) => isSwitchOption(o) && isOn(o) && selects.length === 0).map((o) => o.name)];
+  const label = parts.join(" · ") || "Reasoning";
+  return (
+    <>
+      <button ref={anchor} type="button" class="picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)} title={`Reasoning for ${modelName}: ${reasoning.map((o) => `${o.name} ${optionValueLabel(o)}`).join(", ")}`}>
+        <span class="picker-label">{label}</span>
+        <Icon name="chevron-down" class="picker-chevron" />
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label={`Reasoning for ${modelName}`} role="dialog" minWidth={180} class="reasoning-popover">
+        {selects.map((o) => (
+          <div key={o.id} class="traits-group" role="group" aria-label={o.name}>
+            <div class="popover-subheading">{o.name}</div>
+            <PopoverList
+              options={o.options.map((x) => ({ id: x.value, label: x.name, description: x.description, selected: String(o.currentValue) === x.value }))}
+              onSelect={(value) => {
+                setOpen(false);
+                if (value !== String(o.currentValue)) post({ type: "config.set", configId: o.id, value });
+              }}
+            />
+          </div>
+        ))}
+        {switches.length > 0 && (
+          <div class="model-options" role="group" aria-label="Reasoning switches">
+            {switches.map((o) => (
+              <OptionRow key={o.id} option={o} />
+            ))}
+          </div>
+        )}
+      </Popover>
+    </>
+  );
+}
+
 function optionValueLabel(o: ConfigOption): string {
   if (o.type === "boolean" || typeof o.currentValue === "boolean") return o.currentValue ? "On" : "Off";
   if (isTrueFalse(o.options.map((x) => x.value))) return o.currentValue === "true" ? "On" : "Off";
@@ -255,10 +317,6 @@ function optionValueLabel(o: ConfigOption): string {
 }
 
 
-/** The option worth showing in the model button itself: the reasoning/effort one if there is one. */
-function headlineOption(options: ReadonlyArray<ConfigOption>): ConfigOption | undefined {
-  return options.find((o) => o.category === "thought_level" || /effort|reasoning|thinking/i.test(o.id) || /effort|reasoning|thinking/i.test(o.name));
-}
 
 function isTrueFalse(values: ReadonlyArray<string>): boolean {
   return values.length === 2 && values.includes("true") && values.includes("false");
@@ -804,6 +862,7 @@ export function Composer() {
             <AddMenu />
             <ModePicker />
             <ModelPicker />
+            <ReasoningPicker />
             <ApprovalsPicker />
           </div>
           <div class="composer-toolbar-right">

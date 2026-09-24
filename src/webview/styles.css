@@ -2199,6 +2199,17 @@ button.chip:disabled {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
+.picker .picker-fast {
+  font-size: 13px;
+  color: var(--vscode-charts-yellow, var(--vscode-editorWarning-foreground));
+  margin-right: 2px;
+}
+.traits-group + .traits-group,
+.traits-group + .model-options {
+  border-top: 1px solid var(--vscode-widget-border, var(--border));
+  margin-top: 4px;
+  padding-top: 4px;
+}
 .model-auto-row {
   display: flex;
   align-items: center;
