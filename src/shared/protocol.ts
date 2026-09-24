@@ -4,6 +4,8 @@
  * thread model and streams snapshots + deltas to any attached webview.
  */
 
+import type { SettingsSection } from "./settingsUi";
+
 // ---------------------------------------------------------------------------
 // Thread items
 // ---------------------------------------------------------------------------
@@ -423,6 +425,8 @@ export interface ExtensionSettings {
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;
   readonly notifyWhenHidden: boolean;
+  /** Show the Open Cursor button in the editor title bar. */
+  readonly editorTitleButton: boolean;
   readonly protocolLogging: boolean;
   readonly approvalPolicy: ApprovalPolicy;
   /** Regular expressions; see DEFAULT_SAFE_LIST. */
@@ -447,6 +451,47 @@ export interface AgentProbe {
   readonly error?: string;
   readonly hint?: string;
   readonly checkedAt: number;
+}
+
+/** An MCP server the extension passes to the agent itself (see mcpConfig.ts). */
+export interface McpForwardedServer {
+  readonly name: string;
+  /** Which config file it came from; the project file wins on a name clash. */
+  readonly source: "project" | "user";
+  readonly transport: "stdio" | "http" | "sse";
+  /** Command (stdio) or URL (http/sse), for display. */
+  readonly target: string;
+}
+
+/** One line of `agent mcp list`. */
+export interface McpCliServer {
+  readonly name: string;
+  /** The CLI's own wording, e.g. "ready", "needs approval", "disabled". */
+  readonly status: string;
+  /** The extension forwards a server of this name, so it is available in chat whatever the CLI says. */
+  readonly forwarded: boolean;
+}
+
+export interface McpConfigFileStatus {
+  readonly path: string;
+  readonly level: "project" | "user";
+  readonly state: "ok" | "missing" | "error";
+  readonly detail?: string;
+  /** Servers read from the file. */
+  readonly count: number;
+}
+
+/** Result of the MCP status check shown in the settings tab (and logged by Show MCP Servers). */
+export interface McpStatus {
+  readonly checkedAt: number;
+  readonly forwarded: ReadonlyArray<McpForwardedServer>;
+  readonly files: ReadonlyArray<McpConfigFileStatus>;
+  /** What `agent mcp list` reported, or why it could not be asked. */
+  readonly cli: ReadonlyArray<McpCliServer> | { readonly error: string };
+  /** The executable used for `mcp list`, when found. */
+  readonly cliCommand?: string;
+  /** Why project servers are not forwarded (setting off, untrusted workspace, no folder), if they are not. */
+  readonly projectSkipped?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +537,13 @@ export type WebviewToExtension =
   | { readonly type: "openFile"; readonly path: string; readonly line?: number }
   | { readonly type: "openDiff"; readonly itemId: string; readonly path: string }
   | { readonly type: "copy"; readonly text: string }
+  /** Opens VS Code's own settings editor filtered to this extension. */
   | { readonly type: "openSettings" }
+  /** Opens (or reveals) the Cursor Agent settings editor tab, optionally on a section. */
+  | { readonly type: "settings.open"; readonly section?: SettingsSection }
+  | { readonly type: "mcp.status" }
+  /** Opens the workspace's `.cursor/mcp.json`, creating it when missing. */
+  | { readonly type: "mcp.openConfig" }
   | { readonly type: "openLogs" }
   | { readonly type: "openExternal"; readonly url: string }
   | { readonly type: "attachActiveFile" }
@@ -527,7 +578,9 @@ export type ExtensionToWebview =
   | { readonly type: "usage"; readonly usage: UsageSummary | undefined; readonly loading: boolean }
   | { readonly type: "extensionSettings"; readonly settings: ExtensionSettings }
   | { readonly type: "agentProbe"; readonly probe: AgentProbe }
-  | { readonly type: "showSettings" }
+  /** Settings tab: switch to a section (sent when an already-open tab is revealed for a specific section). */
+  | { readonly type: "showSettings"; readonly section?: SettingsSection }
+  | { readonly type: "mcpStatus"; readonly status: McpStatus | undefined; readonly loading: boolean }
   | { readonly type: "setupStatus"; readonly status: { readonly phase: "idle" | "installing" | "loggingIn"; readonly text?: string } }
   | { readonly type: "files.results"; readonly requestId: number; readonly query: string; readonly files: ReadonlyArray<{ readonly path: string; readonly name: string }> }
   | { readonly type: "toast"; readonly level: "info" | "warning" | "error"; readonly text: string };

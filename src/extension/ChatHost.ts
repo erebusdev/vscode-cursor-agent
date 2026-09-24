@@ -1,12 +1,14 @@
 /**
  * ChatHost connects the SessionRuntime to one or more webviews (the sidebar
- * view and optional editor panels), handles messages from the UI, and does
- * VS Code-side actions (open files, show diffs, notifications, badges).
+ * view, optional chat editor panels and the settings editor tab), handles
+ * messages from the UI, and does VS Code-side actions (open files, show
+ * diffs, notifications, badges).
  */
 import * as vscode from "vscode";
 import { randomBytes } from "node:crypto";
 import { basename } from "node:path";
-import type { AgentProbe, ExtensionToWebview, PromptAttachmentInput, UiSettings, WebviewToExtension } from "../shared/protocol";
+import type { AgentProbe, ExtensionToWebview, McpStatus, PromptAttachmentInput, UiSettings, WebviewToExtension } from "../shared/protocol";
+import { DEFAULT_SETTINGS_SECTION, parseSettingsSection, type SettingsSection } from "../shared/settingsUi";
 import type { SessionRuntime } from "./session/SessionRuntime";
 import { DiffContentProvider } from "./DiffContentProvider";
 import { MessageBatcher } from "./MessageBatcher";
@@ -25,11 +27,25 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return needle.length === 0;
 }
 
+/** What a webview shows: the chat (sidebar view or editor panel) or the settings editor tab. */
+type WebviewKind = "chat" | "settings";
+
 interface Attached {
   readonly webview: vscode.Webview;
+  readonly kind: WebviewKind;
   readonly isVisible: () => boolean;
   readonly reveal: () => void;
   ready: boolean;
+}
+
+export const SETTINGS_PANEL_TYPE = "cursorAcp.settings";
+
+/** Host → webview messages the settings tab has no use for (transcript traffic, composer events). */
+const CHAT_ONLY = new Set<ExtensionToWebview["type"]>(["item.upsert", "item.append", "items.reset", "sessions", "composer.insert", "composer.attach", "composer.focus", "files.results"]);
+
+export interface ChatHostServices {
+  /** Forwarded servers and the CLI's own `mcp list` (see mcpStatus.ts). */
+  readonly mcpStatus: () => Promise<McpStatus>;
 }
 
 /** Hidden-view notifications of one kind arriving within this window are shown as a single message. */
@@ -59,6 +75,7 @@ export class ChatHost implements vscode.Disposable {
     readonly runtime: SessionRuntime,
     private readonly diffs: DiffContentProvider,
     private readonly log: vscode.LogOutputChannel,
+    private readonly services: ChatHostServices,
   ) {
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -148,7 +165,7 @@ export class ChatHost implements vscode.Disposable {
 
   attachView(view: vscode.WebviewView): void {
     this.view = view;
-    const attached = this.attach(view.webview, () => view.visible, () => view.show?.(true));
+    const attached = this.attach(view.webview, "chat", () => view.visible, () => view.show?.(true));
     view.onDidDispose(() => {
       this.attached.delete(attached);
       if (this.view === view) this.view = undefined;
@@ -161,7 +178,7 @@ export class ChatHost implements vscode.Disposable {
   private readonly panels = new Set<vscode.WebviewPanel>();
 
   attachPanel(panel: vscode.WebviewPanel): void {
-    const attached = this.attach(panel.webview, () => panel.visible, () => panel.reveal());
+    const attached = this.attach(panel.webview, "chat", () => panel.visible, () => panel.reveal());
     this.panels.add(panel);
     panel.title = panelTitle(this.runtime.state.title);
     panel.onDidDispose(() => {
@@ -170,13 +187,56 @@ export class ChatHost implements vscode.Disposable {
     });
   }
 
-  private attach(webview: vscode.Webview, isVisible: () => boolean, reveal: () => void): Attached {
+  // --- settings editor tab ---------------------------------------------------------------
+
+  private settingsPanel: { panel: vscode.WebviewPanel; attached: Attached } | undefined;
+
+  /** Opens the settings editor tab (a singleton), or reveals it and switches to `section`. */
+  openSettings(section?: unknown): void {
+    const target = parseSettingsSection(section);
+    const existing = this.settingsPanel;
+    if (existing) {
+      existing.panel.reveal(undefined, false);
+      if (target) {
+        const message: ExtensionToWebview = { type: "showSettings", section: target };
+        // Not batched: the message is for this one webview. Before `ready` the initial section comes from the HTML.
+        if (existing.attached.ready) void existing.panel.webview.postMessage(message);
+        else existing.panel.webview.html = this.html(existing.panel.webview, "settings", target);
+      }
+      return;
+    }
+    const panel = vscode.window.createWebviewPanel(SETTINGS_PANEL_TYPE, "Cursor Agent Settings", { viewColumn: vscode.ViewColumn.Active, preserveFocus: false }, { retainContextWhenHidden: true });
+    this.attachSettingsPanel(panel, target);
+  }
+
+  /** Wires a settings panel (new, or restored by the serializer after a reload). */
+  attachSettingsPanel(panel: vscode.WebviewPanel, section?: SettingsSection): void {
+    if (this.settingsPanel && this.settingsPanel.panel !== panel) {
+      // A second restored panel: keep one.
+      panel.dispose();
+      this.settingsPanel.panel.reveal();
+      return;
+    }
+    panel.title = "Cursor Agent Settings";
+    panel.iconPath = {
+      light: vscode.Uri.joinPath(this.context.extensionUri, "media", "cursor-light.svg"),
+      dark: vscode.Uri.joinPath(this.context.extensionUri, "media", "cursor-dark.svg"),
+    };
+    const attached = this.attach(panel.webview, "settings", () => panel.visible, () => panel.reveal(), section);
+    this.settingsPanel = { panel, attached };
+    panel.onDidDispose(() => {
+      this.attached.delete(attached);
+      if (this.settingsPanel?.panel === panel) this.settingsPanel = undefined;
+    });
+  }
+
+  private attach(webview: vscode.Webview, kind: WebviewKind, isVisible: () => boolean, reveal: () => void, section?: SettingsSection): Attached {
     webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist", "webview"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
     };
-    webview.html = this.html(webview);
-    const attached: Attached = { webview, isVisible, reveal, ready: false };
+    webview.html = this.html(webview, kind, section);
+    const attached: Attached = { webview, kind, isVisible, reveal, ready: false };
     this.attached.add(attached);
     webview.onDidReceiveMessage((message: WebviewToExtension) => {
       if (message.type === "ready") {
@@ -185,7 +245,8 @@ export class ChatHost implements vscode.Disposable {
         void webview.postMessage({
           type: "snapshot",
           session: this.runtime.state,
-          items: this.runtime.model.getItems(),
+          // The settings tab needs the session (models, options) but not the transcript.
+          items: kind === "chat" ? this.runtime.model.getItems() : [],
           settings: this.uiSettings(),
           draft: this.draft,
         } satisfies ExtensionToWebview);
@@ -205,13 +266,14 @@ export class ChatHost implements vscode.Disposable {
     return attached;
   }
 
+  /** Whether any chat is on screen (the settings tab does not count: it shows no permission prompts). */
   private anyVisible(): boolean {
-    for (const a of this.attached) if (a.isVisible()) return true;
+    for (const a of this.attached) if (a.kind === "chat" && a.isVisible()) return true;
     return false;
   }
 
   reveal(): void {
-    const first = this.attached.values().next().value as Attached | undefined;
+    const first = [...this.attached].find((a) => a.kind === "chat");
     if (first) first.reveal();
     else void vscode.commands.executeCommand("cursorAcp.focus");
   }
@@ -228,7 +290,10 @@ export class ChatHost implements vscode.Disposable {
   private broadcast(messages: ReadonlyArray<ExtensionToWebview>): void {
     for (const a of this.attached) {
       if (!a.ready) continue;
-      for (const message of messages) void a.webview.postMessage(message);
+      for (const message of messages) {
+        if (a.kind === "settings" && CHAT_ONLY.has(message.type)) continue;
+        void a.webview.postMessage(message);
+      }
     }
   }
 
@@ -357,7 +422,16 @@ export class ChatHost implements vscode.Disposable {
           this.send({ type: "toast", level: "info", text: `Copied ${message.text.length > 48 ? "to clipboard" : message.text}` });
           return;
         case "openSettings":
-          await vscode.commands.executeCommand("workbench.action.openSettings", "cursorAcp");
+          await vscode.commands.executeCommand("workbench.action.openSettings", `@ext:${this.context.extension.id}`);
+          return;
+        case "settings.open":
+          this.openSettings(message.section);
+          return;
+        case "mcp.status":
+          await this.refreshMcpStatus();
+          return;
+        case "mcp.openConfig":
+          await this.openProjectMcpConfig();
           return;
         case "openLogs":
           this.log.show(true);
@@ -488,9 +562,45 @@ export class ChatHost implements vscode.Disposable {
     this.send({ type: "agentProbe", probe });
   }
 
-  /** Asks the UI to open the settings panel (e.g. when the executable is missing). */
-  showSettings(): void {
-    this.send({ type: "showSettings" });
+  private mcpInFlight: Promise<void> | undefined;
+
+  /** Runs the MCP status check (reads mcp.json files, asks `agent mcp list`) and sends the result to the UI. */
+  async refreshMcpStatus(): Promise<void> {
+    if (this.mcpInFlight) return this.mcpInFlight;
+    this.send({ type: "mcpStatus", status: undefined, loading: true });
+    this.mcpInFlight = this.services
+      .mcpStatus()
+      .then(
+        (status) => this.send({ type: "mcpStatus", status, loading: false }),
+        (error: unknown) => {
+          const text = error instanceof Error ? error.message : String(error);
+          this.log.error(`MCP status failed: ${text}`);
+          this.send({ type: "mcpStatus", status: { checkedAt: Date.now(), forwarded: [], files: [], cli: { error: text } }, loading: false });
+        },
+      )
+      .finally(() => {
+        this.mcpInFlight = undefined;
+      });
+    return this.mcpInFlight;
+  }
+
+  /** Opens the workspace's `.cursor/mcp.json`, creating an empty one first when it does not exist. */
+  private async openProjectMcpConfig(): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      this.send({ type: "toast", level: "info", text: "Open a folder first; project MCP servers live in its .cursor/mcp.json." });
+      return;
+    }
+    const dir = vscode.Uri.joinPath(folder.uri, ".cursor");
+    const file = vscode.Uri.joinPath(dir, "mcp.json");
+    try {
+      await vscode.workspace.fs.stat(file);
+    } catch {
+      await vscode.workspace.fs.createDirectory(dir);
+      await vscode.workspace.fs.writeFile(file, Buffer.from('{\n  "mcpServers": {}\n}\n', "utf8"));
+      this.log.info(`Created ${file.fsPath}`);
+    }
+    await vscode.window.showTextDocument(file, { preview: false });
   }
 
   async refreshUsage(): Promise<void> {
@@ -656,7 +766,7 @@ export class ChatHost implements vscode.Disposable {
 
   // --- html ---------------------------------------------------------------------------------
 
-  private html(webview: vscode.Webview): string {
+  private html(webview: vscode.Webview, kind: WebviewKind, section?: SettingsSection): string {
     const dist = vscode.Uri.joinPath(this.context.extensionUri, "dist", "webview");
     const script = webview.asWebviewUri(vscode.Uri.joinPath(dist, "main.js"));
     const style = webview.asWebviewUri(vscode.Uri.joinPath(dist, "main.css"));
@@ -677,9 +787,9 @@ export class ChatHost implements vscode.Disposable {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${codicons}">
 <link rel="stylesheet" href="${style}">
-<title>Cursor</title>
+<title>${kind === "settings" ? "Cursor Agent Settings" : "Cursor"}</title>
 </head>
-<body>
+<body data-view="${kind}"${kind === "settings" ? ` data-section="${section ?? DEFAULT_SETTINGS_SECTION}" data-version="${escapeAttr(String(this.context.extension.packageJSON?.version ?? ""))}"` : ""}>
 <div id="root"></div>
 <script nonce="${nonce}" src="${script}"></script>
 </body>
@@ -693,6 +803,10 @@ export class ChatHost implements vscode.Disposable {
     this.pendingNotifications.clear();
     for (const d of this.disposables) d.dispose();
   }
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
 function panelTitle(sessionTitle: string | undefined): string {

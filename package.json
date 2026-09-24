@@ -41,7 +41,9 @@
     "workspace"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onWebviewPanel:cursorAcp.panel",
+    "onWebviewPanel:cursorAcp.settings"
   ],
   "capabilities": {
     "untrustedWorkspaces": {

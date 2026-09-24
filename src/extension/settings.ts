@@ -23,7 +23,7 @@ function sourceOf(inspect: ReturnType<vscode.WorkspaceConfiguration["inspect"]>)
 
 export function readExtensionSettings(): ExtensionSettings {
   const config = vscode.workspace.getConfiguration(SECTION);
-  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "mcpForwardProjectServers", "mcpUserConfig", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging", "approvalPolicy", "safeList", "hiddenModels", "defaultModel", "defaultModelOptions"];
+  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "mcpForwardProjectServers", "mcpUserConfig", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "editorTitleButton", "protocolLogging", "approvalPolicy", "safeList", "hiddenModels", "defaultModel", "defaultModelOptions"];
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
@@ -39,6 +39,7 @@ export function readExtensionSettings(): ExtensionSettings {
     sendWithCtrlEnter: config.get<boolean>("sendWithCtrlEnter", false),
     showThoughts: config.get<boolean>("showThoughts", true),
     notifyWhenHidden: config.get<boolean>("notifyWhenHidden", true),
+    editorTitleButton: config.get<boolean>("editorTitleButton", true),
     protocolLogging: config.get<boolean>("protocolLogging", false),
     approvalPolicy: config.get<ApprovalPolicy>("approvalPolicy", "safe"),
     safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]),

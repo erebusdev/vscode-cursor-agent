@@ -1,17 +1,16 @@
 import * as vscode from "vscode";
-import { ChatHost } from "./ChatHost";
+import { ChatHost, SETTINGS_PANEL_TYPE } from "./ChatHost";
 import { AGENT_PATH_KEY } from "./platform";
 import { DEFAULT_SAFE_LIST } from "./session/approvals";
-import type { ApprovalPolicy } from "../shared/protocol";
+import type { ApprovalPolicy, McpStatus } from "../shared/protocol";
 import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
 import { SessionRuntime, type AgentLaunchConfig, type SessionMeta } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
 import type { WebviewToExtension } from "../shared/protocol";
 import { hostEnv, prepareHostEnv } from "./hostEnv";
-import { describeMcpServers, loadMcpServers, type McpServerSpec } from "./session/mcpConfig";
-import { resolveAgentExecutable } from "./acp/resolveExecutable";
-import { planLaunch } from "./acp/windowsLaunch";
-import { execFile } from "node:child_process";
+import { loadMcpServers, type McpServerSpec } from "./session/mcpConfig";
+import { collectMcpStatus, formatMcpStatus } from "./mcpStatus";
+import { parseSettingsSection } from "../shared/settingsUi";
 
 const PANEL_TYPE = "cursorAcp.panel";
 
@@ -54,6 +53,26 @@ async function mcpServers(cwd: string | undefined, log: { warn(m: string): void 
   });
   for (const source of result.sources) if (source.error) log.warn(`MCP config ${source.path}: ${source.error}`);
   return result;
+}
+
+/** Why the workspace's `.cursor/mcp.json` is not forwarded, if it is not. */
+function projectMcpSkipped(cwd: string | undefined): string | undefined {
+  if (!cwd) return "no folder is open";
+  if (!vscode.workspace.getConfiguration("cursorAcp").get<boolean>("mcpForwardProjectServers", true)) return "forwarding project servers is turned off";
+  if (!vscode.workspace.isTrusted) return "the workspace is not trusted";
+  return undefined;
+}
+
+/** Forwarded servers plus what `agent mcp list` reports, for the settings tab and the Show MCP Servers command. */
+async function mcpStatus(cwd: string | undefined, log: { warn(m: string): void }): Promise<McpStatus> {
+  const launch = launchConfig();
+  const skipped = projectMcpSkipped(cwd);
+  return collectMcpStatus({
+    loadServers: () => mcpServers(cwd, log),
+    launch,
+    cwd: cwd ?? process.cwd(),
+    ...(skipped ? { projectSkipped: skipped } : {}),
+  });
 }
 
 /** ACP wire form of a server spec (stdio keeps Cursor's optional cwd). */
@@ -124,10 +143,16 @@ export function activate(context: vscode.ExtensionContext): void {
   // Capture full before/after texts for the native diff editor.
   attachDiffCapture(runtime.model, diffs);
 
-  host = new ChatHost(context, runtime, diffs, log);
+  const envReady = prepareHostEnv(log);
+  host = new ChatHost(context, runtime, diffs, log, {
+    mcpStatus: async () => {
+      // `mcp list` and stdio commands need the login-shell PATH.
+      await envReady;
+      return mcpStatus(workspace?.cwd, log);
+    },
+  });
   context.subscriptions.push(host);
 
-  const envReady = prepareHostEnv(log);
   let started = false;
   const ensureStarted = async () => {
     if (started || !runtime) return;
@@ -247,39 +272,31 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("cursorAcp.showLogs", () => log.show(true)),
     vscode.commands.registerCommand("cursorAcp.showMcpServers", async () => {
       await envReady;
-      const lines: string[] = ["MCP servers"];
-      const result = await mcpServers(workspace?.cwd, log);
-      const described = describeMcpServers(result);
-      lines.push("Forwarded to the agent by the extension:", ...(described.length ? described.map((l) => `  ${l}`) : ["  (none: no mcp.json found, or forwarding is off)"]));
-      const launch = launchConfig();
-      const found = await resolveAgentExecutable(launch.command, launch.env);
-      if (!found) {
-        lines.push("Reported by the CLI: agent executable not found.");
-      } else {
-        const plan = planLaunch(found.path, [...launch.args, "mcp", "list"], launch.env);
-        const output = await new Promise<string>((resolve) => {
-          const child = execFile(plan.file, [...plan.args], { cwd: workspace?.cwd ?? process.cwd(), env: plan.env ? { ...launch.env, ...plan.env } : launch.env, timeout: 30_000, maxBuffer: 256 * 1024, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments ?? false }, (error, stdout, stderr) => {
-            resolve(error && !stdout ? `could not run "${found.path} mcp list": ${error.message}${stderr ? `\n${stderr}` : ""}` : `${stdout}${stderr}`.trim());
-          });
-          child.stdin?.end();
-        });
-        const forwarded = new Set(result.servers.map((s) => s.name));
-        lines.push(`Reported by the CLI (${found.path} mcp list):`);
-        for (const line of output.split(/\r?\n/).filter((l) => l.trim())) {
-          const name = /^\s*([^:]+):/.exec(line)?.[1]?.trim();
-          lines.push(`  ${line}${name && forwarded.has(name) && /needs approval/i.test(line) ? "  (forwarded by the extension, so it is available in chat)" : ""}`);
-        }
-      }
-      log.info(lines.join("\n"));
+      const status = await mcpStatus(workspace?.cwd, log);
+      // An open settings tab shows the same result.
+      host?.send({ type: "mcpStatus", status, loading: false });
+      log.info(formatMcpStatus(status).join("\n"));
       log.show(true);
     }),
-    vscode.commands.registerCommand("cursorAcp.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "cursorAcp")),
+    // Optional argument: a section id ("general", "agent", "approvals", "models", "mcp", "advanced").
+    vscode.commands.registerCommand("cursorAcp.openSettings", (section?: unknown) => {
+      // The Models section lists the session's models, so make sure the agent is up.
+      ensureStarted();
+      host?.openSettings(section);
+    }),
   );
 
   context.subscriptions.push(
     vscode.window.registerWebviewPanelSerializer(PANEL_TYPE, {
       deserializeWebviewPanel(panel) {
         host?.attachPanel(panel);
+        ensureStarted();
+        return Promise.resolve();
+      },
+    }),
+    vscode.window.registerWebviewPanelSerializer(SETTINGS_PANEL_TYPE, {
+      deserializeWebviewPanel(panel, state: unknown) {
+        host?.attachSettingsPanel(panel, parseSettingsSection(state && typeof state === "object" ? (state as { settingsSection?: unknown }).settingsSection : undefined));
         ensureStarted();
         return Promise.resolve();
       },
