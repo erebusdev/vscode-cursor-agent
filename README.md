@@ -24,10 +24,22 @@ remote side.
 
 The extension finds `cursor-agent` or `agent` on your PATH, or in Cursor's
 default install location. If you use a wrapper script or a non-standard
-path, set it in the view's settings (gear icon). The extension runs
-`<agentPath> [agentArgs...] acp`.
+path, set it on the Agent page of the settings tab (gear icon in the chat
+header). The extension runs `<agentPath> [agentArgs...] acp`.
 
 ## Settings
+
+Settings open in their own editor tab, *Cursor Agent Settings*: click the
+gear in the chat header, or run *Cursor Agent: Open Settings* from the
+Command Palette. Pages down the left: General, Agent, Approvals, Models,
+MCP servers and Advanced. *Manage models…* in the model picker opens the
+Models page, and the setup card's *All settings* opens the Agent page.
+Changes are saved as you make them, to your user settings (or to the
+workspace settings when the value is already set there); a badge next to a
+setting shows where its value comes from, with a Reset link.
+
+Every setting is also a regular VS Code setting under `cursorAcp.*`
+(*Advanced → Open in VS Code settings editor*):
 
 | Setting | Description |
 | --- | --- |
@@ -52,7 +64,7 @@ path, set it in the view's settings (gear icon). The extension runs
 
 ## MCP servers
 
-The agent reads MCP servers from Cursor's `~/.cursor/mcp.json` (for the account it runs as) and the workspace's `.cursor/mcp.json`. Project servers need an approval that only Cursor's terminal app can give, so the extension forwards them itself; user-level ones load as they do in the CLI. *Cursor Agent: Show MCP Servers* lists what is forwarded and what the CLI reports. Read-only MCP tools (names starting with get, list, search, read…) run without asking under the Safe list policy; the rest prompt, with *Allow for session* available.
+The agent reads MCP servers from Cursor's `~/.cursor/mcp.json` (for the account it runs as) and the workspace's `.cursor/mcp.json`. Project servers need an approval that only Cursor's terminal app can give, so the extension forwards them itself; user-level ones load as they do in the CLI. The *MCP servers* page of the settings tab lists what is forwarded and what the CLI reports (*Cursor Agent: Show MCP Servers* writes the same to the output channel), and opens the project's `.cursor/mcp.json`, creating it if needed. Read-only MCP tools (names starting with get, list, search, read…) run without asking under the Safe list policy; the rest prompt, with *Allow for session* available.
 
 The agent is started with your login shell's PATH, so servers launched with `npx`, `node` or `uvx` resolve even when VS Code was opened from the Dock.
 
@@ -65,7 +77,9 @@ The agent is started with your login shell's PATH, so servers launched with `npx
 | `Cmd+Alt+N` | New session (while the view is focused) |
 | `Cmd+Alt+Y` | Cycle approvals: Ask → Safe list → Auto (while the view is focused) |
 | Palette: *Cursor Agent: Copy Session Id* | Copies the current Cursor session id (also on each history row) |
-| `Enter` / `Shift+Enter` | Send / insert newline |
+| Palette: *Cursor Agent: Open Settings* | Opens the settings tab (also the gear in the chat header) |
+| `↑` `↓` `Home` `End` | Move between settings pages when the page list has focus |
+| `Enter` / `Shift+Enter` | Send / insert newline (swap to `Cmd+Enter` under *General → Send shortcut*) |
 | `Esc` | Stop the current turn |
 | `/` `@` `↑` | Commands, file mentions, previous prompt |
 | `y` `a` `n` | Allow, always allow, reject a permission prompt |

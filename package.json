@@ -286,7 +286,7 @@
           {
             "id": "configure",
             "title": "Point the extension at the CLI",
-            "description": "By default the extension looks for `agent` on your PATH. If you use a wrapper script (for example to select an account), set the path in Settings.\n[Open Settings](command:cursorAcp.openSettings)",
+            "description": "By default the extension looks for `agent` on your PATH. If you use a wrapper script (for example to select an account), set the path in Settings.\n[Open Settings](command:cursorAcp.openSettings?%5B%22agent%22%5D)",
             "media": {
               "markdown": "media/walkthrough/configure.md"
             },
