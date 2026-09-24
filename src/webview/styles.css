@@ -2321,6 +2321,21 @@ button.chip:disabled {
 .history-popover .popover-list {
   max-height: 300px;
 }
+.popover-subheading {
+  padding: 6px 6px 2px;
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.popover-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.popover-group:first-child > .popover-subheading {
+  padding-top: 2px;
+}
 
 /* --- Usage ---------------------------------------------------------------- */
 
