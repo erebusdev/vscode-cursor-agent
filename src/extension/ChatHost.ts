@@ -342,6 +342,7 @@ export class ChatHost implements vscode.Disposable {
           return;
         case "copy":
           await vscode.env.clipboard.writeText(message.text);
+          this.send({ type: "toast", level: "info", text: `Copied ${message.text.length > 48 ? "to clipboard" : message.text}` });
           return;
         case "openSettings":
           await vscode.commands.executeCommand("workbench.action.openSettings", "cursorAcp");
