@@ -145,6 +145,14 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       host?.focusComposer();
     }),
+    vscode.commands.registerCommand("cursorAcp.cycleApprovals", () => {
+      if (!runtime) return;
+      const order = ["ask", "safe", "auto"] as const;
+      const current = runtime.state.approvalPolicy ?? "safe";
+      const next = order[(order.indexOf(current) + 1) % order.length]!;
+      runtime.setApprovalPolicy(next);
+      void vscode.window.setStatusBarMessage(`Cursor approvals: ${next === "safe" ? "Safe list" : next === "auto" ? "Auto" : "Ask"}`, 2000);
+    }),
     vscode.commands.registerCommand("cursorAcp.copySessionId", async () => {
       const id = runtime?.state.sessionId;
       if (!id) {

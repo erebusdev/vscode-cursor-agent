@@ -54,6 +54,7 @@ path, set it in the view's settings (gear icon). The extension runs
 | `Cmd+Alt+C` | Open Cursor |
 | `Cmd+Alt+A` | Add selection to Cursor |
 | `Cmd+Alt+N` | New session (while the view is focused) |
+| `Cmd+Alt+Y` | Cycle approvals: Ask → Safe list → Auto (while the view is focused) |
 | Palette: *Cursor Agent: Copy Session Id* | Copies the current Cursor session id (also on each history row) |
 | `Enter` / `Shift+Enter` | Send / insert newline |
 | `Esc` | Stop the current turn |
@@ -77,7 +78,6 @@ runs the tests against the real CLI and consumes Cursor usage.
 
 ---
 
-> [!NOTE]
-> No support provided, no contributions accepted. If something doesn't work
-> or you would like changes, [fork it on GitHub](https://github.com/erebusdev/vscode-cursor-agent)
-> and modify it for your own use.
+**Note:** No support provided, no contributions accepted. If something doesn't
+work or you would like changes, [fork it on GitHub](https://github.com/erebusdev/vscode-cursor-agent)
+and modify it for your own use.

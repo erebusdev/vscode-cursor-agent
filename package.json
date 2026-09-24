@@ -162,6 +162,12 @@
         "title": "Copy Session Id",
         "category": "Cursor Agent",
         "icon": "$(copy)"
+      },
+      {
+        "command": "cursorAcp.cycleApprovals",
+        "title": "Cycle Approval Policy",
+        "category": "Cursor Agent",
+        "icon": "$(shield)"
       }
     ],
     "menus": {
@@ -246,6 +252,12 @@
         "command": "cursorAcp.newSession",
         "key": "ctrl+alt+n",
         "mac": "cmd+alt+n",
+        "when": "cursorAcp.viewFocused"
+      },
+      {
+        "command": "cursorAcp.cycleApprovals",
+        "key": "ctrl+alt+y",
+        "mac": "cmd+alt+y",
         "when": "cursorAcp.viewFocused"
       }
     ],
