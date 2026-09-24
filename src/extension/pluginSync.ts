@@ -324,11 +324,6 @@ export class PluginMcpSync {
     return (await this.syncLogged(this.resolve(launch))).changed;
   }
 
-  /** Whether the agent HOME for this command line was read from a running agent. */
-  knowsHome(launch: LaunchIdentity | undefined = this.lastLaunch): boolean {
-    return !!launch && this.homes.has(launchKey(launch));
-  }
-
   private async syncLogged(config: ResolvedUserConfig): Promise<SyncOutcome> {
     const outcome = await this.sync(config);
     if (outcome.error) this.deps.log.warn(`Cursor plugin MCP servers: ${outcome.error}`);

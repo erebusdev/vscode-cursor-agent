@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { collectMcpStatus, configFiles, formatMcpStatus, forwardedServers, parseMcpList } from "../src/extension/mcpStatus";
+import { collectMcpStatus, configFiles, formatMcpStatus, forwardedServers, parseMcpList, pluginHost } from "../src/extension/mcpStatus";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { McpServersResult } from "../src/extension/session/mcpConfig";
 
 const result: McpServersResult = {
@@ -101,5 +104,42 @@ describe("collectMcpStatus", () => {
     });
     expect("error" in failed.cli && failed.cli.error).toBe('Could not run "/bin/agent mcp list": exit 1\nboom');
     expect(formatMcpStatus(failed)).toContain("  (none: no mcp.json found)");
+  });
+});
+
+describe("Cursor plugin servers in the MCP status", () => {
+  it("shows only the host of a URL or the base name of a command", () => {
+    expect(pluginHost({ url: "https://mcp.sentry.dev/mcp?token=secret" })).toBe("mcp.sentry.dev");
+    expect(pluginHost({ command: "/opt/tools/bin/server.exe" })).toBe("server");
+  });
+
+  it("lists discovered servers with their mcp.json and CLI state", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mcp-status-plugins-"));
+    try {
+      const cursorDir = join(dir, ".cursor");
+      const root = join(cursorDir, "plugins", "cache", "pub", "1", "sha");
+      mkdirSync(root, { recursive: true });
+      writeFileSync(join(root, ".mcp.json"), JSON.stringify({ mcpServers: { sentry: { url: "https://mcp.sentry.dev/mcp?utm_source=plugin", headers: { A: "secret" } }, other: { command: "node", args: ["--token", "secret"] } } }));
+      writeFileSync(join(cursorDir, "plugins", "cache", ".cloud-plugin-manifest.json"), JSON.stringify({ plugins: [{ name: "sentry", pluginId: "1", marketplaceSlug: "pub", resolvedCommitSha: "sha" }] }));
+      writeFileSync(join(cursorDir, "mcp.json"), JSON.stringify({ mcpServers: { "plugin-sentry-sentry": { url: "https://mcp.sentry.dev/mcp?utm_source=plugin" } } }));
+      const status = await collectMcpStatus({
+        loadServers: async () => ({ servers: [], sources: [] }),
+        launch: { command: "agent", args: [], env: {} },
+        cwd: dir,
+        plugins: () => ({ mode: "auto", exclude: ["plugin-sentry-other"], config: { path: join(cursorDir, "mcp.json"), cursorDir, source: "agent" }, reconnectNeeded: false }),
+        resolve: async () => ({ path: "/bin/agent" }),
+        run: async () => ({ stdout: "plugin-sentry-sentry: requires_authentication\n", stderr: "" }),
+        now: () => 1,
+      });
+      expect(status.plugins).toEqual([
+        { id: "plugin-sentry-other", pluginName: "sentry", serverName: "other", transport: "stdio", host: "node", enabled: false, excluded: true },
+        { id: "plugin-sentry-sentry", pluginName: "sentry", serverName: "sentry", transport: "http", host: "mcp.sentry.dev", enabled: true, excluded: false, cliStatus: "requires_authentication" },
+      ]);
+      expect(status).toMatchObject({ pluginMode: "auto", userConfigSource: "agent", userConfigPath: join(cursorDir, "mcp.json"), pluginErrors: [] });
+      expect(JSON.stringify(status)).not.toContain("secret");
+      expect(formatMcpStatus(status).join("\n")).toContain("plugin-sentry-sentry (http: mcp.sentry.dev): in mcp.json, requires_authentication");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

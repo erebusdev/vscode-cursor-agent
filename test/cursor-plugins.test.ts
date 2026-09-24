@@ -171,3 +171,14 @@ describe("user-level mcp.json edits", () => {
     expect(existsSync(path)).toBe(true);
   });
 });
+
+// Read-only check against a real Cursor folder: CURSOR_PLUGINS_REAL_DIR=/path/to/.cursor npx vitest run test/cursor-plugins.test.ts
+describe.skipIf(!process.env.CURSOR_PLUGINS_REAL_DIR)("real Cursor folder (read-only)", () => {
+  it("discovers plugin servers", () => {
+    const found = discoverPluginMcpServers(process.env.CURSOR_PLUGINS_REAL_DIR!);
+    // Ids and transports only: URLs may carry queries and entries may carry headers.
+    const current = readUserMcp(join(process.env.CURSOR_PLUGINS_REAL_DIR!, "mcp.json")).servers;
+    console.log(JSON.stringify({ servers: found.servers.map((s) => `${s.id} (${s.transport})${isServerEnabled(current, s) ? " already in mcp.json" : ""}`), errors: found.errors.length, complete: found.complete }, null, 2));
+    expect(found.servers.length).toBeGreaterThan(0);
+  });
+});

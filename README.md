@@ -49,7 +49,9 @@ Every setting is also a regular VS Code setting under `cursorAcp.*`
 | `cursorAcp.environment` | Extra env vars for the agent process. |
 | `cursorAcp.configDir` | Cursor config dir, used by the usage panel. Empty = auto-detect. |
 | `cursorAcp.mcpForwardProjectServers` | Pass the workspace's `.cursor/mcp.json` servers to the agent with each session (default on; skipped in untrusted workspaces). In ACP mode the CLI otherwise skips project servers that were never approved in its terminal app, without saying so. |
-| `cursorAcp.mcpUserConfig` | The user-level `mcp.json` this profile's agent reads, shown on the MCP servers page. Not forwarded: the agent loads it itself, with its saved sign-ins. |
+| `cursorAcp.mcpUserConfig` | The user-level `mcp.json` the agent reads. Empty = found automatically (see [MCP servers](#mcp-servers)). Not forwarded: the agent loads it itself, with its saved sign-ins. |
+| `cursorAcp.mcpPluginServers` | Cursor plugin MCP servers: `auto` (default) adds them to the user-level `mcp.json` on connect, `manual` only through the switches on the MCP servers page, `off` leaves the file alone. |
+| `cursorAcp.mcpPluginExclude` | Plugin server ids (e.g. `plugin-figma-figma`) that `auto` leaves out; switching a server off adds it here. |
 | `cursorAcp.resumeLastSession` | Resume the folder's last session on open. |
 | `cursorAcp.sendWithCtrlEnter` | Send with Ctrl/Cmd+Enter instead of Enter. |
 | `cursorAcp.showThoughts` | Show thinking blocks. |
@@ -66,7 +68,9 @@ Every setting is also a regular VS Code setting under `cursorAcp.*`
 
 The agent reads MCP servers from Cursor's `~/.cursor/mcp.json` (for the account it runs as) and the workspace's `.cursor/mcp.json`. Project servers need an approval that only Cursor's terminal app can give, so the extension forwards them itself; user-level ones load as they do in the CLI. The *MCP servers* page of the settings tab lists what is forwarded and what the CLI reports (*Cursor Agent: Show MCP Servers* writes the same to the output channel), and opens the project's `.cursor/mcp.json`, creating it if needed. Read-only MCP tools (names starting with get, list, search, read…) run without asking under the Safe list policy; the rest prompt, with *Allow for session* available.
 
-Cursor plugins (Atlassian, Sentry, Figma…) bring MCP servers that only Cursor's terminal app loads; ACP sessions do not. To use one in chat, add it to the user-level `mcp.json` under the plugin's name, e.g. `"plugin-sentry-sentry": { "url": "https://mcp.sentry.dev/mcp" }`. The agent then reuses the sign-in Cursor saved for that plugin in the project; if it shows *requires_authentication*, run `agent mcp login plugin-sentry-sentry` in the project folder once.
+Cursor plugins (Atlassian, Sentry, Figma…) bring MCP servers that only Cursor's terminal app loads; ACP sessions only see them when they are listed in the user-level `mcp.json` under the plugin's name, e.g. `plugin-sentry-sentry`, where the agent reuses the sign-in Cursor saved for the plugin. By default the extension does this for you: when the agent connects it adds every installed plugin's servers that are missing (and restarts the agent once if the file changed), and it only ever removes entries it added itself. It finds the right file on its own: `cursorAcp.mcpUserConfig` if set, else `.cursor/mcp.json` under `HOME` from `cursorAcp.environment`, else under the HOME the running agent was started with (so a wrapper script that switches accounts works), else under your home folder.
+
+The *Cursor plugins* group on the *MCP servers* page lists each plugin server with its status, an *Available in chat* switch and, when the agent reports *requires_authentication*, a *Sign in* button that runs `agent mcp login <id>` in a terminal in the project folder (Cursor keeps these sign-ins per folder). Reconnect after a change so the agent reloads the file. You can still add an entry by hand, e.g. `"plugin-sentry-sentry": { "url": "https://mcp.sentry.dev/mcp" }`; the extension leaves entries it did not write alone.
 
 The agent is started with your login shell's PATH, so servers launched with `npx`, `node` or `uvx` resolve even when VS Code was opened from the Dock.
 
