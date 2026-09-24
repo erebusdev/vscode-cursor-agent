@@ -708,8 +708,8 @@ export function SettingsView() {
                 <button title="Open the Cursor Agent output channel" type="button" class="link-button" onClick={() => post({ type: "openLogs" })}>
                   <Icon name="output" /> Open logs
                 </button>
-                <button title="Edit these settings as JSON" type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
-                  <Icon name="json" /> Open settings.json
+                <button title="Open these settings in VS Code's settings editor" type="button" class="link-button" onClick={() => post({ type: "openSettings" })}>
+                  <Icon name="settings-gear" /> Open in VS Code settings
                 </button>
               </div>
             </section>
