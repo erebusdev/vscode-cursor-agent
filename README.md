@@ -40,6 +40,8 @@ path, set it in the view's settings (gear icon). The extension runs
 | `cursorAcp.sendWithCtrlEnter` | Send with Ctrl/Cmd+Enter instead of Enter. |
 | `cursorAcp.showThoughts` | Show thinking blocks. |
 | `cursorAcp.notifyWhenHidden` | Notify on permission requests and finished turns while the view is hidden. |
+| `cursorAcp.approvalPolicy` | Default approvals for new sessions: `ask`, `safe` (read-only commands and tools run without asking) or `auto`. Switchable per session from the toolbar. |
+| `cursorAcp.safeList` | Regexes for the safe list, tested against each part of a shell command and against Cursor's tool pattern such as `Mcp(server:tool)`. |
 | `cursorAcp.editorTitleButton` | Show the Open Cursor button in the editor title bar. |
 | `cursorAcp.protocolLogging` | Log every JSON-RPC message to the output channel. |
 
