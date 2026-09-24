@@ -3893,7 +3893,7 @@ body[data-view="settings"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 2px 6px;
   border-radius: var(--radius);
   background: var(--row-bg);
@@ -3991,9 +3991,9 @@ body[data-view="settings"] {
    row background (itself over the view background), so they never reflow the title. */
 .hrow-actions {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
   display: flex;
   align-items: center;
   gap: 1px;
