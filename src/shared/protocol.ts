@@ -326,6 +326,10 @@ export interface SessionSummary {
   readonly title?: string;
   readonly cwd?: string;
   readonly updatedAt?: string;
+  /** Hidden from the history by the user (only listed for the history tab's "Show hidden"). */
+  readonly hidden?: boolean;
+  /** The model this session last used here, when the extension remembers one. */
+  readonly modelId?: string;
 }
 
 export interface SessionState {
