@@ -180,6 +180,10 @@ export class SessionRuntime {
   private agentVersion: string | undefined;
 
   private activePrompt: Promise<acp.PromptResponse> | undefined;
+  /** Message queued while a turn runs; sent automatically when the turn ends (unless the user stopped it). */
+  private queued: { text: string; attachments: PromptAttachmentInput[] } | undefined;
+  /** Set when the user pressed Stop, so a queued message waits instead of firing into the cancelled turn. */
+  private stoppedByUser = false;
   private readonly pendingPermissions = new Map<string, PendingRequest<acp.RequestPermissionResponse>>();
   private readonly pendingQuestions = new Map<string, PendingRequest<CursorAskQuestionResponse>>();
   private readonly pendingPlans = new Map<string, PendingRequest<CursorCreatePlanResponse>>();
@@ -225,6 +229,7 @@ export class SessionRuntime {
       ...(this.loginUrl ? { loginUrl: this.loginUrl } : {}),
       changedFiles: this.model.changedFiles(),
       ...(this.model.turnStart ? { turnStartedAt: this.model.turnStart } : {}),
+      ...(this.queued ? { queued: { text: this.queued.text, attachmentCount: this.queued.attachments.length } } : {}),
     };
   }
 
@@ -724,15 +729,23 @@ export class SessionRuntime {
 
   // --- prompting ---------------------------------------------------------------------
 
-  async prompt(text: string, attachments: ReadonlyArray<PromptAttachmentInput>): Promise<void> {
+  async prompt(text: string, attachments: ReadonlyArray<PromptAttachmentInput>, mode: "queue" | "interrupt" = "queue"): Promise<void> {
     // A session being created or replayed must finish first; prompting mid-replay would race the
     // history (and, with no session id yet, would wrongly create a fresh session).
     await this.settleStart();
     if (this.disposed) return;
     if (this.isRunning) {
-      this.options.events.message({ type: "toast", level: "warning", text: "The agent is still working. Stop it or wait for it to finish." });
-      return;
+      if (mode === "queue") {
+        // One prompt at a time per ACP session: hold the message and send it when this turn ends.
+        this.queued = { text, attachments: [...attachments] };
+        this.publishState();
+        return;
+      }
+      this.options.log.info("Interrupting the current turn to send a new prompt.");
+      await this.cancel(false);
+      if (this.disposed || this.isRunning) return;
     }
+    this.stoppedByUser = false;
     if (!this.hasSession) {
       await this.start(this.sessionId ?? undefined);
       if (!this.hasSession) return;
@@ -788,15 +801,41 @@ export class SessionRuntime {
           this.setConnectionState("ready");
           this.options.events.turnFinished(stopReason);
         }
+        // A queued message follows on its own unless the user explicitly stopped the turn, in which
+        // case it stays queued so they can reconsider it.
+        if (this.queued && !this.stoppedByUser && !this.disposed) {
+          const next = this.queued;
+          this.queued = undefined;
+          void this.prompt(next.text, next.attachments);
+        }
       }
     }
   }
 
-  async cancel(): Promise<void> {
+  /** Sends the queued message now, interrupting the current turn if there is one. */
+  async sendQueuedNow(): Promise<void> {
+    const next = this.queued;
+    if (!next) return;
+    this.queued = undefined;
+    this.publishState();
+    await this.prompt(next.text, next.attachments, "interrupt");
+  }
+
+  /** Removes and returns the queued message (for editing in the composer). */
+  takeQueued(): { text: string; attachments: PromptAttachmentInput[] } | undefined {
+    const next = this.queued;
+    if (!next) return undefined;
+    this.queued = undefined;
+    this.publishState();
+    return next;
+  }
+
+  async cancel(byUser = true): Promise<void> {
     const connection = this.connection;
     const sessionId = this.sessionId;
     const active = this.activePrompt;
     if (!connection || !sessionId || !active || connection.isClosed) return;
+    if (byUser) this.stoppedByUser = true;
     this.setConnectionState("cancelling");
     this.options.log.info("Cancelling current turn.");
     // Per ACP, pending permission requests must be answered with `cancelled` once we cancel.

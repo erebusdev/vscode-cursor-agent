@@ -136,6 +136,53 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.connection).toBe("ready");
   });
 
+  it("queues a prompt sent while a turn runs and sends it when the turn ends", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 300", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.prompt("hello after", []);
+    expect(runtime.state.queued).toEqual({ text: "hello after", attachmentCount: 0 });
+    await turn;
+    await waitFor(() => runtime.state.queued === undefined && runtime.state.connection === "ready");
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 300", "hello after"]);
+  });
+
+  it("keeps a queued prompt when the user stops the turn, and sends it on demand", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.prompt("later", []);
+    await runtime.cancel();
+    await turn;
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.queued?.text).toBe("later");
+    await runtime.sendQueuedNow();
+    await waitFor(() => runtime.state.connection === "ready" && runtime.state.queued === undefined);
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 20000", "later"]);
+  });
+
+  it("interrupt mode cancels the running turn and sends immediately", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    const started = Date.now();
+    await runtime.prompt("now please", [], "interrupt");
+    await turn.catch(() => undefined);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(runtime.state.queued).toBeUndefined();
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 20000", "now please"]);
+    expect(runtime.state.connection).toBe("ready");
+  });
+
   it("renders edits as diffs and tracks changed files", async () => {
     const { runtime } = makeRuntime();
     active.push(runtime);

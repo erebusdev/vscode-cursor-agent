@@ -242,6 +242,33 @@ function readImageFile(file: File): Promise<PromptAttachmentInput | null> {
   });
 }
 
+/** The message waiting to go out after the current turn, with edit / send-now / remove. */
+function QueuedBar() {
+  const queued = useSelector((s) => s.session.queued);
+  const running = useSelector((s) => s.session.connection === "running" || s.session.connection === "cancelling");
+  if (!queued) return null;
+  const preview = queued.text.trim().replace(/\s+/g, " ") || `${queued.attachmentCount} attachment${queued.attachmentCount === 1 ? "" : "s"}`;
+  return (
+    <div class="queued-bar" role="status" aria-label="Queued message">
+      <Icon name="list-ordered" />
+      <span class="queued-label">{running ? "Queued" : "Queued (stopped)"}</span>
+      <span class="queued-text" title={queued.text}>
+        {preview}
+        {queued.attachmentCount > 0 && queued.text.trim() ? ` · ${queued.attachmentCount} attachment${queued.attachmentCount === 1 ? "" : "s"}` : ""}
+      </span>
+      <span class="queued-actions">
+        <button type="button" class="link-button" title="Interrupt the current turn and send this now" onClick={() => post({ type: "queue.sendNow" })}>
+          Send now
+        </button>
+        <button type="button" class="link-button" title="Put it back in the composer" onClick={() => post({ type: "queue.edit" })}>
+          Edit
+        </button>
+        <IconButton icon="close" label="Remove queued message" onClick={() => post({ type: "queue.clear" })} />
+      </span>
+    </div>
+  );
+}
+
 export function Composer() {
   const session = useSelector((s) => s.session);
   const settings = useSelector((s) => s.settings);
@@ -347,6 +374,7 @@ export function Composer() {
   const c = session.connection;
   const running = c === "running" || c === "cancelling";
   const canSend = c === "ready" || c === "idle";
+  const sendKeyLabel = settings.sendWithCtrlEnter ? "Ctrl/Cmd+Enter" : "Enter";
   const placeholder =
     c === "starting"
       ? "Connecting…"
@@ -354,7 +382,9 @@ export function Composer() {
         ? "Loading history…"
         : c === "disconnected" || c === "error"
           ? "Agent disconnected — reconnect to continue"
-          : "Ask Cursor… (/ for commands)";
+          : running
+            ? `Working… ${sendKeyLabel} queues for after this turn`
+            : "Ask Cursor… (/ for commands)";
 
   // Slash command popup.
   const slashQuery = text.startsWith("/") && !/\s/.test(text) ? text.slice(1).toLowerCase() : null;
@@ -415,10 +445,10 @@ export function Composer() {
     requestAnimationFrame(() => taRef.current?.focus());
   };
 
-  const send = () => {
+  const send = (mode: "queue" | "interrupt" = "queue") => {
     const value = textRef.current.trim();
-    if (!canSend || (!value && attachments.length === 0)) return;
-    post({ type: "prompt", text: value, attachments });
+    if (!(canSend || running) || (!value && attachments.length === 0)) return;
+    post({ type: "prompt", text: value, attachments, mode });
     if (value) {
       const h = [...history.current.filter((x) => x !== value), value].slice(-HISTORY_LIMIT);
       history.current = h;
@@ -493,11 +523,16 @@ export function Composer() {
 
     if (e.key === "Enter") {
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl/Cmd+Shift+Enter always means "interrupt the running turn and send now".
+      if (mod && e.shiftKey) {
+        e.preventDefault();
+        send("interrupt");
+        return;
+      }
       const shouldSend = settings.sendWithCtrlEnter ? mod : !e.shiftKey && !mod && !e.altKey;
       if (shouldSend) {
         e.preventDefault();
-        if (running) return;
-        send();
+        send("queue");
       }
       return;
     }
@@ -560,10 +595,12 @@ export function Composer() {
     mentionRef.current?.querySelector<HTMLElement>(".selected")?.scrollIntoView({ block: "nearest" });
   }, [mentionIdx, mentionOpen]);
 
-  const sendDisabled = !canSend || (!text.trim() && attachments.length === 0);
+  const empty = !text.trim() && attachments.length === 0;
+  const sendDisabled = !canSend || empty;
 
   return (
     <div class="composer">
+      <QueuedBar />
       {slashOpen && (
         <div ref={slashRef} class="slash-popup" role="listbox" aria-label="Slash commands" id="slash-listbox">
           {slashMatches.map((cmd, i) => (
@@ -643,11 +680,16 @@ export function Composer() {
           </div>
           <div class="composer-toolbar-right">
             {running ? (
-              <button type="button" class="send-button stop" title={c === "cancelling" ? "Cancelling…" : "Stop (Esc)"} aria-label="Stop" disabled={c === "cancelling"} onClick={() => post({ type: "cancel" })}>
-                {c === "cancelling" ? <Spinner /> : <Icon name="debug-stop" />}
-              </button>
+              <>
+                <button type="button" class="send-button queue" title={`Queue for after this turn (${sendKeyLabel}) · Interrupt and send now (Ctrl/Cmd+Shift+Enter)`} aria-label="Queue message" disabled={empty} onClick={() => send("queue")}>
+                  <Icon name="list-ordered" />
+                </button>
+                <button type="button" class="send-button stop" title={c === "cancelling" ? "Cancelling…" : "Stop (Esc)"} aria-label="Stop" disabled={c === "cancelling"} onClick={() => post({ type: "cancel" })}>
+                  {c === "cancelling" ? <Spinner /> : <Icon name="debug-stop" />}
+                </button>
+              </>
             ) : (
-              <button type="button" class="send-button" title={settings.sendWithCtrlEnter ? "Send (Ctrl/Cmd+Enter)" : "Send (Enter)"} aria-label="Send" disabled={sendDisabled} onClick={send}>
+              <button type="button" class="send-button" title={`Send (${sendKeyLabel})`} aria-label="Send" disabled={sendDisabled} onClick={() => send("queue")}>
                 <Icon name="send" />
               </button>
             )}

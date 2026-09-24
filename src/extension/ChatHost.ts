@@ -256,8 +256,22 @@ export class ChatHost implements vscode.Disposable {
       switch (message.type) {
         case "prompt":
           this.draft = "";
-          await this.runtime.prompt(message.text, message.attachments);
+          await this.runtime.prompt(message.text, message.attachments, message.mode ?? "queue");
           return;
+        case "queue.sendNow":
+          await this.runtime.sendQueuedNow();
+          return;
+        case "queue.clear":
+          this.runtime.takeQueued();
+          return;
+        case "queue.edit": {
+          const queued = this.runtime.takeQueued();
+          if (!queued) return;
+          for (const attachment of queued.attachments) this.send({ type: "composer.attach", attachment });
+          this.send({ type: "composer.insert", text: queued.text });
+          this.send({ type: "composer.focus" });
+          return;
+        }
         case "draft":
           this.draft = message.text;
           return;

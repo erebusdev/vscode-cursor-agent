@@ -13,3 +13,4 @@ vitest.config.ts
 *.vsix
 build/**
 build.sh
+scratch/**

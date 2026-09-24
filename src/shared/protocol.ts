@@ -343,6 +343,8 @@ export interface SessionState {
   /** Files touched by edit tools in this session, for the "changes" summary. */
   readonly changedFiles: ReadonlyArray<{ readonly path: string; readonly displayPath: string; readonly additions: number; readonly deletions: number }>;
   readonly turnStartedAt?: number;
+  /** A message waiting to be sent when the current turn ends. */
+  readonly queued?: { readonly text: string; readonly attachmentCount: number };
 }
 
 export interface UsageWindow {
@@ -442,8 +444,11 @@ export interface PromptAttachmentInput {
 
 export type WebviewToExtension =
   | { readonly type: "ready" }
-  | { readonly type: "prompt"; readonly text: string; readonly attachments: ReadonlyArray<PromptAttachmentInput> }
+  | { readonly type: "prompt"; readonly text: string; readonly attachments: ReadonlyArray<PromptAttachmentInput>; readonly mode?: "queue" | "interrupt" }
   | { readonly type: "cancel" }
+  | { readonly type: "queue.sendNow" }
+  | { readonly type: "queue.edit" }
+  | { readonly type: "queue.clear" }
   | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string }
   | { readonly type: "question.respond"; readonly requestId: string; readonly answers: ReadonlyArray<QuestionAnswer> }
   | { readonly type: "question.skip"; readonly requestId: string }
