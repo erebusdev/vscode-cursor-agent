@@ -689,7 +689,7 @@ export class ChatHost implements vscode.Disposable {
   private async openProjectMcpConfig(): Promise<void> {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      this.send({ type: "toast", level: "info", text: "Open a folder first; project MCP servers live in its .cursor/mcp.json." });
+      this.send({ type: "toast", level: "info", text: "Open a folder first." });
       return;
     }
     const dir = vscode.Uri.joinPath(folder.uri, ".cursor");
@@ -855,7 +855,7 @@ export class ChatHost implements vscode.Disposable {
       }
       this.send({ type: "composer.attach", attachment: this.fileAttachment(uri) });
     }
-    if (skipped > 0) this.send({ type: "toast", level: "info", text: `${skipped} dropped item${skipped === 1 ? " was" : "s were"} skipped (folders and non-file URIs cannot be attached).` });
+    if (skipped > 0) this.send({ type: "toast", level: "info", text: `Skipped ${skipped} dropped item${skipped === 1 ? "" : "s"}: only files can be attached.` });
     this.send({ type: "composer.focus" });
   }
 
