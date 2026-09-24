@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { join, resolve } from "node:path";
 import { describeMcpServers, loadMcpServers, parseMcpConfig } from "../src/extension/session/mcpConfig";
 import { mergePath } from "../src/extension/hostEnv";
 import { mcpPatternFrom } from "../src/extension/session/approvals";
@@ -27,7 +28,7 @@ describe("Cursor mcp.json → ACP mcpServers", () => {
 
   it("anchors relative commands and working directories to the project", () => {
     const { servers } = parseMcpConfig(JSON.stringify({ mcpServers: { local: { command: "./bin/server", cwd: "tools" } } }), { env, baseDir: "/proj" });
-    expect(servers).toEqual([{ name: "local", command: "/proj/bin/server", args: [], env: [], cwd: "/proj/tools" }]);
+    expect(servers).toEqual([{ name: "local", command: resolve("/proj", "bin", "server"), args: [], env: [], cwd: resolve("/proj", "tools") }]);
   });
 
   it("reports unusable files instead of throwing", () => {
@@ -36,9 +37,11 @@ describe("Cursor mcp.json → ACP mcpServers", () => {
   });
 
   it("reads user then project files, project winning on name clashes, and tolerates missing files", async () => {
+    const userFile = join("/home/mel", ".cursor", "mcp.json");
+    const projectFile = join("/proj", ".cursor", "mcp.json");
     const files: Record<string, string> = {
-      "/home/mel/.cursor/mcp.json": JSON.stringify({ mcpServers: { github: { command: "gh-mcp" }, shared: { command: "user-version" } } }),
-      "/proj/.cursor/mcp.json": JSON.stringify({ mcpServers: { shared: { command: "project-version" }, local: { url: "http://localhost:1" } } }),
+      [userFile]: JSON.stringify({ mcpServers: { github: { command: "gh-mcp" }, shared: { command: "user-version" } } }),
+      [projectFile]: JSON.stringify({ mcpServers: { shared: { command: "project-version" }, local: { url: "http://localhost:1" } } }),
     };
     const readText = async (path: string) => {
       const text = files[path];
@@ -48,7 +51,7 @@ describe("Cursor mcp.json → ACP mcpServers", () => {
     const result = await loadMcpServers({ projectDir: "/proj", userConfigPath: "~/.cursor/mcp.json", env, readText });
     expect(result.servers.map((s) => s.name)).toEqual(["github", "shared", "local"]);
     expect(result.servers.find((s) => s.name === "shared")).toMatchObject({ command: "project-version" });
-    expect(describeMcpServers(result)).toEqual(["user /home/mel/.cursor/mcp.json: github, shared", "project /proj/.cursor/mcp.json: shared, local"]);
+    expect(describeMcpServers(result)).toEqual([`user ${userFile}: github, shared`, `project ${projectFile}: shared, local`]);
 
     const none = await loadMcpServers({ projectDir: "/elsewhere", env, readText });
     expect(none.servers).toEqual([]);
