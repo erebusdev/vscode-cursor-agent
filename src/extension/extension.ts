@@ -43,12 +43,12 @@ function launchConfig(): AgentLaunchConfig {
 async function mcpServers(cwd: string | undefined, log: { warn(m: string): void }): Promise<ReturnType<typeof loadMcpServers> extends Promise<infer R> ? R : never> {
   const config = vscode.workspace.getConfiguration("cursorAcp");
   const forwardProject = config.get<boolean>("mcpForwardProjectServers", true);
-  const userConfigPath = config.get<string>("mcpUserConfig", "").trim();
   const trusted = vscode.workspace.isTrusted;
   if (forwardProject && cwd && !trusted) log.warn("Workspace is not trusted; its .cursor/mcp.json servers are not forwarded to the agent.");
   const result = await loadMcpServers({
     ...(forwardProject && cwd && trusted ? { projectDir: cwd } : {}),
-    ...(userConfigPath ? { userConfigPath } : {}),
+    // The user-level file is not forwarded: the CLI loads it itself, with the sign-ins it saved for those
+    // servers. A forwarded copy would replace the CLI's own client and lose that sign-in.
     env: launchConfig().env,
   });
   for (const source of result.sources) if (source.error) log.warn(`MCP config ${source.path}: ${source.error}`);

@@ -122,7 +122,7 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
           settings={settings}
           k="mcpUserConfig"
           label="User-level mcp.json"
-          description="Also forward the servers in this file. Leave empty when the CLI already loads yours; set it when the agent runs as a different account than the one holding your config."
+          description="The user-level mcp.json this profile's agent reads, for reference. The agent loads it itself, with the sign-ins it saved, so the extension does not forward it. Cursor plugin servers (Atlassian, Sentry…) only reach chat when listed here under their plugin name, e.g. plugin-sentry-sentry."
           placeholder="~/.cursor/mcp.json"
           mono
         />

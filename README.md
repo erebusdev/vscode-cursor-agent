@@ -49,7 +49,7 @@ Every setting is also a regular VS Code setting under `cursorAcp.*`
 | `cursorAcp.environment` | Extra env vars for the agent process. |
 | `cursorAcp.configDir` | Cursor config dir, used by the usage panel. Empty = auto-detect. |
 | `cursorAcp.mcpForwardProjectServers` | Pass the workspace's `.cursor/mcp.json` servers to the agent with each session (default on; skipped in untrusted workspaces). In ACP mode the CLI otherwise skips project servers that were never approved in its terminal app, without saying so. |
-| `cursorAcp.mcpUserConfig` | A user-level `mcp.json` to forward as well. Empty = the CLI loads its own `~/.cursor/mcp.json` for the account it runs as. |
+| `cursorAcp.mcpUserConfig` | The user-level `mcp.json` this profile's agent reads, shown on the MCP servers page. Not forwarded: the agent loads it itself, with its saved sign-ins. |
 | `cursorAcp.resumeLastSession` | Resume the folder's last session on open. |
 | `cursorAcp.sendWithCtrlEnter` | Send with Ctrl/Cmd+Enter instead of Enter. |
 | `cursorAcp.showThoughts` | Show thinking blocks. |
@@ -65,6 +65,8 @@ Every setting is also a regular VS Code setting under `cursorAcp.*`
 ## MCP servers
 
 The agent reads MCP servers from Cursor's `~/.cursor/mcp.json` (for the account it runs as) and the workspace's `.cursor/mcp.json`. Project servers need an approval that only Cursor's terminal app can give, so the extension forwards them itself; user-level ones load as they do in the CLI. The *MCP servers* page of the settings tab lists what is forwarded and what the CLI reports (*Cursor Agent: Show MCP Servers* writes the same to the output channel), and opens the project's `.cursor/mcp.json`, creating it if needed. Read-only MCP tools (names starting with get, list, search, read…) run without asking under the Safe list policy; the rest prompt, with *Allow for session* available.
+
+Cursor plugins (Atlassian, Sentry, Figma…) bring MCP servers that only Cursor's terminal app loads; ACP sessions do not. To use one in chat, add it to the user-level `mcp.json` under the plugin's name, e.g. `"plugin-sentry-sentry": { "url": "https://mcp.sentry.dev/mcp" }`. The agent then reuses the sign-in Cursor saved for that plugin in the project; if it shows *requires_authentication*, run `agent mcp login plugin-sentry-sentry` in the project folder once.
 
 The agent is started with your login shell's PATH, so servers launched with `npx`, `node` or `uvx` resolve even when VS Code was opened from the Dock.
 

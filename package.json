@@ -357,7 +357,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "A user-level `mcp.json` to forward to the agent as well, e.g. `~/.cursor/mcp.json`. Leave empty when the CLI already loads yours (it reads `~/.cursor/mcp.json` of the account it runs as); set it when the extension launches a wrapper for a different account or profile."
+          "markdownDescription": "The user-level `mcp.json` this profile's agent reads (`.cursor/mcp.json` under the agent's home folder), shown on the MCP servers page for reference. The agent loads it itself, with the sign-ins it saved, so the extension does not forward it. Cursor plugin servers only reach chat when listed there under their plugin name, e.g. `plugin-sentry-sentry`."
         },
         "cursorAcp.editorTitleButton": {
           "type": "boolean",
