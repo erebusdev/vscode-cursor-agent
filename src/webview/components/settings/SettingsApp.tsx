@@ -22,7 +22,7 @@ const SECTION_INFO: Record<SettingsSection, { label: string; icon: string; hint:
   approvals: { label: "Approvals", icon: "shield", hint: "What runs without asking" },
   models: { label: "Models", icon: "sparkle", hint: "Defaults for new sessions and which models the picker shows" },
   mcp: { label: "MCP servers", icon: "plug", hint: "Which MCP servers the agent gets and what the CLI reports" },
-  advanced: { label: "Advanced", icon: "tools", hint: "Logging, VS Code's settings editor and version" },
+  advanced: { label: "Advanced", icon: "tools", hint: "Protocol logging and the output channel" },
 };
 
 /** Tracks a media query (the nav turns into a row of icons on narrow tabs). */
@@ -170,7 +170,7 @@ function ModelsPage({ settings }: { settings: ExtensionSettings }) {
 }
 
 function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
-  const version = VERSION;
+  // Version and the VS Code settings editor link live in the nav footer.
   return (
     <>
       <SettingsGroup>
@@ -186,18 +186,6 @@ function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
             </button>
           }
         />
-        <SettingRow
-          id="advanced-vscode-settings"
-          labelFor={false}
-          label="VS Code settings"
-          description="Every cursorAcp.* setting in VS Code's settings editor, including workspace overrides."
-          control={
-            <button id="advanced-vscode-settings" type="button" class="button secondary small" title="Open VS Code's settings editor filtered to this extension" onClick={() => post({ type: "openSettings" })}>
-              <Icon name="link-external" /> Open in VS Code settings editor
-            </button>
-          }
-        />
-        {version && <SettingRow id="advanced-version" labelFor={false} label="Version" description="Cursor Agent (VSCode ACP) extension." control={<span class="srow-value" id="advanced-version">{version}</span>} />}
       </SettingsGroup>
     </>
   );

@@ -30,7 +30,7 @@ export function useSavedFlash(): [boolean, () => void] {
   const flash = () => {
     setSaved(true);
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setSaved(false), 1600);
+    timer.current = window.setTimeout(() => setSaved(false), 1500);
   };
   return [saved, flash];
 }
@@ -108,7 +108,11 @@ export function SettingRow({ id, label, description, settingKey, source, saved, 
                 <Icon name="discard" />
               </button>
             )}
-            <span class={`srow-saved${saved ? " show" : ""}`} aria-live="polite">
+            {/* Visible flash (fades in and out) plus a text-only live region for screen readers. */}
+            <span class={`srow-saved${saved ? " show" : ""}`} aria-hidden="true">
+              <Icon name="check" /> Saved
+            </span>
+            <span class="sr-only" aria-live="polite">
               {saved ? "Saved" : ""}
             </span>
           </div>

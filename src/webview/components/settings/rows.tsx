@@ -33,7 +33,7 @@ export function ProbeStatus({ probe }: { probe: AgentProbe | undefined }) {
     case "ok":
       return (
         <div class="probe-status ok" role="status">
-          <Icon name="check" />
+          <Icon name="pass-filled" />
           <span>
             Found <code>{probe.resolvedPath ?? probe.configuredPath}</code>
             {probe.version ? ` · version ${probe.version}` : ""}
@@ -462,7 +462,10 @@ export function SafeListEditor({ settings }: { settings: ExtensionSettings }) {
         <>
           One regular expression per row; a command runs without asking only if every part of it matches.
           <details class="srow-details">
-            <summary>How matching works</summary>
+            <summary>
+              <Icon name="chevron-right" class="details-chevron" />
+              How matching works
+            </summary>
             <ul>
               <li>
                 A shell command is split on <code>|</code>, <code>&amp;&amp;</code>, <code>||</code> and <code>;</code>; each part must match some pattern.

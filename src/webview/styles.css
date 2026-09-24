@@ -2704,25 +2704,29 @@ button.chip:disabled {
 .agent-path-row .button {
   flex: none;
 }
+/* Status lines (probe, connection, setup, MCP rows) share one look:
+   a 16px filled glyph, 13px text in descriptionForeground, names in foreground. */
 .probe-status {
   display: flex;
   align-items: flex-start;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.4;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+  line-height: 20px;
   word-break: break-word;
 }
 .probe-status .codicon {
   flex: none;
   margin-top: 2px;
-  font-size: 13px;
+  font-size: 16px;
+}
+.probe-status code {
+  color: var(--vscode-foreground);
 }
 .probe-status.ok .codicon {
   color: var(--green);
 }
 .probe-status.fail {
-  color: var(--red);
   white-space: pre-wrap;
 }
 .probe-status.fail .codicon {
@@ -2972,7 +2976,7 @@ body[data-view="settings"] {
 .srow-label-line {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   gap: 4px 8px;
   min-height: 20px;
 }
@@ -2989,7 +2993,7 @@ body[data-view="settings"] {
 .srow-source {
   font-size: 10px;
   line-height: 14px;
-  padding: 0 5px;
+  padding: 1px 6px;
   border-radius: 4px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -3000,6 +3004,7 @@ body[data-view="settings"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   width: 20px;
   height: 20px;
   border-radius: var(--radius-sm);
@@ -3018,14 +3023,33 @@ body[data-view="settings"] {
 .srow-reset .codicon {
   font-size: 16px;
 }
+/* "Saved": fades in over 120ms; useSavedFlash hides it again after 1.5s. */
 .srow-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: center;
   font-size: 12px;
-  color: var(--green);
+  color: var(--vscode-descriptionForeground, var(--muted));
   opacity: 0;
-  transition: opacity 150ms;
+  visibility: hidden;
+  transition: opacity 120ms, visibility 0s linear 120ms;
+}
+.srow-saved .codicon {
+  font-size: 12px;
 }
 .srow-saved.show {
   opacity: 1;
+  visibility: visible;
+  transition: opacity 120ms, visibility 0s;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .srow-body {
   margin-top: 12px;
@@ -3063,31 +3087,55 @@ body[data-view="settings"] {
   background: var(--vscode-editor-background, transparent);
   white-space: nowrap;
 }
+
+/* Disclosure ("How matching works"): a chevron, not a link. */
 .srow-details {
   margin-top: 6px;
 }
 .srow-details summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   cursor: pointer;
   width: fit-content;
-  color: var(--vscode-textLink-foreground);
+  border-radius: var(--radius-sm);
+  color: var(--vscode-descriptionForeground, var(--muted));
 }
-.srow-details summary:hover {
-  color: var(--vscode-textLink-activeForeground);
+.srow-details summary::-webkit-details-marker {
+  display: none;
+}
+.srow-details summary:hover,
+.srow-details summary:focus-visible {
+  color: var(--vscode-foreground);
+  text-decoration: underline;
+}
+.details-chevron {
+  font-size: 16px;
+  transition: transform 120ms;
+}
+.srow-details[open] .details-chevron {
+  transform: rotate(90deg);
 }
 .srow-details ul {
   margin: 6px 0 0;
-  padding-left: 18px;
+  padding-left: 38px;
 }
 .srow-details li + li {
   margin-top: 2px;
 }
 
-/* One height for fields, dropdowns, buttons and segmented controls */
+/* One height for fields, dropdowns, buttons and segmented controls.
+   Themes often leave button/dropdown/input borders undefined; fall back to a faint foreground line. */
+.settings-app {
+  --control-line: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+}
 .settings-app .text-input {
   height: 28px;
   padding: 0 8px;
   border-radius: 6px;
   line-height: 26px;
+  border: 1px solid var(--vscode-input-border, var(--control-line));
 }
 .settings-app .button,
 .settings-app .button.small {
@@ -3099,10 +3147,26 @@ body[data-view="settings"] {
   line-height: 26px;
 }
 .settings-app .button.secondary {
-  border: 1px solid var(--vscode-button-border, var(--vscode-widget-border, var(--border)));
+  border: 1px solid var(--vscode-button-border, var(--control-line));
+}
+.settings-app .button.secondary:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
 }
 .settings-app .button .codicon {
   font-size: 14px;
+}
+
+/* Focus rings: keyboard focus only. */
+.settings-app :is(.text-input, .sselect, .button, .icon-button, .link-button, .srow-reset, .checkbox, summary):focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--focus));
+  outline-offset: 1px;
+}
+.settings-app :is(.toggle, .segment, .settings-nav-item):focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--focus));
+  outline-offset: 2px;
+}
+.settings-app :is(.text-input, .sselect):focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* Toggle switch */
@@ -3112,7 +3176,7 @@ body[data-view="settings"] {
   width: 40px;
   height: 22px;
   border-radius: 11px;
-  border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--border)));
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--control-line, var(--border))));
   background: var(--vscode-input-background, var(--vscode-checkbox-background));
   transition: background-color 120ms, border-color 120ms;
 }
@@ -3124,6 +3188,7 @@ body[data-view="settings"] {
   height: 16px;
   border-radius: 50%;
   background: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   transition: transform 120ms, background-color 120ms;
 }
 .toggle.on {
@@ -3135,11 +3200,7 @@ body[data-view="settings"] {
   background: var(--vscode-button-foreground);
 }
 .toggle:hover:not(.on) {
-  border-color: var(--focus);
-}
-.toggle:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  background: color-mix(in srgb, var(--vscode-input-background) 80%, var(--vscode-foreground));
 }
 
 /* Segmented control */
@@ -3151,14 +3212,14 @@ body[data-view="settings"] {
   min-height: 28px;
   padding: 2px;
   border-radius: 6px;
-  border: 1px solid var(--vscode-widget-border, var(--border));
+  border: 1px solid var(--vscode-widget-border, var(--control-line, var(--border)));
 }
 .segment {
   padding: 0 12px;
   border-radius: 4px;
   font-size: 13px;
   line-height: 22px;
-  color: var(--muted);
+  color: var(--vscode-descriptionForeground, var(--muted));
   white-space: nowrap;
 }
 .segment:hover:not(.selected) {
@@ -3166,13 +3227,13 @@ body[data-view="settings"] {
   background: var(--hover-bg);
 }
 .segment.selected {
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
+  font-weight: 500;
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
 }
-.segment:focus-visible {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
+/* High contrast: the selected segment keeps an outline when not focused. */
+.segment.selected:not(:focus-visible) {
+  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
 }
 
 /* Dropdown */
@@ -3192,12 +3253,11 @@ body[data-view="settings"] {
   border-radius: 6px;
   color: var(--vscode-dropdown-foreground);
   background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border, var(--border));
+  border: 1px solid var(--vscode-dropdown-border, var(--control-line, var(--border)));
   cursor: pointer;
 }
-.sselect:focus {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
+.sselect:hover {
+  background: color-mix(in srgb, var(--vscode-dropdown-background) 94%, var(--vscode-foreground));
 }
 .sselect option {
   color: var(--vscode-dropdown-foreground);
@@ -3246,7 +3306,17 @@ body[data-view="settings"] {
 }
 .safe-row-warning {
   flex: none;
+  font-size: 16px;
   color: var(--vscode-errorForeground, var(--red));
+}
+/* Row delete buttons: muted until hovered. */
+.safe-row .icon-button,
+.env-row .icon-button {
+  color: var(--vscode-descriptionForeground, var(--muted));
+}
+.safe-row .icon-button:hover,
+.env-row .icon-button:hover {
+  color: var(--vscode-foreground);
 }
 .safe-list .list-actions {
   margin-top: 4px;
@@ -3263,8 +3333,12 @@ body[data-view="settings"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+}
+.agent-connection .codicon,
+.agent-setup-status .codicon {
+  font-size: 16px;
 }
 .agent-connection.ok .codicon {
   color: var(--green);
@@ -3342,7 +3416,7 @@ body[data-view="settings"] {
 }
 .status-dot {
   flex: none;
-  font-size: 14px;
+  font-size: 16px;
   color: var(--muted);
 }
 .status-dot.ok {
@@ -3365,8 +3439,8 @@ body[data-view="settings"] {
 .status-detail {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3494,8 +3568,11 @@ body[data-view="settings"] {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, var(--muted));
+}
+.setup-status .codicon {
+  font-size: 16px;
 }
 .setup-status.warn {
   color: var(--vscode-editorWarning-foreground, var(--yellow));
