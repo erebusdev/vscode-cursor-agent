@@ -3949,9 +3949,11 @@ body[data-view="history"] {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  width: 100%;
-  padding: 3px 0;
-  border-radius: 4px;
+  width: calc(100% + 12px);
+  /* Room for the focus ring around the text without shifting it. */
+  margin: 0 -6px;
+  padding: 3px 6px;
+  border-radius: 5px;
   text-align: left;
   color: var(--vscode-foreground);
 }
@@ -4034,7 +4036,11 @@ body[data-view="history"] {
 .hrow:focus-within .hrow-time {
   visibility: hidden;
 }
-.history-app :is(.hrow-main, .hrow-check):focus-visible {
+.history-app .hrow-main:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--focus));
+  outline-offset: 0;
+}
+.history-app .hrow-check:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, var(--focus));
   outline-offset: 2px;
 }
@@ -4085,21 +4091,19 @@ body[data-view="history"] {
   font-size: 12px;
 }
 
+/* While renaming, the field gets the row; the time and actions step aside. */
+.hrow.renaming .hrow-end {
+  display: none;
+}
 @container settings (max-width: 520px) {
   .history-option-label {
     font-size: 12px;
   }
-  .hrow-end {
-    min-width: 0;
+  .hrow {
+    gap: 10px;
+    padding-left: 10px;
   }
-  .hrow-time {
-    display: none;
-  }
-  .hrow-actions {
-    position: static;
-    transform: none;
-  }
-  .hrow:not(:hover):not(:focus-within) .hrow-actions {
-    display: none;
+  .history-bulk {
+    padding: 0 15px;
   }
 }
