@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { ExtensionSettings, McpCliServer, McpPluginServer, McpStatus } from "../../../shared/protocol";
+import type { ExtensionSettings, McpCliServer, McpPluginServer, McpPluginSkills, McpStatus } from "../../../shared/protocol";
 import { mcpNeedsApproval as needsApproval } from "../../../shared/settingsUi";
 import { getState, useSelector } from "../../store";
 import { post } from "../../vscode";
@@ -200,7 +200,7 @@ function PluginsGroup({ status, loading, settings }: { status: McpStatus | undef
       {status?.reconnectNeeded && (
         <div class="srow plugin-banner" role="status">
           <Icon name="info" />
-          <span class="plugin-banner-text">MCP servers changed. Reconnect to apply.</span>
+          <span class="plugin-banner-text">Plugins changed. Reconnect to apply.</span>
           <button type="button" class="button primary small" title="Restart the agent" onClick={() => post({ type: "session.reconnect" })}>
             <Icon name="debug-restart" /> Reconnect
           </button>
@@ -237,6 +237,104 @@ function PluginsGroup({ status, loading, settings }: { status: McpStatus | undef
             ))}
           </ul>
         </div>
+      )}
+    </SettingsGroup>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Plugin skills
+// ---------------------------------------------------------------------------
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function skillsSummary(row: McpPluginSkills): string {
+  const parts = [];
+  if (row.skills.length) parts.push(plural(row.skills.length, "skill"));
+  if (row.commands.length) parts.push(plural(row.commands.length, "command"));
+  return parts.join(" · ");
+}
+
+function skillsChip(row: McpPluginSkills, on: boolean, reconnectNeeded: boolean): Chip {
+  if (!on) return { text: "Not in chat", tone: "muted", title: "Not available in chat" };
+  if (row.clashes.length)
+    return {
+      text: row.clashes.length === 1 ? "1 skipped" : `${row.clashes.length} skipped`,
+      tone: "warn",
+      title: `You already have a skill with this name: ${row.clashes.map((n) => `/${n}`).join(", ")}`,
+    };
+  const total = row.skills.length + row.commands.length;
+  if (row.linked.length >= total) return { text: "In chat", tone: "ok", title: "Available in chat" };
+  return { text: "Added", tone: "muted", title: reconnectNeeded ? "Reconnect to load them" : "Added on the next connect" };
+}
+
+function SkillsRow({ row, on, disabled, reconnectNeeded, onToggle }: { row: McpPluginSkills; on: boolean; disabled: boolean; reconnectNeeded: boolean; onToggle: (next: boolean) => void }) {
+  const chip = skillsChip(row, on && !disabled, reconnectNeeded);
+  const id = `plugin-skills-${row.pluginName}`;
+  const names = [...row.skills, ...row.commands].map((n) => `/${n}`).join("\n");
+  return (
+    <SettingRow
+      class="plugin-row"
+      id={id}
+      label={titleCase(row.pluginName)}
+      description={<span title={names}>{skillsSummary(row)}</span>}
+      control={
+        <>
+          <span class={`plugin-chip ${chip.tone}`} title={chip.title}>
+            <Icon name={CHIP_ICON[chip.tone]} class={`status-dot ${chip.tone}`} />
+            {chip.text}
+          </span>
+          <Toggle id={id} checked={on} disabled={disabled} title={disabled ? "Plugin skills are off" : on ? "Available in chat" : "Not available in chat"} onChange={onToggle} />
+        </>
+      }
+    />
+  );
+}
+
+function SkillsGroup({ status, loading, settings }: { status: McpStatus | undefined; loading: boolean; settings: ExtensionSettings }) {
+  const [pending, setPending] = useState<Record<string, boolean>>({});
+  useEffect(() => setPending({}), [status]);
+  const enabled = settings.pluginSkills ?? status?.pluginSkillsOn ?? true;
+  const rows = status?.pluginSkills ?? [];
+  const isOn = (r: McpPluginSkills) => pending[r.pluginName] ?? !r.excluded;
+  const off = rows.filter((r) => !isOn(r));
+  const set = (plugins: string[], next: boolean) => {
+    setPending((prev) => ({ ...prev, ...Object.fromEntries(plugins.map((p) => [p, next])) }));
+    post({ type: "plugins.skills.set", plugins, enabled: next });
+  };
+  return (
+    <SettingsGroup
+      title="Plugin skills"
+      id="plugin-skills"
+      description="Skills and commands that come with your Cursor plugins."
+      actions={
+        enabled && off.length > 0 ? (
+          <button type="button" class="button secondary small" title="Turn on all plugin skills" disabled={loading} onClick={() => set(off.map((r) => r.pluginName), true)}>
+            Enable all
+          </button>
+        ) : undefined
+      }
+    >
+      <SettingRow
+        id="plugin-skills-on"
+        label="Use plugin skills"
+        description="Adds them to the / menu in chat."
+        control={<Toggle id="plugin-skills-on" checked={enabled} title={enabled ? "Plugin skills are on" : "Plugin skills are off"} onChange={(next) => updateSetting("pluginSkills", next)} />}
+      />
+      {!status ? (
+        <div class="srow">
+          <div class="list-empty">
+            <Spinner /> Looking for plugin skills…
+          </div>
+        </div>
+      ) : rows.length === 0 ? (
+        <div class="srow">
+          <div class="list-empty">No Cursor plugins with skills found.</div>
+        </div>
+      ) : (
+        rows.map((r) => <SkillsRow key={r.pluginName} row={r} on={isOn(r)} disabled={!enabled} reconnectNeeded={!!status.reconnectNeeded} onToggle={(next) => set([r.pluginName], next)} />)
       )}
     </SettingsGroup>
   );
@@ -362,6 +460,7 @@ export function McpSection({ settings }: { settings: ExtensionSettings }) {
         />
       </SettingsGroup>
       <PluginsGroup status={mcp.status} loading={mcp.loading} settings={settings} />
+      <SkillsGroup status={mcp.status} loading={mcp.loading} settings={settings} />
       <SettingsGroup
         title="Status"
         actions={

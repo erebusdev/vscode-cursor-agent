@@ -21,7 +21,7 @@ const SECTION_INFO: Record<SettingsSection, { label: string; icon: string; hint:
   agent: { label: "Agent", icon: "terminal", hint: "Agent path, arguments and environment" },
   approvals: { label: "Approvals", icon: "shield", hint: "What runs without asking" },
   models: { label: "Models", icon: "sparkle", hint: "Default model and visible models" },
-  mcp: { label: "MCP servers", icon: "plug", hint: "MCP servers and Cursor plugins" },
+  mcp: { label: "MCP servers", icon: "plug", hint: "MCP servers and plugin skills" },
   advanced: { label: "Advanced", icon: "tools", hint: "Logging" },
 };
 

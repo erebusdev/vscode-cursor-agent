@@ -2021,6 +2021,22 @@ button.chip:disabled {
   font-family: var(--mono);
   flex: none;
 }
+.slash-tag {
+  flex: none;
+  align-self: center;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid var(--vscode-widget-border, var(--border));
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-transform: capitalize;
+}
+.slash-item.selected .slash-tag {
+  color: inherit;
+  border-color: currentColor;
+  opacity: 0.85;
+}
 
 .mention-item {
   align-items: center;

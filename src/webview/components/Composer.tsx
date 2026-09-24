@@ -816,6 +816,11 @@ export function Composer() {
               <span class="slash-name">/{cmd.name}</span>
               <span class="slash-desc">{cmd.description}</span>
               {cmd.hint && <span class="slash-hint">{cmd.hint}</span>}
+              {cmd.plugin && (
+                <span class="slash-tag" title={`From the ${cmd.plugin} plugin`}>
+                  {cmd.plugin}
+                </span>
+              )}
             </button>
           ))}
         </div>
