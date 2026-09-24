@@ -266,6 +266,9 @@ export class ChatHost implements vscode.Disposable {
         case "queue.clear":
           this.runtime.takeQueued(message.index);
           return;
+        case "queue.move":
+          this.runtime.moveQueued(message.from, message.to);
+          return;
         case "queue.edit": {
           const queued = this.runtime.takeQueued(message.index);
           if (!queued) return;

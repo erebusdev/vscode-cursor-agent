@@ -466,6 +466,7 @@ export type WebviewToExtension =
   | { readonly type: "queue.sendNow"; readonly index: number }
   | { readonly type: "queue.edit"; readonly index: number }
   | { readonly type: "queue.clear"; readonly index?: number }
+  | { readonly type: "queue.move"; readonly from: number; readonly to: number }
   | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string; readonly scope?: "session" }
   | { readonly type: "approvals.set"; readonly policy: ApprovalPolicy }
   | { readonly type: "question.respond"; readonly requestId: string; readonly answers: ReadonlyArray<QuestionAnswer> }

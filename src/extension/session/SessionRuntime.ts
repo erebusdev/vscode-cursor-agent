@@ -858,6 +858,14 @@ export class SessionRuntime {
     await this.prompt(next.text, next.attachments, "interrupt");
   }
 
+  /** Reorders the queue by moving one message to a new position. */
+  moveQueued(from: number, to: number): void {
+    if (from === to || from < 0 || from >= this.queue.length || to < 0 || to >= this.queue.length) return;
+    const [item] = this.queue.splice(from, 1);
+    this.queue.splice(to, 0, item!);
+    this.publishState();
+  }
+
   /** Removes and returns one queued message (for editing in the composer); no index clears the whole queue. */
   takeQueued(index?: number): { text: string; attachments: PromptAttachmentInput[] } | undefined {
     if (index === undefined) {

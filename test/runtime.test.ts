@@ -153,6 +153,9 @@ describe("SessionRuntime against a fake ACP agent", () => {
       { text: "hello after", attachmentCount: 0 },
       { text: "and then this", attachmentCount: 0 },
     ]);
+    runtime.moveQueued(1, 0);
+    expect(runtime.state.queued?.map((q) => q.text)).toEqual(["and then this", "hello after"]);
+    runtime.moveQueued(0, 1);
     await turn;
     await waitFor(() => runtime.state.queued === undefined && runtime.state.connection === "ready");
     const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;

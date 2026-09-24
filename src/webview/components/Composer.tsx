@@ -295,6 +295,12 @@ function QueuedBar() {
               {q.attachmentCount > 0 && q.text.trim() ? ` · ${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}` : ""}
             </span>
             <span class="queued-actions">
+              {queued.length > 1 && (
+                <>
+                  <IconButton icon="arrow-up" label="Move up" disabled={i === 0} onClick={() => post({ type: "queue.move", from: i, to: i - 1 })} />
+                  <IconButton icon="arrow-down" label="Move down" disabled={i === queued.length - 1} onClick={() => post({ type: "queue.move", from: i, to: i + 1 })} />
+                </>
+              )}
               <button type="button" class="link-button" title="Interrupt the current turn and send this now" onClick={() => post({ type: "queue.sendNow", index: i })}>
                 Send now
               </button>
