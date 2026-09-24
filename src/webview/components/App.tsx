@@ -4,6 +4,7 @@ import { addAttachment, addToast, focusComposer, useSelector } from "../store";
 import { post } from "../vscode";
 import { Composer } from "./Composer";
 import { Header } from "./Header";
+import { HistoryApp } from "./history/HistoryApp";
 import { SettingsApp } from "./settings/SettingsApp";
 import { Toasts } from "./Toasts";
 import { Transcript } from "./Transcript";
@@ -57,13 +58,26 @@ function useDropZone() {
   return active;
 }
 
+/** Which page this webview is: the chat, or the settings / history editor tab (the host sets `data-view`). */
+export function viewKind(): "chat" | "settings" | "history" {
+  const view = document.body.dataset.view;
+  return view === "settings" || view === "history" ? view : "chat";
+}
+
 /** True in the settings editor tab (the host marks its page with `data-view="settings"`). */
 export function isSettingsView(): boolean {
-  return document.body.dataset.view === "settings";
+  return viewKind() === "settings";
 }
 
 export function App() {
-  return isSettingsView() ? <SettingsApp /> : <ChatApp />;
+  switch (viewKind()) {
+    case "settings":
+      return <SettingsApp />;
+    case "history":
+      return <HistoryApp />;
+    default:
+      return <ChatApp />;
+  }
 }
 
 function ChatApp() {

@@ -19,5 +19,5 @@ if (root) {
 }
 
 post({ type: "ready" });
-// The session history is only shown by the chat.
+// The session history is shown by the chat and the history tab.
 if (!isSettingsView()) post({ type: "session.list" });
