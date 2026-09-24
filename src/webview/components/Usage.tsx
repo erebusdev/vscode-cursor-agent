@@ -176,7 +176,7 @@ function UsageOverview({ summary, now }: { summary: UsageSummary; now: number })
  */
 export function UsageButton() {
   const usage = useSelector((s) => s.usage);
-  const paneOpen = useSelector((s) => s.usageOpen);
+  const paneOpen = useSelector((s) => s.pane === "usage");
   const [hover, setHover] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -197,7 +197,7 @@ export function UsageButton() {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       if (open) {
-        if (getState().usageOpen) return;
+        if (getState().pane === "usage") return;
         refreshIfStale();
       }
       setHover(open);

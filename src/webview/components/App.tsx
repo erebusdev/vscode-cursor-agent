@@ -4,10 +4,10 @@ import { addAttachment, addToast, focusComposer, useSelector } from "../store";
 import { post } from "../vscode";
 import { Composer } from "./Composer";
 import { Header } from "./Header";
-import { HistoryApp } from "./history/HistoryApp";
 import { SettingsApp } from "./settings/SettingsApp";
 import { Toasts } from "./Toasts";
 import { Transcript } from "./Transcript";
+import { HistoryView } from "./History";
 import { UsageView } from "./Usage";
 import { WorkingIndicator } from "./WorkingIndicator";
 
@@ -58,30 +58,17 @@ function useDropZone() {
   return active;
 }
 
-/** Which page this webview is: the chat, or the settings / history editor tab (the host sets `data-view`). */
-export function viewKind(): "chat" | "settings" | "history" {
-  const view = document.body.dataset.view;
-  return view === "settings" || view === "history" ? view : "chat";
-}
-
 /** True in the settings editor tab (the host marks its page with `data-view="settings"`). */
 export function isSettingsView(): boolean {
-  return viewKind() === "settings";
+  return document.body.dataset.view === "settings";
 }
 
 export function App() {
-  switch (viewKind()) {
-    case "settings":
-      return <SettingsApp />;
-    case "history":
-      return <HistoryApp />;
-    default:
-      return <ChatApp />;
-  }
+  return isSettingsView() ? <SettingsApp /> : <ChatApp />;
 }
 
 function ChatApp() {
-  const usageOpen = useSelector((s) => s.usageOpen);
+  const pane = useSelector((s) => s.pane);
   const dropping = useDropZone();
   return (
     <div class={`app${dropping ? " dropping" : ""}`}>
@@ -92,8 +79,10 @@ function ChatApp() {
       )}
       <Header />
       <Toasts />
-      {usageOpen ? (
+      {pane === "usage" ? (
         <UsageView />
+      ) : pane === "history" ? (
+        <HistoryView />
       ) : (
         <>
           <Transcript />

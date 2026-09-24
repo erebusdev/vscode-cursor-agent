@@ -328,7 +328,7 @@ export interface SessionSummary {
   readonly title?: string;
   readonly cwd?: string;
   readonly updatedAt?: string;
-  /** Hidden from the history by the user (only listed for the history tab's "Show hidden"). */
+  /** Hidden from the history by the user (only listed for the history pane's "Show hidden"). */
   readonly hidden?: boolean;
   /** The model this session last used here, when the extension remembers one. */
   readonly modelId?: string;
@@ -571,12 +571,8 @@ export type WebviewToExtension =
   | { readonly type: "session.list" }
   | { readonly type: "session.rename"; readonly sessionId: string; readonly title?: string }
   | { readonly type: "session.hide"; readonly sessionId: string }
-  /** Hides or unhides several sessions (history tab bulk actions). */
+  /** Hides or unhides several sessions (history pane bulk actions). */
   | { readonly type: "sessions.setHidden"; readonly sessionIds: ReadonlyArray<string>; readonly hidden: boolean }
-  /** Opens (or reveals) the session history editor tab. */
-  | { readonly type: "history.open" }
-  /** From the history tab: focus the chat and resume the session there. */
-  | { readonly type: "history.resume"; readonly sessionId: string }
   | { readonly type: "session.reconnect" }
   | { readonly type: "mode.set"; readonly modeId: string }
   | { readonly type: "model.set"; readonly modelId: string }
@@ -633,6 +629,8 @@ export type ExtensionToWebview =
   | { readonly type: "agentProbe"; readonly probe: AgentProbe }
   /** Settings tab: switch to a section (sent when an already-open tab is revealed for a specific section). */
   | { readonly type: "showSettings"; readonly section?: SettingsSection }
+  /** Chat: open the session history pane (the Session History command). */
+  | { readonly type: "showHistory" }
   | { readonly type: "mcpStatus"; readonly status: McpStatus | undefined; readonly loading: boolean }
   | { readonly type: "setupStatus"; readonly status: { readonly phase: "idle" | "installing" | "loggingIn"; readonly text?: string } }
   | { readonly type: "files.results"; readonly requestId: number; readonly query: string; readonly files: ReadonlyArray<{ readonly path: string; readonly name: string }> }

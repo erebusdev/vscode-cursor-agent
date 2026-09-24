@@ -43,8 +43,7 @@
   "activationEvents": [
     "onStartupFinished",
     "onWebviewPanel:cursorAcp.panel",
-    "onWebviewPanel:cursorAcp.settings",
-    "onWebviewPanel:cursorAcp.history"
+    "onWebviewPanel:cursorAcp.settings"
   ],
   "capabilities": {
     "untrustedWorkspaces": {

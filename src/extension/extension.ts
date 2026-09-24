@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { ChatHost, HISTORY_PANEL_TYPE, SETTINGS_PANEL_TYPE } from "./ChatHost";
+import { ChatHost, SETTINGS_PANEL_TYPE } from "./ChatHost";
 import { AGENT_PATH_KEY } from "./platform";
 import { DEFAULT_SAFE_LIST } from "./session/approvals";
 import type { ApprovalPolicy, McpStatus } from "../shared/protocol";
@@ -274,10 +274,11 @@ export function activate(context: vscode.ExtensionContext): void {
       ensureStarted();
       await runtime?.newSession();
     }),
-    // The history editor tab: search, rename, hide/unhide and resume.
-    vscode.commands.registerCommand("cursorAcp.showHistory", () => {
+    // The history pane in the sidebar chat: search, rename, hide/unhide and resume.
+    vscode.commands.registerCommand("cursorAcp.showHistory", async () => {
+      await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       ensureStarted();
-      host?.openHistory();
+      host?.showHistory();
     }),
     // Keyboard-first alternative: a quick pick of this folder's sessions.
     vscode.commands.registerCommand("cursorAcp.quickHistory", async () => {
@@ -349,13 +350,6 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewPanelSerializer(PANEL_TYPE, {
       deserializeWebviewPanel(panel) {
         host?.attachPanel(panel);
-        ensureStarted();
-        return Promise.resolve();
-      },
-    }),
-    vscode.window.registerWebviewPanelSerializer(HISTORY_PANEL_TYPE, {
-      deserializeWebviewPanel(panel) {
-        host?.attachHistoryPanel(panel);
         ensureStarted();
         return Promise.resolve();
       },
