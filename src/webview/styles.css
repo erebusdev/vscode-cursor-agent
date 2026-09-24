@@ -2360,6 +2360,21 @@ button.chip:disabled {
   flex-direction: column;
   min-width: 0;
 }
+.history-hover-filter {
+  position: relative;
+  display: flex;
+  margin: 2px 6px 3px;
+}
+.history-hover-filter .text-input {
+  height: 26px;
+  padding-left: 26px;
+}
+.history-hover-filter .history-search-icon {
+  left: 8px;
+}
+.history-hover .popover-empty {
+  padding: 8px 10px;
+}
 .history-hover-list {
   display: flex;
   flex-direction: column;

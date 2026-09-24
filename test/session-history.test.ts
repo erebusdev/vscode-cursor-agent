@@ -8,6 +8,7 @@ import {
   lastSession,
   matchesQuery,
   pruneSelection,
+  recentMatches,
   recentSessions,
   selectionState,
   sessionLabel,
@@ -88,6 +89,22 @@ describe("session history", () => {
     expect(lastSession(list, "cur")?.sessionId).toBe("mid");
     expect(lastSession(list, undefined)?.sessionId).toBe("cur");
     expect(lastSession([S("cur", "Current", undefined)], "cur")).toBeUndefined();
+  });
+
+  it("filters the recent sessions for the header card, newest first, capped, hidden ones left out", () => {
+    const list = [
+      S("a1", "Fix login", at(2025, 8, 1)),
+      S("a2", "Fix logout", at(2025, 8, 16)),
+      S("a3", "Fix login again", at(2025, 8, 17), { hidden: true }),
+      S("b1", "Docs", at(2025, 8, 15)),
+      S("deadbeef", undefined, at(2025, 8, 14)),
+    ];
+    expect(recentMatches(list, "fix", 1)).toEqual({ items: [list[1]], total: 2 });
+    expect(recentMatches(list, "FIX log", 8).items.map((s) => s.sessionId)).toEqual(["a2", "a1"]);
+    // Untitled sessions match on their id.
+    expect(recentMatches(list, "dead", 8).items.map((s) => s.sessionId)).toEqual(["deadbeef"]);
+    expect(recentMatches(list, "", 2)).toEqual({ items: [list[1], list[3]], total: 4 });
+    expect(recentMatches(list, "zebra", 8)).toEqual({ items: [], total: 0 });
   });
 
   it("tracks a multi-selection over the shown rows", () => {

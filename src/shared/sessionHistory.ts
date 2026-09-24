@@ -101,10 +101,16 @@ export function groupSessions(sorted: ReadonlyArray<SessionSummary>, sort: Histo
 
 /** The newest visible sessions, for the header overlay. */
 export function recentSessions(list: ReadonlyArray<SessionSummary>, limit: number): SessionSummary[] {
-  return sortSessions(
-    list.filter((s) => !s.hidden),
-    "newest",
-  ).slice(0, limit);
+  return recentMatches(list, "", limit).items;
+}
+
+/**
+ * The newest visible sessions matching a search (the header overlay's filter),
+ * at most `limit` of them; `total` counts every visible match.
+ */
+export function recentMatches(list: ReadonlyArray<SessionSummary>, query: string, limit: number): { items: SessionSummary[]; total: number } {
+  const matches = sortSessions(filterSessions(list, { query }), "newest");
+  return { items: matches.slice(0, limit), total: matches.length };
 }
 
 /** The newest visible session other than the current one (the new-chat screen's "Resume" link). */
