@@ -25,7 +25,21 @@ const SECTION_INFO: Record<SettingsSection, { label: string; icon: string; hint:
   advanced: { label: "Advanced", icon: "tools", hint: "Logging, VS Code's settings editor and version" },
 };
 
+/** Tracks a media query (the nav turns into a row of icons on narrow tabs). */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const list = matchMedia(query);
+    const onChange = () => setMatches(list.matches);
+    list.addEventListener("change", onChange);
+    onChange();
+    return () => list.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 function Nav({ current }: { current: SettingsSection }) {
+  const horizontal = useMediaQuery("(max-width: 480px)");
   const refs = useRef<Partial<Record<SettingsSection, HTMLButtonElement | null>>>({});
   const go = (section: SettingsSection, focus: boolean) => {
     setSettingsSection(section);
@@ -46,7 +60,7 @@ function Nav({ current }: { current: SettingsSection }) {
   };
   return (
     <nav class="settings-nav" aria-label="Settings sections">
-      <div class="settings-nav-list" role="tablist" aria-orientation="vertical" aria-label="Settings sections" onKeyDown={onKeyDown}>
+      <div class="settings-nav-list" role="tablist" aria-orientation={horizontal ? "horizontal" : "vertical"} aria-label="Settings sections" onKeyDown={onKeyDown}>
         {SETTINGS_SECTIONS.map((id) => {
           const info = SECTION_INFO[id];
           const selected = id === current;
