@@ -125,14 +125,10 @@ function PluginRow({ server, several, mode, pending, reconnectNeeded, onToggle }
   const chip = pluginChip(server, reconnectNeeded);
   const on = pending ?? (mode === "auto" ? !server.excluded : server.enabled);
   const id = `mcp-plugin-${server.id}`;
-  // Auto mode only removes entries it added; one written by hand stays until removed from mcp.json.
-  const keptByHand = mode === "auto" && !on && server.enabled && pending === undefined;
   const toggleTitle =
     mode === "off"
       ? "Plugin servers are off; choose Automatic or Manual above"
-      : keptByHand
-        ? "Left out of automatic adding, but mcp.json still lists it (the extension did not add that entry). Remove it from mcp.json to take it out of chat."
-        : on
+      : on
           ? "Available in chat: switch off to leave it out"
           : "Not available in chat: switch on to add it to mcp.json";
   return (
@@ -143,7 +139,6 @@ function PluginRow({ server, several, mode, pending, reconnectNeeded, onToggle }
       description={
         <span title={server.id}>
           <span class="plugin-transport">{TRANSPORT_LABEL[server.transport]}</span> · {server.host}
-          {keptByHand && " · still listed in mcp.json by hand"}
         </span>
       }
       control={

@@ -180,14 +180,20 @@ export interface PlanInput {
   readonly managed: ReadonlyArray<string>;
 }
 
+/** Cursor's own naming for plugin servers; mcp.json entries with it belong to plugins, the rest are the user's custom servers. */
+export function isPluginServerId(id: string): boolean {
+  return id.startsWith("plugin-");
+}
+
 /**
- * Auto mode: add every server that is not excluded and not already in the
- * file; remove entries the extension added when they are now excluded or
- * their plugin was uninstalled. Entries the user wrote are never removed.
+ * Auto mode: add every plugin server that is not excluded and not already in
+ * the file; remove plugin entries that are now excluded or whose plugin was
+ * uninstalled. Plugin entries are the `plugin-…` ones (Cursor's naming);
+ * custom servers such as GitHub are never touched.
  */
 export function planPluginSync(input: PlanInput): SyncPlan {
   const exclude = new Set(input.exclude);
-  const managed = new Set(input.managed.filter((id) => Object.prototype.hasOwnProperty.call(input.current, id)));
+  const managed = new Set([...input.managed, ...Object.keys(input.current).filter(isPluginServerId)].filter((id) => Object.prototype.hasOwnProperty.call(input.current, id)));
   const discovered = new Set(input.discovery.servers.map((s) => s.id));
   const add: PluginMcpServer[] = [];
   const remove: string[] = [];
@@ -351,8 +357,7 @@ export class PluginMcpSync {
 
   /**
    * The per-server switch. Auto mode: off adds the ids to the exclude list and
-   * removes only entries the extension added; on takes them off the list and
-   * syncs. Manual mode: writes or removes the entries directly.
+   * removes their plugin entries; on takes them off the list and syncs. Manual mode: writes or removes the entries directly.
    */
   async setEnabled(ids: ReadonlyArray<string>, enabled: boolean, launch?: LaunchIdentity): Promise<SyncOutcome> {
     const settings = this.deps.settings();

@@ -67,11 +67,11 @@ describe("sync plan", () => {
     expect(plan.managed).toEqual([sentry.id]);
   });
 
-  it("removes excluded or uninstalled servers only when the extension added them", () => {
-    const current = { [sentry.id]: {}, [figma.id]: {}, "plugin-gone-gone": {} };
-    const plan = planPluginSync({ discovery: { servers: [figma, sentry], complete: true }, current, exclude: [sentry.id, figma.id], managed: [sentry.id, "plugin-gone-gone"] });
+  it("removes excluded or uninstalled plugin entries whoever added them, and never touches custom servers", () => {
+    const current = { github: {}, [sentry.id]: {}, [figma.id]: {}, "plugin-gone-gone": {} };
+    const plan = planPluginSync({ discovery: { servers: [figma, sentry], complete: true }, current, exclude: [sentry.id, figma.id], managed: [sentry.id] });
     expect(plan.add).toEqual([]);
-    expect(plan.remove).toEqual([sentry.id, "plugin-gone-gone"]);
+    expect([...plan.remove].sort()).toEqual([figma.id, "plugin-gone-gone", sentry.id].sort());
     expect(plan.managed).toEqual([]);
   });
 
@@ -149,7 +149,7 @@ describe("PluginMcpSync", () => {
     expect(sync.resolve(launch).source).toBe("environment");
   });
 
-  it("switching a server off excludes it and removes only what the extension added", async () => {
+  it("switching a server off excludes it and removes its plugin entry, leaving custom servers alone", async () => {
     const home = join(dir, "h");
     const mcp = install(home);
     const { sync, settings } = make({ environment: { HOME: home } });
@@ -163,11 +163,11 @@ describe("PluginMcpSync", () => {
     expect(settings.exclude).toEqual([]);
     expect(servers(mcp)).toEqual(["github", sentry.id]);
 
-    // An entry the user wrote themselves stays when the server is switched off.
-    writeFileSync(mcp, JSON.stringify({ mcpServers: { [sentry.id]: { url: sentry.url, mine: true } } }));
+    // A plugin entry is the plugin's even if someone wrote it by hand; custom servers are never touched.
+    writeFileSync(mcp, JSON.stringify({ mcpServers: { github: { url: "https://example.test/mcp" }, [sentry.id]: { url: sentry.url } } }));
     const fresh = make({ environment: { HOME: home } });
     await fresh.sync.setEnabled([sentry.id], false);
-    expect(servers(mcp)).toEqual([sentry.id]);
+    expect(servers(mcp)).toEqual(["github"]);
   });
 
   it("manual mode writes only on request; off mode never writes", async () => {
