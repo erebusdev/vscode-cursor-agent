@@ -571,6 +571,12 @@ export type WebviewToExtension =
   | { readonly type: "session.list" }
   | { readonly type: "session.rename"; readonly sessionId: string; readonly title?: string }
   | { readonly type: "session.hide"; readonly sessionId: string }
+  /** Hides or unhides several sessions (history tab bulk actions). */
+  | { readonly type: "sessions.setHidden"; readonly sessionIds: ReadonlyArray<string>; readonly hidden: boolean }
+  /** Opens (or reveals) the session history editor tab. */
+  | { readonly type: "history.open" }
+  /** From the history tab: focus the chat and resume the session there. */
+  | { readonly type: "history.resume"; readonly sessionId: string }
   | { readonly type: "session.reconnect" }
   | { readonly type: "mode.set"; readonly modeId: string }
   | { readonly type: "model.set"; readonly modelId: string }

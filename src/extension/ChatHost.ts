@@ -27,8 +27,8 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return needle.length === 0;
 }
 
-/** What a webview shows: the chat (sidebar view or editor panel) or the settings editor tab. */
-type WebviewKind = "chat" | "settings";
+/** What a webview shows: the chat (sidebar view or editor panel), the settings editor tab or the history editor tab. */
+type WebviewKind = "chat" | "settings" | "history";
 
 interface Attached {
   readonly webview: vscode.Webview;
@@ -39,9 +39,16 @@ interface Attached {
 }
 
 export const SETTINGS_PANEL_TYPE = "cursorAcp.settings";
+export const HISTORY_PANEL_TYPE = "cursorAcp.history";
 
 /** Host → webview messages the settings tab has no use for (transcript traffic, composer events). */
 const CHAT_ONLY = new Set<ExtensionToWebview["type"]>(["item.upsert", "item.append", "items.reset", "sessions", "composer.insert", "composer.attach", "composer.focus", "files.results"]);
+/** The history tab gets the session list (and the session, for the current-session chip) but no transcript traffic. */
+const NOT_FOR_HISTORY = new Set<ExtensionToWebview["type"]>([...CHAT_ONLY].filter((type) => type !== "sessions"));
+
+function skips(kind: WebviewKind, type: ExtensionToWebview["type"]): boolean {
+  return kind === "settings" ? CHAT_ONLY.has(type) : kind === "history" ? NOT_FOR_HISTORY.has(type) : false;
+}
 
 export interface ChatHostServices {
   /** Forwarded servers and the CLI's own `mcp list` (see mcpStatus.ts). */
@@ -238,6 +245,38 @@ export class ChatHost implements vscode.Disposable {
     });
   }
 
+  // --- history editor tab ----------------------------------------------------------------
+
+  private historyPanel: { panel: vscode.WebviewPanel; attached: Attached } | undefined;
+
+  /** Opens the session history editor tab (a singleton), or reveals it and refreshes the list. */
+  openHistory(): void {
+    if (this.historyPanel) {
+      this.historyPanel.panel.reveal(undefined, false);
+      void this.sendSessionList();
+      return;
+    }
+    const panel = vscode.window.createWebviewPanel(HISTORY_PANEL_TYPE, "Cursor Agent History", { viewColumn: vscode.ViewColumn.Active, preserveFocus: false }, { retainContextWhenHidden: true });
+    this.attachHistoryPanel(panel);
+  }
+
+  /** Wires a history panel (new, or restored by the serializer after a reload). */
+  attachHistoryPanel(panel: vscode.WebviewPanel): void {
+    if (this.historyPanel && this.historyPanel.panel !== panel) {
+      panel.dispose();
+      this.historyPanel.panel.reveal();
+      return;
+    }
+    panel.title = "Cursor Agent History";
+    panel.iconPath = new vscode.ThemeIcon("history");
+    const attached = this.attach(panel.webview, "history", () => panel.visible, () => panel.reveal());
+    this.historyPanel = { panel, attached };
+    panel.onDidDispose(() => {
+      this.attached.delete(attached);
+      if (this.historyPanel?.panel === panel) this.historyPanel = undefined;
+    });
+  }
+
   private attach(webview: vscode.Webview, kind: WebviewKind, isVisible: () => boolean, reveal: () => void, section?: SettingsSection): Attached {
     webview.options = {
       enableScripts: true,
@@ -253,7 +292,7 @@ export class ChatHost implements vscode.Disposable {
         void webview.postMessage({
           type: "snapshot",
           session: this.runtime.state,
-          // The settings tab needs the session (models, options) but not the transcript.
+          // The settings and history tabs need the session (models, options, current id) but not the transcript.
           items: kind === "chat" ? this.runtime.model.getItems() : [],
           settings: this.uiSettings(),
           draft: this.draft,
@@ -299,7 +338,7 @@ export class ChatHost implements vscode.Disposable {
     for (const a of this.attached) {
       if (!a.ready) continue;
       for (const message of messages) {
-        if (a.kind === "settings" && CHAT_ONLY.has(message.type)) continue;
+        if (skips(a.kind, message.type)) continue;
         void a.webview.postMessage(message);
       }
     }
@@ -406,6 +445,18 @@ export class ChatHost implements vscode.Disposable {
         case "session.hide":
           this.runtime.hideSession(message.sessionId);
           await this.sendSessionList();
+          return;
+        case "sessions.setHidden":
+          this.runtime.setSessionsHidden(message.sessionIds, message.hidden);
+          await this.sendSessionList();
+          return;
+        case "history.open":
+          this.openHistory();
+          return;
+        case "history.resume":
+          // From the history tab: bring the chat forward, then switch to the session.
+          await vscode.commands.executeCommand("cursorAcp.focus");
+          if (message.sessionId !== this.runtime.state.sessionId) await this.runtime.loadSession(message.sessionId);
           return;
         case "session.reconnect":
           await this.runtime.reconnect();
@@ -675,7 +726,8 @@ export class ChatHost implements vscode.Disposable {
   async sendSessionList(): Promise<void> {
     this.send({ type: "sessions", sessions: [], loading: true });
     try {
-      const sessions = await this.runtime.listSessions();
+      // Hidden sessions are included (flagged) for the history tab's "Show hidden"; the chat filters them out.
+      const sessions = await this.runtime.listSessions({ includeHidden: true });
       this.send({ type: "sessions", sessions, loading: false });
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
@@ -837,7 +889,7 @@ export class ChatHost implements vscode.Disposable {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${codicons}">
 <link rel="stylesheet" href="${style}">
-<title>${kind === "settings" ? "Cursor Agent Settings" : "Cursor"}</title>
+<title>${kind === "settings" ? "Cursor Agent Settings" : kind === "history" ? "Cursor Agent History" : "Cursor"}</title>
 </head>
 <body data-view="${kind}"${kind === "settings" ? ` data-section="${section ?? DEFAULT_SETTINGS_SECTION}" data-version="${escapeAttr(String(this.context.extension.packageJSON?.version ?? ""))}"` : ""}>
 <div id="root"></div>

@@ -268,6 +268,14 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.title).not.toBe("My rename");
     runtime.hideSession(id);
     expect((await runtime.listSessions()).some((s) => s.sessionId === id)).toBe(false);
+    // The history tab lists hidden sessions flagged, and can unhide them.
+    expect((await runtime.listSessions({ includeHidden: true })).find((s) => s.sessionId === id)?.hidden).toBe(true);
+    runtime.setSessionsHidden([id], false);
+    const shown = (await runtime.listSessions()).find((s) => s.sessionId === id);
+    expect(shown).toBeDefined();
+    expect(shown?.hidden).toBeUndefined();
+    runtime.setSessionsHidden([id], true);
+    expect((await runtime.listSessions()).some((s) => s.sessionId === id)).toBe(false);
   });
 
   it("safe-list policy approves read-only commands silently and asks for the rest", async () => {
