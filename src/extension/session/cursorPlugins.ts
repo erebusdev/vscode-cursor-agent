@@ -63,9 +63,17 @@ function expandPlaceholders(value: unknown, root: string): unknown {
   return value;
 }
 
-interface PluginRoot {
+export interface PluginRoot {
   readonly name: string;
   readonly root: string;
+  /** Skill and command paths the cloud manifest declares, relative to the repository (see `gitPath`). */
+  readonly declared?: { readonly skill: ReadonlyArray<string>; readonly command: ReadonlyArray<string> };
+  /** Folder of the plugin inside its repository; declared paths may start with it. */
+  readonly gitPath?: string;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.trim() !== "") : [];
 }
 
 /** Live plugins from the cloud manifest; folders named after plugins next to them are stale copies. */
@@ -104,7 +112,14 @@ function cachedPlugins(pluginsDir: string, errors: string[]): { plugins: PluginR
       complete = false;
       continue;
     }
-    plugins.push({ name, root });
+    const caps = isRecord(entry.declaredCapabilityPaths) ? entry.declaredCapabilityPaths : undefined;
+    const gitPath = typeof entry.gitPath === "string" && entry.gitPath.trim() && entry.gitPath.trim() !== "." ? entry.gitPath.trim() : undefined;
+    plugins.push({
+      name,
+      root,
+      ...(caps ? { declared: { skill: stringList(caps.skill), command: stringList(caps.command) } } : {}),
+      ...(gitPath ? { gitPath } : {}),
+    });
   }
   return { plugins, complete };
 }
@@ -192,15 +207,20 @@ function toServer(plugin: PluginRoot, serverName: string, raw: unknown, errors: 
   return undefined;
 }
 
+/** Installed plugins under `<cursorDir>/plugins` (cloud ones first, then local ones). Never throws. */
+export function installedPlugins(cursorDir: string): { pluginsDir: string; plugins: PluginRoot[]; errors: string[]; complete: boolean } {
+  const pluginsDir = join(cursorDir, "plugins");
+  const errors: string[] = [];
+  const cached = cachedPlugins(pluginsDir, errors);
+  return { pluginsDir, plugins: [...cached.plugins, ...localPlugins(pluginsDir, errors)], errors, complete: cached.complete };
+}
+
 /**
  * Every MCP server of the plugins installed under `<cursorDir>/plugins`,
  * sorted by plugin, then server. Never throws.
  */
 export function discoverPluginMcpServers(cursorDir: string): PluginDiscovery {
-  const pluginsDir = join(cursorDir, "plugins");
-  const errors: string[] = [];
-  const cached = cachedPlugins(pluginsDir, errors);
-  const plugins = [...cached.plugins, ...localPlugins(pluginsDir, errors)];
+  const { pluginsDir, plugins, errors, complete } = installedPlugins(cursorDir);
   const servers: PluginMcpServer[] = [];
   const seen = new Set<string>();
   for (const plugin of plugins) {
@@ -214,7 +234,7 @@ export function discoverPluginMcpServers(cursorDir: string): PluginDiscovery {
     }
   }
   servers.sort((a, b) => a.pluginName.localeCompare(b.pluginName) || a.serverName.localeCompare(b.serverName));
-  return { pluginsDir, servers, errors, complete: cached.complete };
+  return { pluginsDir, servers, errors, complete };
 }
 
 // ---------------------------------------------------------------------------
