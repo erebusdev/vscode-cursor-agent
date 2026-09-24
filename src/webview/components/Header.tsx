@@ -127,57 +127,122 @@ function SettingsGear() {
   return <IconButton ref={ref} icon="settings-gear" label="Settings" class={open ? "active" : ""} aria-pressed={open} onClick={() => setSettingsOpen(!open)} />;
 }
 
+type HistoryGroup = "Today" | "Yesterday" | "This week" | "Older";
+const HISTORY_GROUPS: ReadonlyArray<HistoryGroup> = ["Today", "Yesterday", "This week", "Older"];
+const DAY_MS = 86_400_000;
+
+function parseTime(input: string | undefined): number | undefined {
+  if (!input) return undefined;
+  const t = Date.parse(input);
+  return Number.isFinite(t) ? t : undefined;
+}
+
+/** Bucket a session by calendar day relative to `now`; unknown dates fall into "Older". */
+function historyGroup(updatedAt: string | undefined, now: number): HistoryGroup {
+  const t = parseTime(updatedAt);
+  if (t === undefined) return "Older";
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const today = startOfToday.getTime();
+  if (t >= today) return "Today";
+  if (t >= today - DAY_MS) return "Yesterday";
+  if (t >= today - 6 * DAY_MS) return "This week";
+  return "Older";
+}
+
+function fullDateTime(updatedAt: string | undefined): string | undefined {
+  const t = parseTime(updatedAt);
+  return t === undefined ? undefined : new Date(t).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+}
+
 function HistoryButton() {
   const sessions = useSelector((s) => s.sessions);
+  const currentId = useSelector((s) => s.session.sessionId);
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
   const anchor = useRef<HTMLButtonElement>(null);
   const openMenu = () => {
     post({ type: "session.list" });
     setOpen(true);
   };
+  const close = () => {
+    setOpen(false);
+    setFilter("");
+  };
+  const load = (sessionId: string) => {
+    close();
+    if (sessionId !== currentId) post({ type: "session.load", sessionId });
+  };
+
+  const q = filter.trim().toLowerCase();
+  const filtered = q ? sessions.list.filter((s) => (s.title?.trim() || s.sessionId).toLowerCase().includes(q)) : sessions.list;
+  const now = Date.now();
+  const groups = HISTORY_GROUPS.map((name) => ({ name, items: filtered.filter((s) => historyGroup(s.updatedAt, now) === name) })).filter((g) => g.items.length > 0);
+  const ready = !sessions.loading && !sessions.error;
+
   return (
     <>
-      <IconButton ref={anchor} icon="history" label="Session history" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : openMenu())} />
-      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Session history" role="listbox" align="end" minWidth={260} class="history-popover">
+      <IconButton ref={anchor} icon="history" label="Session history" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? close() : openMenu())} />
+      <Popover anchor={anchor} open={open} onClose={close} label="Session history" role="listbox" align="end" minWidth={260} class="history-popover">
         <div class="popover-heading">
           Recent sessions {sessions.loading && <Spinner class="section-spinner" />}
         </div>
+        <input
+          type="text"
+          class="text-input popover-filter"
+          placeholder="Filter sessions…"
+          aria-label="Filter sessions"
+          title="Filter sessions by title. Enter opens the first match."
+          data-autofocus
+          value={filter}
+          onInput={(e) => setFilter((e.currentTarget as HTMLInputElement).value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && filtered.length > 0) {
+              e.preventDefault();
+              load(filtered[0]!.sessionId);
+            }
+          }}
+        />
         {sessions.error && <div class="popover-empty error">{sessions.error}</div>}
-        {!sessions.loading && !sessions.error && sessions.list.length === 0 && <div class="popover-empty">No sessions yet.</div>}
+        {ready && sessions.list.length === 0 && <div class="popover-empty">No sessions yet.</div>}
+        {ready && sessions.list.length > 0 && filtered.length === 0 && <div class="popover-empty">No matching sessions</div>}
         <div class="popover-list">
-          {sessions.list.map((s) => (
-            <div key={s.sessionId} class="popover-row">
-              <button
-                type="button"
-                role="option"
-                aria-selected={false}
-                class="popover-item"
-                title={s.cwd ?? s.sessionId}
-                onClick={() => {
-                  setOpen(false);
-                  post({ type: "session.load", sessionId: s.sessionId });
-                }}
-              >
-                <span class="popover-item-check">
-                  <Icon name="comment-discussion" />
-                </span>
-                <span class="popover-item-main">
-                  <span class="popover-item-label">{s.title?.trim() || s.sessionId.slice(0, 8)}</span>
-                  {s.updatedAt && <span class="popover-item-desc">{relativeTime(s.updatedAt)}</span>}
-                </span>
-              </button>
-              <span class="popover-row-actions">
-                <IconButton
-                  icon="edit"
-                  label="Rename session"
-                  onClick={() => {
-                    setOpen(false);
-                    post({ type: "session.rename", sessionId: s.sessionId });
-                  }}
-                />
-                <IconButton icon="copy" label={`Copy session id ${s.sessionId}`} onClick={() => post({ type: "copy", text: s.sessionId })} />
-                <IconButton icon="eye-closed" label="Hide from history" onClick={() => post({ type: "session.hide", sessionId: s.sessionId })} />
-              </span>
+          {groups.map((g) => (
+            <div key={g.name} role="group" aria-label={g.name} class="popover-group">
+              <div class="popover-heading popover-subheading" aria-hidden="true">
+                {g.name}
+              </div>
+              {g.items.map((s) => {
+                const current = s.sessionId === currentId;
+                const label = s.title?.trim() || s.sessionId.slice(0, 8);
+                const when = fullDateTime(s.updatedAt);
+                const tooltip = [current ? `${label} (current session)` : label, when, s.cwd ?? `Session id: ${s.sessionId}`].filter(Boolean).join("\n");
+                return (
+                  <div key={s.sessionId} class="popover-row">
+                    <button type="button" role="option" aria-selected={current} class={`popover-item${current ? " selected" : ""}`} title={tooltip} onClick={() => load(s.sessionId)}>
+                      <span class="popover-item-check">
+                        <Icon name={current ? "check" : "comment-discussion"} />
+                      </span>
+                      <span class="popover-item-main">
+                        <span class="popover-item-label">{label}</span>
+                        {s.updatedAt && <span class="popover-item-desc">{relativeTime(s.updatedAt, now)}</span>}
+                      </span>
+                    </button>
+                    <span class="popover-row-actions">
+                      <IconButton
+                        icon="edit"
+                        label="Rename session"
+                        onClick={() => {
+                          close();
+                          post({ type: "session.rename", sessionId: s.sessionId });
+                        }}
+                      />
+                      <IconButton icon="copy" label={`Copy session id ${s.sessionId}`} onClick={() => post({ type: "copy", text: s.sessionId })} />
+                      <IconButton icon="eye-closed" label="Hide from history" onClick={() => post({ type: "session.hide", sessionId: s.sessionId })} />
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -185,4 +250,3 @@ function HistoryButton() {
     </>
   );
 }
-
