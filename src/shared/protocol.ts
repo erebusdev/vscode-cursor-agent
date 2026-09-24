@@ -136,6 +136,8 @@ export interface ToolItem {
   /** File contents returned by read tools. */
   readonly fileContent?: string;
   readonly permission?: PermissionState;
+  /** Cursor's `Mcp(server:tool)` pattern for MCP tool calls; what the safe list and "Allow for session" match on. */
+  readonly mcpPattern?: string;
   readonly createdAt: number;
   readonly endedAt?: number;
   readonly replay?: boolean;
@@ -413,6 +415,10 @@ export interface ExtensionSettings {
   readonly agentArgs: ReadonlyArray<string>;
   readonly environment: Readonly<Record<string, string>>;
   readonly configDir: string;
+  /** Forward the workspace's `.cursor/mcp.json` servers to the agent (ACP otherwise drops unapproved project servers silently). */
+  readonly mcpForwardProjectServers: boolean;
+  /** Optional user-level `mcp.json` to forward as well; empty = the CLI's own `~/.cursor/mcp.json` is left to the CLI. */
+  readonly mcpUserConfig: string;
   readonly resumeLastSession: boolean;
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;

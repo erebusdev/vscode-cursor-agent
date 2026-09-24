@@ -11,6 +11,7 @@
  *  - items created while `replay` is on are flagged and never "streaming"
  */
 import type * as acp from "@agentclientprotocol/sdk";
+import { mcpPatternFrom } from "./approvals";
 import { isAbsolute, relative, sep } from "node:path";
 import type {
   ExtensionToWebview,
@@ -464,6 +465,7 @@ export class ThreadModel {
     // Drop the subtitle when the title already names the same path (Cursor titles edits/reads by path).
     const subtitle = rawSubtitle && title.includes(rawSubtitle) ? undefined : rawSubtitle;
     const inputText = prettyInput(rawInput) ?? base.inputText;
+    const mcpPattern = kind === "other" ? (mcpPatternFrom(rawInput, typeof update.title === "string" ? update.title : undefined) ?? base.mcpPattern) : base.mcpPattern;
 
     let output = base.output;
     let fileContent = base.fileContent;
@@ -530,6 +532,7 @@ export class ThreadModel {
       ...(command ? { command } : {}),
       ...(subtitle ? { subtitle } : {}),
       ...(inputText ? { inputText } : {}),
+      ...(mcpPattern ? { mcpPattern } : {}),
       output: boundOutput(output),
       ...(exitCode !== undefined ? { exitCode } : {}),
       diffs,
@@ -677,17 +680,22 @@ export class ThreadModel {
     }
     const itemId = this.toolIndex.get(toolCall.toolCallId)!;
     const item = this.get(itemId) as ToolItem;
-    const reason = (toolCall.content ?? [])
+    const text = (toolCall.content ?? [])
       .flatMap((entry) => (entry.type === "content" && entry.content.type === "text" ? [entry.content.text] : []))
       .join("\n")
       .trim();
+    // For MCP tools the content is the call's arguments as a fenced JSON block, not a reason.
+    const fenced = /^```[a-z]*\n([\s\S]*?)\n```$/.exec(text);
+    const reason = fenced ? "" : text;
+    const inputText = fenced && !item.inputText ? boundHead(fenced[1] ?? "", INPUT_TEXT_LIMIT) : item.inputText;
+    const mcpPattern = item.mcpPattern ?? (item.kind === "other" ? mcpPatternFrom(toolCall.rawInput, toolCall.title ?? undefined) : undefined);
     const options: PermissionOption[] = params.options.map((option) => ({
       optionId: option.optionId,
       name: option.name,
       kind: option.kind,
     }));
     const permission: PermissionState = { requestId, options, state: "pending", ...(reason ? { reason } : {}) };
-    const next: ToolItem = { ...item, permission };
+    const next: ToolItem = { ...item, permission, ...(inputText !== undefined ? { inputText } : {}), ...(mcpPattern ? { mcpPattern } : {}) };
     this.update(next);
     return next;
   }

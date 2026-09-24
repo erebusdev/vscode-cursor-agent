@@ -79,9 +79,29 @@ export interface PermissionSubject {
 
 const PATTERN_RE = /\b([A-Z][A-Za-z]+)\(([^()]+)\)/;
 
-export function subjectFrom(input: { command?: string; title: string; reason?: string }): PermissionSubject {
-  const pattern = input.reason ? PATTERN_RE.exec(input.reason)?.[0] : undefined;
+export function subjectFrom(input: { command?: string; title: string; reason?: string; pattern?: string }): PermissionSubject {
+  const pattern = input.pattern ?? (input.reason ? PATTERN_RE.exec(input.reason)?.[0] : undefined);
   return { ...(input.command ? { command: input.command } : {}), ...(pattern ? { pattern } : {}), title: input.title };
+}
+
+/**
+ * Cursor's `Mcp(server:tool)` pattern for an MCP tool call. Permission
+ * requests for MCP tools carry no reason text (their content is the tool's
+ * arguments), so the pattern is rebuilt from the call's raw input
+ * (`providerIdentifier` / `toolName`) or, failing that, from the title Cursor
+ * gives the request: `<server>-<tool>: <tool>` (or `<server>: <tool>`).
+ */
+export function mcpPatternFrom(rawInput: unknown, title: string | undefined): string | undefined {
+  if (typeof rawInput === "object" && rawInput !== null && !Array.isArray(rawInput)) {
+    const r = rawInput as Record<string, unknown>;
+    if (typeof r.providerIdentifier === "string" && r.providerIdentifier && typeof r.toolName === "string" && r.toolName) return `Mcp(${r.providerIdentifier}:${r.toolName})`;
+  }
+  if (!title) return undefined;
+  const joined = /^(\S+)-(\S+): \2$/.exec(title.trim());
+  if (joined) return `Mcp(${joined[1]}:${joined[2]})`;
+  const plain = /^([A-Za-z0-9_.-]+): ([A-Za-z0-9_.-]+)$/.exec(title.trim());
+  if (plain && plain[1] !== "MCP") return `Mcp(${plain[1]}:${plain[2]})`;
+  return undefined;
 }
 
 /** Key under which "Allow for session" remembers a subject: the command name, else Cursor's pattern, else the title. */

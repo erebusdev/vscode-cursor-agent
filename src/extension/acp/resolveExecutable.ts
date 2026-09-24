@@ -126,7 +126,8 @@ function probeLoginShellPath(shell: string, env: NodeJS.ProcessEnv): Promise<str
   });
 }
 
-function loginShellPath(env: NodeJS.ProcessEnv): Promise<string | undefined> {
+/** PATH as the user's login shell sees it (cached per shell + PATH); undefined on Windows or when the shell cannot be run. */
+export function loginShellPath(env: NodeJS.ProcessEnv): Promise<string | undefined> {
   if (process.platform === "win32") return Promise.resolve(undefined);
   const shell = env.SHELL || "/bin/sh";
   const key = `${shell}\u0000${env.PATH ?? ""}`;

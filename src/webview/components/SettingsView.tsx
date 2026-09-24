@@ -318,7 +318,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
 // Rows bound to settings keys
 // ---------------------------------------------------------------------------
 
-function TextRow({ settings, k, label, description, placeholder, mono, onSaved }: { settings: ExtensionSettings; k: "configDir"; label: string; description: ComponentChildren; placeholder?: string; mono?: boolean; onSaved?: () => void }) {
+function TextRow({ settings, k, label, description, placeholder, mono, onSaved }: { settings: ExtensionSettings; k: "configDir" | "mcpUserConfig"; label: string; description: ComponentChildren; placeholder?: string; mono?: boolean; onSaved?: () => void }) {
   const [saved, flash] = useSavedFlash();
   return (
     <SettingRow id={`setting-${k}`} settingKey={k} label={label} description={description} source={settings.sources[k]} saved={saved}>
@@ -468,7 +468,7 @@ function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) {
   );
 }
 
-type BoolKey = "resumeLastSession" | "sendWithCtrlEnter" | "showThoughts" | "notifyWhenHidden" | "protocolLogging";
+type BoolKey = "resumeLastSession" | "sendWithCtrlEnter" | "showThoughts" | "notifyWhenHidden" | "protocolLogging" | "mcpForwardProjectServers";
 
 function BoolRow({ settings, k, label, description }: { settings: ExtensionSettings; k: BoolKey; label: string; description: ComponentChildren }) {
   const [saved, flash] = useSavedFlash();
@@ -663,6 +663,10 @@ export function SettingsView() {
               <AgentArgsRow settings={settings} onSaved={markConnectionChange} />
               <EnvRow settings={settings} onSaved={markConnectionChange} />
               <TextRow settings={settings} k="configDir" label="Config directory" description="Cursor's config directory. Only used by the usage panel to read local usage data; leave empty to use the default location." placeholder="~/.cursor" mono />
+              <h3 class="settings-heading">MCP servers</h3>
+              <BoolRow settings={settings} k="mcpForwardProjectServers" label="Forward project servers" description="Pass this workspace's .cursor/mcp.json servers to the agent with each session. Without this the CLI silently skips project servers that were never approved in the terminal app. Skipped in untrusted workspaces." />
+              <TextRow settings={settings} k="mcpUserConfig" label="User-level mcp.json" description="Also forward the servers in this file. Leave empty when the CLI already loads yours; set it when the agent runs as a different account or profile than the one holding your config." placeholder="~/.cursor/mcp.json" mono onSaved={markConnectionChange} />
+              <p class="setting-desc">The Show MCP Servers command lists what is forwarded and what the CLI itself reports.</p>
             </section>
             )}
 

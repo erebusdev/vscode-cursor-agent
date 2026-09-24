@@ -7,6 +7,11 @@ import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
 import { SessionRuntime, type AgentLaunchConfig, type SessionMeta } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
 import type { WebviewToExtension } from "../shared/protocol";
+import { hostEnv, prepareHostEnv } from "./hostEnv";
+import { describeMcpServers, loadMcpServers, type McpServerSpec } from "./session/mcpConfig";
+import { resolveAgentExecutable } from "./acp/resolveExecutable";
+import { planLaunch } from "./acp/windowsLaunch";
+import { execFile } from "node:child_process";
 
 const PANEL_TYPE = "cursorAcp.panel";
 
@@ -31,12 +36,31 @@ function launchConfig(): AgentLaunchConfig {
   // Windows hosts read their own key so a Windows path never leaks into WSL/SSH windows.
   const command = config.get<string>(AGENT_PATH_KEY, "").trim();
   const args = config.get<string[]>("agentArgs", []).filter((a) => typeof a === "string");
-  const extraEnv = config.get<Record<string, string>>("environment", {});
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const [key, value] of Object.entries(extraEnv)) {
-    if (typeof value === "string") env[key] = value;
-  }
+  const env = hostEnv(config.get<Record<string, string>>("environment", {}));
   return { command, args, env, protocolLogging: config.get<boolean>("protocolLogging", false) };
+}
+
+/** The MCP servers to hand to the agent with each session; see mcpConfig.ts. */
+async function mcpServers(cwd: string | undefined, log: { warn(m: string): void }): Promise<ReturnType<typeof loadMcpServers> extends Promise<infer R> ? R : never> {
+  const config = vscode.workspace.getConfiguration("cursorAcp");
+  const forwardProject = config.get<boolean>("mcpForwardProjectServers", true);
+  const userConfigPath = config.get<string>("mcpUserConfig", "").trim();
+  const trusted = vscode.workspace.isTrusted;
+  if (forwardProject && cwd && !trusted) log.warn("Workspace is not trusted; its .cursor/mcp.json servers are not forwarded to the agent.");
+  const result = await loadMcpServers({
+    ...(forwardProject && cwd && trusted ? { projectDir: cwd } : {}),
+    ...(userConfigPath ? { userConfigPath } : {}),
+    env: launchConfig().env,
+  });
+  for (const source of result.sources) if (source.error) log.warn(`MCP config ${source.path}: ${source.error}`);
+  return result;
+}
+
+/** ACP wire form of a server spec (stdio keeps Cursor's optional cwd). */
+function toAcpServer(spec: McpServerSpec): import("@agentclientprotocol/sdk").McpServer {
+  if ("url" in spec) return { type: spec.type, name: spec.name, url: spec.url, headers: [...spec.headers] };
+  const stdio = { name: spec.name, command: spec.command, args: [...spec.args], env: [...spec.env], ...(spec.cwd ? { cwd: spec.cwd } : {}) };
+  return stdio as import("@agentclientprotocol/sdk").McpServer;
 }
 
 function workspaceInfo(): { cwd: string; name: string } | undefined {
@@ -85,6 +109,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const config = vscode.workspace.getConfiguration("cursorAcp");
       return { policy: config.get<ApprovalPolicy>("approvalPolicy", "safe"), safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]) };
     },
+    getMcpServers: async () => (await mcpServers(workspace?.cwd, log)).servers.map(toAcpServer),
     storage,
     log: runtimeLogger,
     events: {
@@ -102,10 +127,14 @@ export function activate(context: vscode.ExtensionContext): void {
   host = new ChatHost(context, runtime, diffs, log);
   context.subscriptions.push(host);
 
+  const envReady = prepareHostEnv(log);
   let started = false;
-  const ensureStarted = () => {
+  const ensureStarted = async () => {
     if (started || !runtime) return;
     started = true;
+    // The login-shell PATH lookup is bounded (5 s); the agent and its MCP servers need it.
+    await envReady;
+    if (!runtime) return;
     if (!workspace) {
       runtime.model.addNotice("warning", "Open a folder to chat with the Cursor agent about it.", undefined, []);
       return;
@@ -216,6 +245,34 @@ export function activate(context: vscode.ExtensionContext): void {
       return runtime?.reconnect();
     }),
     vscode.commands.registerCommand("cursorAcp.showLogs", () => log.show(true)),
+    vscode.commands.registerCommand("cursorAcp.showMcpServers", async () => {
+      await envReady;
+      const lines: string[] = ["MCP servers"];
+      const result = await mcpServers(workspace?.cwd, log);
+      const described = describeMcpServers(result);
+      lines.push("Forwarded to the agent by the extension:", ...(described.length ? described.map((l) => `  ${l}`) : ["  (none: no mcp.json found, or forwarding is off)"]));
+      const launch = launchConfig();
+      const found = await resolveAgentExecutable(launch.command, launch.env);
+      if (!found) {
+        lines.push("Reported by the CLI: agent executable not found.");
+      } else {
+        const plan = planLaunch(found.path, [...launch.args, "mcp", "list"], launch.env);
+        const output = await new Promise<string>((resolve) => {
+          const child = execFile(plan.file, [...plan.args], { cwd: workspace?.cwd ?? process.cwd(), env: plan.env ? { ...launch.env, ...plan.env } : launch.env, timeout: 30_000, maxBuffer: 256 * 1024, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments ?? false }, (error, stdout, stderr) => {
+            resolve(error && !stdout ? `could not run "${found.path} mcp list": ${error.message}${stderr ? `\n${stderr}` : ""}` : `${stdout}${stderr}`.trim());
+          });
+          child.stdin?.end();
+        });
+        const forwarded = new Set(result.servers.map((s) => s.name));
+        lines.push(`Reported by the CLI (${found.path} mcp list):`);
+        for (const line of output.split(/\r?\n/).filter((l) => l.trim())) {
+          const name = /^\s*([^:]+):/.exec(line)?.[1]?.trim();
+          lines.push(`  ${line}${name && forwarded.has(name) && /needs approval/i.test(line) ? "  (forwarded by the extension, so it is available in chat)" : ""}`);
+        }
+      }
+      log.info(lines.join("\n"));
+      log.show(true);
+    }),
     vscode.commands.registerCommand("cursorAcp.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "cursorAcp")),
   );
 

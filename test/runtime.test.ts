@@ -4,11 +4,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { ExtensionToWebview, ThreadItem, ToolItem } from "../src/shared/protocol";
 import { SessionRuntime, type ModelPreferences, type SessionMeta } from "../src/extension/session/SessionRuntime";
+import type * as acp from "@agentclientprotocol/sdk";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 
-function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}) {
+function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}, mcpServers?: () => Promise<acp.McpServer[]>) {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
   const logs: string[] = [];
@@ -20,6 +21,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "
     getLaunchConfig: () => ({ command: process.execPath, args: [FAKE_AGENT], env: { ...process.env, ...extraEnv }, protocolLogging: false }),
     getApprovalConfig: () => ({ policy: approvalPolicy, safeList: DEFAULT_SAFE_LIST }),
     getModelDefaults: () => modelDefaults,
+    ...(mcpServers ? { getMcpServers: mcpServers } : {}),
     storage: {
       getLastSessionId: () => lastSession,
       setLastSessionId: (id) => (lastSession = id),
@@ -243,6 +245,60 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.sessionAllowed).toEqual(["rm"]);
     await runtime.prompt("run rm -rf dist", []);
     tool = items(runtime).filter((i) => i.type === "tool").at(-1) as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.resolution).toBe("session");
+  });
+
+  it("forwards MCP servers with session/new and session/load, and survives a failing provider", async () => {
+    let calls = 0;
+    const provider = async (): Promise<acp.McpServer[]> => {
+      calls++;
+      if (calls === 3) throw new Error("boom");
+      return [{ name: "echoprobe", command: "node", args: ["server.mjs"], env: [] }, { type: "http", name: "jira", url: "https://mcp.example/", headers: [] }];
+    };
+    const { runtime, logs } = makeRuntime({}, "ask", {}, provider);
+    active.push(runtime);
+    await runtime.start();
+    expect(runtime.forwardedMcpServers).toEqual(["echoprobe", "jira"]);
+    await runtime.prompt("mcp list", []);
+    expect(lastAssistant(runtime)?.text).toBe("MCP: echoprobe (node server.mjs); jira (https://mcp.example/)");
+    expect(logs.some((l) => l.includes("Forwarding MCP servers: echoprobe, jira"))).toBe(true);
+    // Resume re-sends them (the CLI takes mcpServers on session/load too).
+    const id = runtime.state.sessionId!;
+    await runtime.loadSession(id);
+    expect(calls).toBe(2);
+    await runtime.prompt("mcp list", []);
+    expect(lastAssistant(runtime)?.text).toContain("echoprobe");
+    // A broken config must not stop sessions from being created.
+    await runtime.newSession();
+    expect(calls).toBe(3);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.forwardedMcpServers).toEqual([]);
+    expect(logs.some((l) => l.includes("Could not read MCP config: boom"))).toBe(true);
+  });
+
+  it("matches MCP tool calls against the safe list and remembers them for the session", async () => {
+    const { runtime } = makeRuntime({}, "safe");
+    active.push(runtime);
+    await runtime.start();
+    // A read-only tool name matches the default Mcp(...) safe-list entry even though Cursor sends no reason text.
+    await runtime.prompt("mcp call plugin-atlassian-atlassian searchJiraIssuesUsingJql", []);
+    let tool = items(runtime).filter((i) => i.type === "tool").at(-1) as ToolItem;
+    expect(tool.mcpPattern).toBe("Mcp(plugin-atlassian-atlassian:searchJiraIssuesUsingJql)");
+    expect(tool.permission?.state).toBe("resolved");
+    expect(tool.permission?.resolution).toBe("auto");
+    expect(tool.permission?.reason).toBeUndefined();
+    expect(tool.inputText).toContain('"text": "hi"');
+    expect(tool.output).toBe("ECHO:hi");
+    // A writing tool asks; "Allow for session" keys on Cursor's Mcp(server:tool) pattern.
+    const write = runtime.prompt("mcp call plugin-atlassian-atlassian createJiraIssue", []);
+    await waitFor(() => runtime.state.pendingPermissions === 1);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as ToolItem;
+    expect(tool.permission?.state).toBe("pending");
+    runtime.respondToPermission(tool.permission!.requestId, tool.permission!.options[0]!.optionId, "session");
+    await write;
+    expect(runtime.state.sessionAllowed).toEqual(["Mcp(plugin-atlassian-atlassian:createJiraIssue)"]);
+    await runtime.prompt("mcp call plugin-atlassian-atlassian createJiraIssue", []);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as ToolItem;
     expect(tool.permission?.resolution).toBe("session");
   });
 

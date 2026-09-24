@@ -49,6 +49,9 @@ export interface RuntimeLogger {
   stderr(text: string): void;
 }
 
+/** Supplies the MCP servers to forward with session/new and session/load (see mcpConfig.ts). */
+export type McpServersProvider = () => Promise<ReadonlyArray<acp.McpServer>>;
+
 export interface RuntimeEvents {
   /** Any message for attached webviews. */
   message(message: ExtensionToWebview): void;
@@ -68,6 +71,8 @@ export interface SessionRuntimeOptions {
   readonly getApprovalConfig: () => { policy: ApprovalPolicy; safeList: ReadonlyArray<string> };
   /** Model + option defaults for new sessions, from settings. */
   readonly getModelDefaults: () => ModelPreferences;
+  /** Optional; when absent nothing is forwarded and the CLI loads its own config (approval-gated for project files). */
+  readonly getMcpServers?: McpServersProvider;
   readonly storage: RuntimeStorage;
   readonly log: RuntimeLogger;
   readonly events: RuntimeEvents;
@@ -544,9 +549,26 @@ export class SessionRuntime {
     }
   }
 
+  /** MCP servers forwarded with the last session/new or session/load, by name. */
+  forwardedMcpServers: ReadonlyArray<string> = [];
+
+  private async mcpServers(): Promise<acp.McpServer[]> {
+    if (!this.options.getMcpServers) return [];
+    try {
+      const servers = [...(await this.options.getMcpServers())];
+      this.forwardedMcpServers = servers.map((s) => s.name);
+      if (servers.length) this.options.log.info(`Forwarding MCP servers: ${this.forwardedMcpServers.join(", ")}`);
+      return servers;
+    } catch (error) {
+      this.options.log.warn(`Could not read MCP config: ${error instanceof Error ? error.message : String(error)}`);
+      this.forwardedMcpServers = [];
+      return [];
+    }
+  }
+
   private async newSessionInternal(connection: AcpConnection): Promise<void> {
     this.resetSessionState();
-    const response = await connection.newSession({ cwd: this.options.cwd, mcpServers: [] });
+    const response = await connection.newSession({ cwd: this.options.cwd, mcpServers: await this.mcpServers() });
     this.sessionId = response.sessionId;
     // Cursor only persists sessions that received a prompt; remember the id on the first prompt.
     this.applySessionSetup(response);
@@ -565,7 +587,7 @@ export class SessionRuntime {
     let response: acp.LoadSessionResponse;
     try {
       response = await withTimeout(
-        connection.loadSession({ sessionId, cwd: this.options.cwd, mcpServers: [] }),
+        connection.loadSession({ sessionId, cwd: this.options.cwd, mcpServers: await this.mcpServers() }),
         SESSION_LOAD_TIMEOUT_MS,
         "session/load timed out while replaying history.",
       );
@@ -967,7 +989,7 @@ export class SessionRuntime {
   }
 
   private subjectOf(item: ToolItem): PermissionSubject {
-    return subjectFrom({ ...(item.command ? { command: item.command } : {}), title: item.title, ...(item.permission?.reason ? { reason: item.permission.reason } : {}) });
+    return subjectFrom({ ...(item.command ? { command: item.command } : {}), title: item.title, ...(item.permission?.reason ? { reason: item.permission.reason } : {}), ...(item.mcpPattern ? { pattern: item.mcpPattern } : {}) });
   }
 
   private allowOnceOption(options: ReadonlyArray<PermissionOption>): string {

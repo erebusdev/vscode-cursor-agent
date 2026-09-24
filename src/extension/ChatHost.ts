@@ -13,6 +13,7 @@ import { MessageBatcher } from "./MessageBatcher";
 import { fetchCursorUsage } from "./session/usage";
 import { probeAgent, readExtensionSettings, resetExtensionSetting, updateExtensionSetting } from "./settings";
 import { AGENT_PATH_KEY } from "./platform";
+import { hostEnv } from "./hostEnv";
 import { SetupController, type SetupStatus } from "./setup";
 
 function isSubsequence(needle: string, haystack: string): boolean {
@@ -462,7 +463,7 @@ export class ChatHost implements vscode.Disposable {
     return {
       configuredPath: settings[AGENT_PATH_KEY],
       configDir: settings.configDir,
-      env: { ...process.env, ...settings.environment } as NodeJS.ProcessEnv,
+      env: hostEnv(settings.environment),
       onStatus: (status: SetupStatus) => {
         this.setupStatus = status;
         this.send({ type: "setupStatus", status });
@@ -480,7 +481,7 @@ export class ChatHost implements vscode.Disposable {
     const settings = readExtensionSettings();
     const configuredPath = settings[AGENT_PATH_KEY];
     this.send({ type: "agentProbe", probe: { state: "checking", configuredPath, checkedAt: Date.now() } });
-    const env: NodeJS.ProcessEnv = { ...process.env, ...settings.environment };
+    const env = hostEnv(settings.environment);
     const probe = await probeAgent(configuredPath, env);
     this.lastProbe = probe;
     this.log.info(`Agent probe: ${probe.state}${probe.resolvedPath ? ` (${probe.resolvedPath}${probe.version ? `, ${probe.version}` : ""})` : ""}${probe.error ? ` – ${probe.error}` : ""}`);
@@ -502,7 +503,7 @@ export class ChatHost implements vscode.Disposable {
     this.usageInFlight = fetchCursorUsage({
       ...(configDir ? { configDir } : {}),
       ...(agentPath ? { agentPath } : {}),
-      env: { ...process.env, ...extraEnv },
+      env: hostEnv(extraEnv),
     })
       .then((usage) => this.send({ type: "usage", usage, loading: false }))
       .finally(() => {

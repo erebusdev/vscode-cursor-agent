@@ -36,6 +36,8 @@ path, set it in the view's settings (gear icon). The extension runs
 | `cursorAcp.agentArgs` | Extra args inserted before `acp`. |
 | `cursorAcp.environment` | Extra env vars for the agent process. |
 | `cursorAcp.configDir` | Cursor config dir, used by the usage panel. Empty = auto-detect. |
+| `cursorAcp.mcpForwardProjectServers` | Pass the workspace's `.cursor/mcp.json` servers to the agent with each session (default on; skipped in untrusted workspaces). In ACP mode the CLI otherwise skips project servers that were never approved in its terminal app, without saying so. |
+| `cursorAcp.mcpUserConfig` | A user-level `mcp.json` to forward as well. Empty = the CLI loads its own `~/.cursor/mcp.json` for the account it runs as. |
 | `cursorAcp.resumeLastSession` | Resume the folder's last session on open. |
 | `cursorAcp.sendWithCtrlEnter` | Send with Ctrl/Cmd+Enter instead of Enter. |
 | `cursorAcp.showThoughts` | Show thinking blocks. |
@@ -47,6 +49,12 @@ path, set it in the view's settings (gear icon). The extension runs
 | `cursorAcp.defaultModelOptions` | Option values (effort, context, fast…) for new sessions, e.g. `{ "effort": "high" }`. |
 | `cursorAcp.editorTitleButton` | Show the Open Cursor button in the editor title bar. |
 | `cursorAcp.protocolLogging` | Log every JSON-RPC message to the output channel. |
+
+## MCP servers
+
+The agent reads MCP servers from Cursor's `~/.cursor/mcp.json` (for the account it runs as) and the workspace's `.cursor/mcp.json`. Project servers need an approval that only Cursor's terminal app can give, so the extension forwards them itself; user-level ones load as they do in the CLI. *Cursor Agent: Show MCP Servers* lists what is forwarded and what the CLI reports. Read-only MCP tools (names starting with get, list, search, read…) run without asking under the Safe list policy; the rest prompt, with *Allow for session* available.
+
+The agent is started with your login shell's PATH, so servers launched with `npx`, `node` or `uvx` resolve even when VS Code was opened from the Dock.
 
 ## Keys
 

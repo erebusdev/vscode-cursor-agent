@@ -146,6 +146,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "cursorAcp.showMcpServers",
+        "title": "Show MCP Servers",
+        "category": "Cursor Agent",
+        "icon": "$(plug)"
+      },
+      {
         "command": "cursorAcp.showLogs",
         "title": "Show Logs",
         "category": "Cursor Agent",
@@ -338,6 +344,18 @@
           "default": "",
           "scope": "machine-overridable",
           "markdownDescription": "Cursor CLI config directory containing `auth.json` (used only for the usage panel). Leave empty to auto-detect from `CURSOR_CONFIG_DIR`, a wrapper script that exports it, or `~/.cursor`."
+        },
+        "cursorAcp.mcpForwardProjectServers": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Pass the servers in this workspace's `.cursor/mcp.json` to the agent with each session. In ACP mode the Cursor CLI silently skips project servers that have not been approved in the terminal app; forwarding them bypasses that step, so it is skipped in untrusted workspaces."
+        },
+        "cursorAcp.mcpUserConfig": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "A user-level `mcp.json` to forward to the agent as well, e.g. `~/.cursor/mcp.json`. Leave empty when the CLI already loads yours (it reads `~/.cursor/mcp.json` of the account it runs as); set it when the extension launches a wrapper for a different account or profile."
         },
         "cursorAcp.editorTitleButton": {
           "type": "boolean",
