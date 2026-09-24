@@ -11,6 +11,8 @@ import { hostEnv, prepareHostEnv } from "./hostEnv";
 import { loadMcpServers, type McpServerSpec } from "./session/mcpConfig";
 import { collectMcpStatus, formatMcpStatus } from "./mcpStatus";
 import { parseSettingsSection } from "../shared/settingsUi";
+import { PluginMcpSync, type PluginMode } from "./pluginSync";
+import { updateExtensionSetting } from "./settings";
 
 const PANEL_TYPE = "cursorAcp.panel";
 
@@ -28,6 +30,7 @@ const ALL_VIEW_IDS = ["cursorAcp.chat", "cursorAcp.chatLeft"] as const;
 
 let host: ChatHost | undefined;
 let runtime: SessionRuntime | undefined;
+let pluginSync: PluginMcpSync | undefined;
 
 function launchConfig(): AgentLaunchConfig {
   const config = vscode.workspace.getConfiguration("cursorAcp");
@@ -67,12 +70,32 @@ function projectMcpSkipped(cwd: string | undefined): string | undefined {
 async function mcpStatus(cwd: string | undefined, log: { warn(m: string): void }): Promise<McpStatus> {
   const launch = launchConfig();
   const skipped = projectMcpSkipped(cwd);
+  const sync = pluginSync;
   return collectMcpStatus({
     loadServers: () => mcpServers(cwd, log),
     launch,
     cwd: cwd ?? process.cwd(),
     ...(skipped ? { projectSkipped: skipped } : {}),
+    ...(sync
+      ? {
+          plugins: () => {
+            const settings = pluginSettings();
+            return { mode: settings.mode, exclude: settings.exclude, config: sync.resolve(launch), reconnectNeeded: sync.reconnectNeeded };
+          },
+        }
+      : {}),
   });
+}
+
+function pluginSettings() {
+  const config = vscode.workspace.getConfiguration("cursorAcp");
+  const mode = config.get<string>("mcpPluginServers", "auto");
+  return {
+    mode: (mode === "manual" || mode === "off" ? mode : "auto") as PluginMode,
+    exclude: config.get<string[]>("mcpPluginExclude", []).filter((id) => typeof id === "string"),
+    userConfig: config.get<string>("mcpUserConfig", ""),
+    environment: config.get<Record<string, string>>("environment", {}),
+  };
 }
 
 /** ACP wire form of a server spec (stdio keeps Cursor's optional cwd). */
@@ -97,6 +120,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const workspace = workspaceInfo();
   const cwd = workspace?.cwd ?? process.cwd();
+  const sync = new PluginMcpSync({
+    settings: pluginSettings,
+    setExclude: (ids) => updateExtensionSetting("mcpPluginExclude", [...ids]),
+    store: context.globalState,
+    log: { info: (m) => log.info(m), warn: (m) => log.warn(m) },
+  });
+  pluginSync = sync;
   const storage = {
     getLastSessionId: () => context.workspaceState.get<string>(`cursorAcp.lastSession:${cwd}`),
     setLastSessionId: (id: string | undefined) => void context.workspaceState.update(`cursorAcp.lastSession:${cwd}`, id),
@@ -129,6 +159,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return { policy: config.get<ApprovalPolicy>("approvalPolicy", "safe"), safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]) };
     },
     getMcpServers: async () => (await mcpServers(workspace?.cwd, log)).servers.map(toAcpServer),
+    // Cursor plugin MCP servers go into the agent's own user-level mcp.json (see pluginSync.ts).
+    launchHooks: {
+      beforeSpawn: (launch) => sync.beforeSpawn(launch),
+      afterInitialize: (launch, pid) => sync.afterInitialize(launch, pid),
+    },
     storage,
     log: runtimeLogger,
     events: {
@@ -150,6 +185,18 @@ export function activate(context: vscode.ExtensionContext): void {
       await envReady;
       return mcpStatus(workspace?.cwd, log);
     },
+    setPluginServers: async (ids, enabled) => {
+      const outcome = await sync.setEnabled(ids, enabled);
+      if (outcome.added.length) log.info(`Added Cursor plugin MCP servers: ${outcome.added.join(", ")}`);
+      if (outcome.removed.length) log.info(`Removed Cursor plugin MCP servers: ${outcome.removed.join(", ")}`);
+    },
+    syncPluginServers: async () => {
+      const outcome = await sync.sync(sync.resolve(launchConfig()));
+      if (outcome.error) throw new Error(outcome.error);
+      if (outcome.changed) sync.reconnectNeeded = true;
+    },
+    userMcpConfigPath: () => sync.resolve(launchConfig()).path,
+    workspaceCwd: workspace?.cwd,
   });
   context.subscriptions.push(host);
 

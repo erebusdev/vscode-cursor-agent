@@ -46,6 +46,14 @@ const CHAT_ONLY = new Set<ExtensionToWebview["type"]>(["item.upsert", "item.appe
 export interface ChatHostServices {
   /** Forwarded servers and the CLI's own `mcp list` (see mcpStatus.ts). */
   readonly mcpStatus: () => Promise<McpStatus>;
+  /** Cursor plugin servers on or off (see pluginSync.ts). */
+  readonly setPluginServers: (ids: ReadonlyArray<string>, enabled: boolean) => Promise<void>;
+  /** Runs the automatic plugin server sync now. */
+  readonly syncPluginServers: () => Promise<void>;
+  /** The agent's user-level mcp.json. */
+  readonly userMcpConfigPath: () => string;
+  /** The workspace folder (MCP sign-ins are saved per folder). */
+  readonly workspaceCwd: string | undefined;
 }
 
 /** Hidden-view notifications of one kind arriving within this window are shown as a single message. */
@@ -401,6 +409,8 @@ export class ChatHost implements vscode.Disposable {
           return;
         case "session.reconnect":
           await this.runtime.reconnect();
+          // The MCP page may be waiting for the agent to load a changed mcp.json.
+          if (this.hasSettingsView()) void this.refreshMcpStatus();
           return;
         case "mode.set":
           await this.runtime.setMode(message.modeId);
@@ -433,6 +443,36 @@ export class ChatHost implements vscode.Disposable {
         case "mcp.openConfig":
           await this.openProjectMcpConfig();
           return;
+        case "mcp.openUserConfig": {
+          const path = this.services.userMcpConfigPath();
+          try {
+            await vscode.window.showTextDocument(vscode.Uri.file(path), { preview: false });
+          } catch {
+            this.send({ type: "toast", level: "info", text: `${path} does not exist yet.` });
+          }
+          return;
+        }
+        case "mcp.plugins.set":
+          try {
+            await this.services.setPluginServers(message.ids, message.enabled);
+          } finally {
+            await this.refreshMcpStatus();
+          }
+          return;
+        case "mcp.plugins.login": {
+          const settings = readExtensionSettings();
+          const error = await this.setup.mcpLogin({
+            configuredPath: settings[AGENT_PATH_KEY],
+            args: settings.agentArgs,
+            env: hostEnv(settings.environment),
+            cwd: this.services.workspaceCwd,
+            id: message.id,
+            onClosed: () => void this.refreshMcpStatus(),
+            log: (m) => this.log.info(m),
+          });
+          if (error) this.send({ type: "toast", level: "error", text: error });
+          return;
+        }
         case "openLogs":
           this.log.show(true);
           return;
@@ -460,6 +500,11 @@ export class ChatHost implements vscode.Disposable {
         case "settings.update":
           await updateExtensionSetting(message.key, message.value);
           this.send({ type: "extensionSettings", settings: readExtensionSettings() });
+          if (message.key === "mcpPluginServers") {
+            // Switching to automatic applies it right away; the page shows the new state either way.
+            if (message.value === "auto") await this.services.syncPluginServers().catch((error: unknown) => this.log.warn(`Plugin MCP sync failed: ${error instanceof Error ? error.message : String(error)}`));
+            await this.refreshMcpStatus();
+          }
           return;
         case "settings.reset":
           await resetExtensionSetting(message.key);
@@ -563,6 +608,11 @@ export class ChatHost implements vscode.Disposable {
   }
 
   private mcpInFlight: Promise<void> | undefined;
+
+  private hasSettingsView(): boolean {
+    for (const a of this.attached) if (a.kind === "settings") return true;
+    return false;
+  }
 
   /** Runs the MCP status check (reads mcp.json files, asks `agent mcp list`) and sends the result to the UI. */
   async refreshMcpStatus(): Promise<void> {

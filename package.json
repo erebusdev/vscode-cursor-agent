@@ -357,7 +357,32 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "The user-level `mcp.json` this profile's agent reads (`.cursor/mcp.json` under the agent's home folder), shown on the MCP servers page for reference. The agent loads it itself, with the sign-ins it saved, so the extension does not forward it. Cursor plugin servers only reach chat when listed there under their plugin name, e.g. `plugin-sentry-sentry`."
+          "markdownDescription": "The user-level `mcp.json` the agent reads. Leave empty to find it automatically: `.cursor/mcp.json` under `HOME` from `#cursorAcp.environment#`, else under the HOME the running agent was started with (a wrapper script may set its own), else under your home folder. The agent loads it itself, with the sign-ins it saved, so the extension does not forward it; Cursor plugin servers are added to it (see `#cursorAcp.mcpPluginServers#`)."
+        },
+        "cursorAcp.mcpPluginServers": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "manual",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Add the MCP servers of installed Cursor plugins to the agent's user-level mcp.json when connecting (except those in `#cursorAcp.mcpPluginExclude#`).",
+            "Only add or remove them with the switches on the MCP servers page.",
+            "Leave the user-level mcp.json alone."
+          ],
+          "default": "auto",
+          "scope": "machine-overridable",
+          "markdownDescription": "Cursor plugin MCP servers (Atlassian, Sentry, Figma…) only reach chat when they are listed in the agent's user-level `mcp.json` under their plugin name, e.g. `plugin-sentry-sentry`, where the agent uses the sign-ins Cursor saved for them."
+        },
+        "cursorAcp.mcpPluginExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Cursor plugin MCP server ids (e.g. `plugin-figma-figma`) that automatic mode leaves out. Switching a server off on the MCP servers page adds it here."
         },
         "cursorAcp.editorTitleButton": {
           "type": "boolean",

@@ -419,8 +419,12 @@ export interface ExtensionSettings {
   readonly configDir: string;
   /** Forward the workspace's `.cursor/mcp.json` servers to the agent (ACP otherwise drops unapproved project servers silently). */
   readonly mcpForwardProjectServers: boolean;
-  /** Optional user-level `mcp.json` to forward as well; empty = the CLI's own `~/.cursor/mcp.json` is left to the CLI. */
+  /** The agent's user-level `mcp.json` when set; otherwise found from HOME (see pluginSync.ts). Not forwarded: the CLI loads it itself. */
   readonly mcpUserConfig: string;
+  /** Cursor plugin MCP servers: kept in the user-level mcp.json automatically, switched by hand, or left alone. */
+  readonly mcpPluginServers: "auto" | "manual" | "off";
+  /** Plugin server ids (`plugin-<plugin>-<server>`) that auto mode leaves out. */
+  readonly mcpPluginExclude: ReadonlyArray<string>;
   readonly resumeLastSession: boolean;
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;
@@ -481,6 +485,26 @@ export interface McpConfigFileStatus {
   readonly count: number;
 }
 
+/** An MCP server that comes with an installed Cursor plugin. */
+export interface McpPluginServer {
+  /** `plugin-<plugin>-<server>`, the name it has in mcp.json and in `agent mcp list`. */
+  readonly id: string;
+  readonly pluginName: string;
+  readonly serverName: string;
+  readonly transport: "stdio" | "http" | "sse";
+  /** URL host or command base name only (never a query or arguments). */
+  readonly host: string;
+  /** Listed in the user-level mcp.json (under its id, or another entry with the same URL). */
+  readonly enabled: boolean;
+  /** On the exclude list (auto mode leaves it out). */
+  readonly excluded: boolean;
+  /** Its line in `agent mcp list`, e.g. "ready" or "requires_authentication". */
+  readonly cliStatus?: string;
+}
+
+/** Where the user-level mcp.json path came from. */
+export type McpUserConfigSource = "settings" | "environment" | "agent" | "default";
+
 /** Result of the MCP status check shown in the settings tab (and logged by Show MCP Servers). */
 export interface McpStatus {
   readonly checkedAt: number;
@@ -492,6 +516,17 @@ export interface McpStatus {
   readonly cliCommand?: string;
   /** Why project servers are not forwarded (setting off, untrusted workspace, no folder), if they are not. */
   readonly projectSkipped?: string;
+  /** Cursor plugin servers found under `<cursor dir>/plugins`. */
+  readonly plugins?: ReadonlyArray<McpPluginServer>;
+  readonly pluginMode?: "auto" | "manual" | "off";
+  readonly pluginsDir?: string;
+  /** Plugin files that could not be read, and user mcp.json problems. */
+  readonly pluginErrors?: ReadonlyArray<string>;
+  /** The resolved user-level mcp.json, and how it was found. */
+  readonly userConfigPath?: string;
+  readonly userConfigSource?: McpUserConfigSource;
+  /** The user-level mcp.json changed after the running agent read it. */
+  readonly reconnectNeeded?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -544,6 +579,12 @@ export type WebviewToExtension =
   | { readonly type: "mcp.status" }
   /** Opens the workspace's `.cursor/mcp.json`, creating it when missing. */
   | { readonly type: "mcp.openConfig" }
+  /** Makes Cursor plugin servers available in chat or not (see pluginSync.ts). */
+  | { readonly type: "mcp.plugins.set"; readonly ids: ReadonlyArray<string>; readonly enabled: boolean }
+  /** Runs `agent mcp login <id>` in a terminal in the workspace folder. */
+  | { readonly type: "mcp.plugins.login"; readonly id: string }
+  /** Opens the resolved user-level mcp.json. */
+  | { readonly type: "mcp.openUserConfig" }
   | { readonly type: "openLogs" }
   | { readonly type: "openExternal"; readonly url: string }
   | { readonly type: "attachActiveFile" }

@@ -5,7 +5,10 @@
  * *Show MCP Servers* command. No `vscode` import, so it is unit-testable.
  */
 import { execFile } from "node:child_process";
-import type { McpCliServer, McpConfigFileStatus, McpForwardedServer, McpStatus } from "../shared/protocol";
+import { basename } from "node:path";
+import type { McpCliServer, McpConfigFileStatus, McpForwardedServer, McpPluginServer, McpStatus } from "../shared/protocol";
+import { discoverPluginMcpServers, isServerEnabled, readUserMcp, type PluginMcpServer } from "./session/cursorPlugins";
+import type { PluginMode, ResolvedUserConfig } from "./pluginSync";
 import type { McpServersResult } from "./session/mcpConfig";
 import { resolveAgentExecutable } from "./acp/resolveExecutable";
 import { planLaunch } from "./acp/windowsLaunch";
@@ -70,6 +73,63 @@ export function parseMcpList(output: string, forwardedNames: ReadonlyArray<strin
   return out;
 }
 
+/** Host of a URL, or the base name of a command: enough to recognise it, never a query or arguments. */
+export function pluginHost(server: Pick<PluginMcpServer, "url" | "command">): string {
+  if (server.url) {
+    try {
+      return new URL(server.url).host || urlOrigin(server.url);
+    } catch {
+      return urlOrigin(server.url);
+    }
+  }
+  return basename(server.command ?? "").replace(/\.(exe|cmd|bat)$/i, "");
+}
+
+export interface PluginStatusInput {
+  readonly mode: PluginMode;
+  readonly exclude: ReadonlyArray<string>;
+  readonly config: ResolvedUserConfig;
+  readonly reconnectNeeded: boolean;
+}
+
+/** The plugin part of the status (without CLI statuses, which are filled in once `mcp list` answered). */
+export function pluginStatus(input: PluginStatusInput): Pick<McpStatus, "plugins" | "pluginMode" | "pluginsDir" | "pluginErrors" | "userConfigPath" | "userConfigSource" | "reconnectNeeded"> {
+  const discovery = discoverPluginMcpServers(input.config.cursorDir);
+  const errors = [...discovery.errors];
+  let current: Readonly<Record<string, unknown>> = {};
+  try {
+    current = readUserMcp(input.config.path).servers;
+  } catch (error) {
+    errors.unshift(error instanceof Error ? error.message : String(error));
+  }
+  const exclude = new Set(input.exclude);
+  return {
+    plugins: discovery.servers.map((s) => ({
+      id: s.id,
+      pluginName: s.pluginName,
+      serverName: s.serverName,
+      transport: s.transport,
+      host: pluginHost(s),
+      enabled: isServerEnabled(current, s),
+      excluded: exclude.has(s.id),
+    })),
+    pluginMode: input.mode,
+    pluginsDir: discovery.pluginsDir,
+    pluginErrors: errors,
+    userConfigPath: input.config.path,
+    userConfigSource: input.config.source,
+    reconnectNeeded: input.reconnectNeeded,
+  };
+}
+
+function withCliStatus(plugins: ReadonlyArray<McpPluginServer> | undefined, cli: ReadonlyArray<McpCliServer>): ReadonlyArray<McpPluginServer> | undefined {
+  if (!plugins) return undefined;
+  const byName = new Map(cli.map((s) => [s.name, s.status]));
+  return plugins.map((p) => {
+    const status = byName.get(p.id);
+    return status ? { ...p, cliStatus: status } : p;
+  });
+}
 
 export interface RunResult {
   readonly stdout: string;
@@ -83,6 +143,8 @@ export interface McpStatusOptions {
   readonly launch: { readonly command: string; readonly args: ReadonlyArray<string>; readonly env: NodeJS.ProcessEnv };
   readonly cwd: string;
   readonly projectSkipped?: string;
+  /** Cursor plugin servers to report (omitted: none). */
+  readonly plugins?: () => PluginStatusInput;
   /** Test seams. */
   readonly resolve?: (command: string, env: NodeJS.ProcessEnv) => Promise<{ path: string } | undefined>;
   readonly run?: (file: string, args: ReadonlyArray<string>, options: { cwd: string; env: NodeJS.ProcessEnv; windowsVerbatimArguments: boolean }) => Promise<RunResult>;
@@ -105,10 +167,12 @@ export async function collectMcpStatus(options: McpStatusOptions): Promise<McpSt
   const now = options.now ?? Date.now;
   const result = await options.loadServers();
   const forwarded = forwardedServers(result);
+  const plugins = options.plugins ? pluginStatus(options.plugins()) : {};
   const base = {
     forwarded,
     files: configFiles(result),
     ...(options.projectSkipped ? { projectSkipped: options.projectSkipped } : {}),
+    ...plugins,
   };
   const found = await (options.resolve ?? resolveAgentExecutable)(options.launch.command, options.launch.env);
   if (!found) return { ...base, checkedAt: now(), cli: { error: "The agent executable was not found, so the CLI could not be asked." } };
@@ -120,7 +184,9 @@ export async function collectMcpStatus(options: McpStatusOptions): Promise<McpSt
     const detail = stderr.replace(ANSI, "").trim();
     return { ...base, checkedAt: now(), cliCommand: found.path, cli: { error: `Could not run "${found.path} mcp list": ${error.message}${detail ? `\n${detail}` : ""}` } };
   }
-  return { ...base, checkedAt: now(), cliCommand: found.path, cli: parseMcpList(stdout.trim() ? stdout : stderr, forwarded.map((s) => s.name)) };
+  const cli = parseMcpList(stdout.trim() ? stdout : stderr, forwarded.map((s) => s.name));
+  const withStatus = withCliStatus(base.plugins, cli);
+  return { ...base, ...(withStatus ? { plugins: withStatus } : {}), checkedAt: now(), cliCommand: found.path, cli };
 }
 
 /** Plain-text form for the output channel (the *Show MCP Servers* command). */
@@ -129,6 +195,13 @@ export function formatMcpStatus(status: McpStatus): string[] {
   if (status.forwarded.length === 0) lines.push(`  (none: ${status.projectSkipped ?? "no mcp.json found"})`);
   for (const s of status.forwarded) lines.push(`  ${s.name} (${s.source}, ${s.transport}: ${s.target})`);
   for (const f of status.files) if (f.state === "error") lines.push(`  ${f.level} ${f.path}: ${f.detail ?? "unreadable"}`);
+  if (status.plugins) {
+    const source = { settings: "from settings", environment: "from the agent environment setting", agent: "from the agent process", default: "default" }[status.userConfigSource ?? "default"];
+    lines.push(`Cursor plugin servers (${status.pluginMode ?? "auto"}; ${status.userConfigPath ?? "?"}, ${source}):`);
+    if (status.plugins.length === 0) lines.push(`  (none found in ${status.pluginsDir ?? "the plugins folder"})`);
+    for (const p of status.plugins) lines.push(`  ${p.id} (${p.transport}: ${p.host}): ${p.enabled ? "in mcp.json" : p.excluded ? "excluded" : "not in mcp.json"}${p.cliStatus ? `, ${p.cliStatus}` : ""}`);
+    for (const e of status.pluginErrors ?? []) lines.push(`  ! ${e}`);
+  }
   if ("error" in status.cli) {
     lines.push(`Reported by the CLI: ${status.cli.error}`);
   } else {

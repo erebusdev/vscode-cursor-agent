@@ -3,13 +3,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { ExtensionToWebview, ThreadItem, ToolItem } from "../src/shared/protocol";
-import { SessionRuntime, type ModelPreferences, type SessionMeta } from "../src/extension/session/SessionRuntime";
+import { SessionRuntime, type AgentLaunchHooks, type ModelPreferences, type SessionMeta } from "../src/extension/session/SessionRuntime";
+import { detectProcessHome } from "../src/extension/pluginSync";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type * as acp from "@agentclientprotocol/sdk";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 
-function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}, mcpServers?: () => Promise<acp.McpServer[]>) {
+function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}, mcpServers?: () => Promise<acp.McpServer[]>, launchHooks?: AgentLaunchHooks) {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
   const logs: string[] = [];
@@ -22,6 +25,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "
     getApprovalConfig: () => ({ policy: approvalPolicy, safeList: DEFAULT_SAFE_LIST }),
     getModelDefaults: () => modelDefaults,
     ...(mcpServers ? { getMcpServers: mcpServers } : {}),
+    ...(launchHooks ? { launchHooks } : {}),
     storage: {
       getLastSessionId: () => lastSession,
       setLastSessionId: (id) => (lastSession = id),
@@ -59,6 +63,45 @@ afterEach(async () => {
 });
 
 describe("SessionRuntime against a fake ACP agent", () => {
+  it("restarts the agent at most once when the post-initialize step changed its config", async () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "fake-agent-home-")));
+    const seen: Array<{ phase: string; home?: string }> = [];
+    const hooks: AgentLaunchHooks = {
+      beforeSpawn: async () => void seen.push({ phase: "before" }),
+      afterInitialize: async (_launch, pid) => {
+        const detected = await detectProcessHome(pid);
+        seen.push({ phase: "after", ...(detected ? { home: detected } : {}) });
+        return true; // Always "changed": must still restart only once.
+      },
+    };
+    const { runtime, launches, logs } = makeRuntime({ HOME: home }, "ask", {}, undefined, hooks);
+    active.push(runtime);
+    try {
+      await runtime.start();
+      expect(runtime.state.connection).toBe("ready");
+      expect(launches()).toBe(2);
+      expect(seen.map((s) => s.phase)).toEqual(["before", "after"]);
+      if (process.platform === "darwin" || process.platform === "linux") expect(seen[1]!.home).toBe(home);
+      expect(logs.filter((l) => l.startsWith("Restarting the agent"))).toHaveLength(1);
+      expect(runtime.model.getItems().filter((i) => i.type === "notice")).toEqual([]);
+
+      // A reconnect is a new connect: one more hook round, again at most one restart.
+      await runtime.reconnect();
+      expect(runtime.state.connection).toBe("ready");
+      expect(launches()).toBe(4);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("does not restart when the post-initialize step changed nothing", async () => {
+    const { runtime, launches } = makeRuntime({}, "ask", {}, undefined, { afterInitialize: async () => false });
+    active.push(runtime);
+    await runtime.start();
+    expect(runtime.state.connection).toBe("ready");
+    expect(launches()).toBe(1);
+  });
+
   it("starts a session, streams a turn, and records session metadata", async () => {
     const { runtime, events, getLastSession } = makeRuntime();
     active.push(runtime);

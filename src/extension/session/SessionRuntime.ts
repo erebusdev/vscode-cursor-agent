@@ -52,6 +52,16 @@ export interface RuntimeLogger {
 /** Supplies the MCP servers to forward with session/new and session/load (see mcpConfig.ts). */
 export type McpServersProvider = () => Promise<ReadonlyArray<acp.McpServer>>;
 
+/**
+ * Work around each agent launch (see pluginSync.ts). `afterInitialize` returns
+ * true when it changed config the agent reads at startup; the agent is then
+ * restarted once, before any session is opened.
+ */
+export interface AgentLaunchHooks {
+  beforeSpawn?(launch: AgentLaunchConfig): Promise<void>;
+  afterInitialize?(launch: AgentLaunchConfig, pid: number | undefined): Promise<boolean>;
+}
+
 export interface RuntimeEvents {
   /** Any message for attached webviews. */
   message(message: ExtensionToWebview): void;
@@ -73,6 +83,7 @@ export interface SessionRuntimeOptions {
   readonly getModelDefaults: () => ModelPreferences;
   /** Optional; when absent nothing is forwarded and the CLI loads its own config (approval-gated for project files). */
   readonly getMcpServers?: McpServersProvider;
+  readonly launchHooks?: AgentLaunchHooks;
   readonly storage: RuntimeStorage;
   readonly log: RuntimeLogger;
   readonly events: RuntimeEvents;
@@ -320,10 +331,18 @@ export class SessionRuntime {
     return this.connectPromise;
   }
 
-  private async connect(): Promise<AcpConnection> {
+  private async connect(allowRestart = true): Promise<AcpConnection> {
     if (this.connection && !this.connection.isClosed && this.authenticated) return this.connection;
     if (this.disposed) throw new JsonRpcClosedError("initialize", "The extension is shutting down.");
     const launch = this.options.getLaunchConfig();
+    const hooks = this.options.launchHooks;
+    if (hooks?.beforeSpawn && allowRestart) {
+      try {
+        await hooks.beforeSpawn(launch);
+      } catch (error) {
+        this.options.log.warn(`Pre-launch step failed: ${describeError(error).text}`);
+      }
+    }
     const epoch = this.teardownEpoch;
     const generation = ++this.connectionGeneration;
     this.options.log.info(`Launching Cursor agent: ${launch.command} ${[...launch.args, "acp"].join(" ")} (cwd: ${this.options.cwd})`);
@@ -365,6 +384,24 @@ export class SessionRuntime {
       );
       this.initializeResult = init;
       this.agentVersion = init.agentInfo?.version;
+      if (allowRestart && hooks?.afterInitialize) {
+        let restart = false;
+        try {
+          restart = await hooks.afterInitialize(launch, process.pid);
+        } catch (error) {
+          this.options.log.warn(`Post-initialize step failed: ${describeError(error).text}`);
+        }
+        if (restart && !this.disposed && epoch === this.teardownEpoch && this.connection === connection) {
+          // At most once per connect: the relaunch runs with allowRestart off.
+          this.options.log.info("Restarting the agent so it loads the updated user-level mcp.json.");
+          this.connectionGeneration += 1;
+          this.connection = undefined;
+          this.process = undefined;
+          connection.close("Restarting to load updated MCP config.");
+          await process.kill();
+          return this.connect(false);
+        }
+      }
       const authMethod = init.authMethods?.find((m) => m.id === "cursor_login") ?? init.authMethods?.[0];
       if (authMethod) {
         try {

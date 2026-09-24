@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loginCommandLine } from "../src/extension/setupCommands";
+import { agentCommandLine, loginCommandLine } from "../src/extension/setupCommands";
 
 describe("loginCommandLine", () => {
   it("quotes a POSIX path with spaces", () => {
@@ -24,5 +24,13 @@ describe("loginCommandLine", () => {
 
   it("runs an ordinary .cmd wrapper directly in PowerShell", () => {
     expect(loginCommandLine("C:\\tools\\wrap.cmd", {}, true)).toBe("& 'C:\\tools\\wrap.cmd' login");
+  });
+});
+
+describe("agentCommandLine", () => {
+  it("passes the configured args and the subcommand, quoted for the shell", () => {
+    expect(agentCommandLine("/usr/local/bin/agent", ["-e", "https://api2.cursor.sh", "mcp", "login", "plugin-sentry-sentry"], {}, false)).toBe("/usr/local/bin/agent -e https://api2.cursor.sh mcp login plugin-sentry-sentry");
+    expect(agentCommandLine("/w/agent", ["--x y", "mcp"], {}, false)).toBe("/w/agent '--x y' mcp");
+    expect(agentCommandLine("C:\\tools\\wrap.cmd", ["mcp", "login", "plugin-a b"], {}, true)).toBe("& 'C:\\tools\\wrap.cmd' mcp login 'plugin-a b'");
   });
 });
