@@ -243,7 +243,7 @@ function ModelPicker() {
           <button title="Use this model and its options for new sessions" type="button" class="link-button" onClick={() => post({ type: "model.saveDefault" })}>
             <Icon name="pin" /> Set as default
           </button>
-          <button title="Choose which models appear in this list (opens the Models settings)"
+          <button title="Choose which models appear here"
             type="button"
             class="link-button"
             onClick={() => {

@@ -63,12 +63,12 @@ export function AgentPathControl({ id, settingKey, value, onSaved, showProbe = t
   return (
     <div class="agent-path">
       <div class="agent-path-row">
-        <CommitInput id={id} value={value} placeholder={settingKey === "agentPathWindows" ? "Auto-detect: agent.exe or agent.cmd" : "Auto-detect: cursor-agent or agent"} mono onCommit={commit} />
-        <button title="Pick the executable or wrapper script" type="button" class="button secondary small" onClick={() => post({ type: "settings.browseAgent" })}>
+        <CommitInput id={id} value={value} placeholder="Auto-detect" mono onCommit={commit} />
+        <button title="Choose the agent executable" type="button" class="button secondary small" onClick={() => post({ type: "settings.browseAgent" })}>
           Browse…
         </button>
         <button
-          title="Check that the path resolves and reports a version"
+          title="Check the agent path"
           type="button"
           class="button secondary small"
           disabled={probe?.state === "checking"}
@@ -108,16 +108,16 @@ function AgentActions() {
       )}
       <span class="agent-actions-buttons">
         {missing && (
-          <button title="Run Cursor's installer in a terminal" type="button" class="button primary small" disabled={busy} onClick={() => post({ type: "setup.install" })}>
+          <button title="Install the Cursor Agent CLI" type="button" class="button primary small" disabled={busy} onClick={() => post({ type: "setup.install" })}>
             <Icon name="cloud-download" /> Install
           </button>
         )}
         {(authRequired || !missing) && (
-          <button title="Run agent login in a terminal" type="button" class={`button ${authRequired ? "primary" : "secondary"} small`} disabled={busy} onClick={() => post({ type: "setup.login" })}>
+          <button title="Sign in" type="button" class={`button ${authRequired ? "primary" : "secondary"} small`} disabled={busy} onClick={() => post({ type: "setup.login" })}>
             <Icon name="sign-in" /> Log in
           </button>
         )}
-        <button title={connected ? "Restart the agent with the current settings" : "Start the agent"} type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
+        <button title={connected ? "Restart the agent" : "Start the agent"} type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name={connected ? "refresh" : "plug"} /> {connected ? "Reconnect" : "Connect"}
         </button>
       </span>
@@ -134,12 +134,7 @@ export function AgentPathRow({ settings, onSaved }: { settings: ExtensionSetting
       id="setting-agentPath"
       settingKey={key}
       label={windows ? "Agent path (Windows)" : "Agent path"}
-      description={
-        <>
-          The Cursor Agent CLI or a wrapper script; empty auto-detects it. The extension runs <code>&lt;path&gt; [args…] acp</code> on the machine that hosts the workspace
-          {windows ? "; this Windows-only key is ignored by WSL and remote windows, which use their own." : "."}
-        </>
-      }
+      description="The Cursor Agent CLI. Leave empty to find it automatically."
       source={settings.sources[key]}
       saved={saved}
     >
@@ -163,12 +158,8 @@ export function AgentArgsRow({ settings, onSaved }: { settings: ExtensionSetting
     <SettingRow
       id="setting-agentArgs"
       settingKey="agentArgs"
-      label="Agent arguments"
-      description={
-        <>
-          Extra arguments passed before <code>acp</code>. Quote values containing spaces.
-        </>
-      }
+      label="Extra arguments"
+      description="Added to the agent command line."
       source={settings.sources.agentArgs}
       saved={saved}
       wide
@@ -176,7 +167,6 @@ export function AgentArgsRow({ settings, onSaved }: { settings: ExtensionSetting
         <CommitInput
           id="setting-agentArgs"
           value={joinArgs(settings.agentArgs)}
-          placeholder='-e "https://api2.cursor.sh"'
           mono
           onCommit={(v) => {
             const next = parseArgs(v);
@@ -254,7 +244,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
         </div>
       ))}
       <button
-        title="Add an environment variable"
+        title="Add variable"
         type="button"
         class="button secondary small list-add"
         onClick={() => {
@@ -275,7 +265,7 @@ function EnvEditor({ value, onCommit }: { value: Readonly<Record<string, string>
 export function EnvRow({ settings, onSaved }: { settings: ExtensionSettings; onSaved: () => void }) {
   const [saved, flash] = useSavedFlash();
   return (
-    <SettingRow id="setting-environment" labelFor={false} settingKey="environment" label="Environment variables" description="Extra environment variables for the agent process. Values override the extension host environment." source={settings.sources.environment} saved={saved}>
+    <SettingRow id="setting-environment" labelFor={false} settingKey="environment" label="Environment" description="Extra environment variables for the agent." source={settings.sources.environment} saved={saved}>
       <EnvEditor
         value={settings.environment}
         onCommit={(rec) => {
@@ -294,7 +284,7 @@ export function EnvRow({ settings, onSaved }: { settings: ExtensionSettings; onS
 
 type BoolKey = "resumeLastSession" | "showThoughts" | "notifyWhenHidden" | "editorTitleButton" | "protocolLogging" | "mcpForwardProjectServers";
 
-export function BoolRow({ settings, k, label, description }: { settings: ExtensionSettings; k: BoolKey; label: string; description: ComponentChildren }) {
+export function BoolRow({ settings, k, label, description }: { settings: ExtensionSettings; k: BoolKey; label: string; description?: ComponentChildren }) {
   const [saved, flash] = useSavedFlash();
   const id = `setting-${k}`;
   return (
@@ -309,7 +299,7 @@ export function BoolRow({ settings, k, label, description }: { settings: Extensi
         <Toggle
           id={id}
           checked={settings[k] ?? false}
-          describedBy={`${id}-desc`}
+          describedBy={description ? `${id}-desc` : undefined}
           onChange={(v) => {
             updateSetting(k, v);
             flash();
@@ -358,7 +348,6 @@ export function SendShortcutRow({ settings }: { settings: ExtensionSettings }) {
       id="setting-sendWithCtrlEnter"
       settingKey="sendWithCtrlEnter"
       label="Send shortcut"
-      description={`Which key sends a message. With ${modifier}+Enter, Enter inserts a new line; with Enter, Shift+Enter does.`}
       source={settings.sources.sendWithCtrlEnter}
       saved={saved}
       control={
@@ -390,7 +379,7 @@ export function ApprovalPolicyRow({ settings }: { settings: ExtensionSettings })
       id="setting-approvalPolicy"
       settingKey="approvalPolicy"
       label="Default policy"
-      description="What new sessions ask before running. Change it per session from the chat toolbar. Nothing is written to Cursor's own permission config."
+      description="What new sessions ask before running commands and tools."
       source={settings.sources.approvalPolicy}
       saved={saved}
       control={
@@ -399,8 +388,8 @@ export function ApprovalPolicyRow({ settings }: { settings: ExtensionSettings })
           label="Default approval policy"
           value={settings.approvalPolicy}
           options={[
-            { value: "ask", label: "Ask", hint: "Prompt for every command and tool call" },
-            { value: "safe", label: "Safe list", hint: "Run commands and tools that match the safe list without asking; prompt for the rest" },
+            { value: "ask", label: "Ask", hint: "Ask before every command and tool" },
+            { value: "safe", label: "Safe list", hint: "Run safe-list matches without asking" },
             { value: "auto", label: "Auto", hint: "Run everything without asking" },
           ]}
           onChange={(v) => {
@@ -458,37 +447,13 @@ export function SafeListEditor({ settings }: { settings: ExtensionSettings }) {
     <SettingRow
       id="safe-list-first"
       label="Patterns"
-      description={
-        <>
-          One regular expression per row; a command runs without asking only if every part of it matches.
-          <details class="srow-details">
-            <summary>
-              <Icon name="chevron-right" class="details-chevron" />
-              How matching works
-            </summary>
-            <ul>
-              <li>
-                A shell command is split on <code>|</code>, <code>&amp;&amp;</code>, <code>||</code> and <code>;</code>; each part must match some pattern.
-              </li>
-              <li>
-                MCP and other tools are matched by Cursor's permission pattern, such as <code>Mcp(server:tool)</code>.
-              </li>
-              <li>
-                Commands with redirection, <code>$(…)</code> or an inline shell always ask.
-              </li>
-              <li>
-                Patterns match anywhere in the text; start with <code>^</code> to anchor at the start of the command.
-              </li>
-            </ul>
-          </details>
-        </>
-      }
+      description="Regular expressions for commands that run without asking."
       settingKey="safeList"
       source={settings.sources.safeList}
       saved={saved}
     >
       <div class="safe-list" ref={listRef}>
-        {rows.length === 0 && <div class="list-empty">No patterns: under the Safe list policy everything asks.</div>}
+        {rows.length === 0 && <div class="list-empty">No patterns. Everything asks.</div>}
         {rows.map((r, i) => {
           const error = safePatternError(r.pattern);
           return (
@@ -501,7 +466,7 @@ export function SafeListEditor({ settings }: { settings: ExtensionSettings }) {
                 placeholder="^command\b"
                 aria-label={`Pattern ${i + 1}`}
                 aria-invalid={error ? true : undefined}
-                title={error ? `Not a valid regular expression: ${error}. It is ignored until fixed.` : undefined}
+                title={error ? `Invalid regular expression: ${error}` : undefined}
                 spellcheck={false}
                 onFocus={() => (editing.current = true)}
                 onInput={(e) => setRows(rowsRef.current.map((x) => (x.id === r.id ? { ...x, pattern: (e.currentTarget as HTMLInputElement).value } : x)))}
@@ -539,7 +504,7 @@ export function SafeListEditor({ settings }: { settings: ExtensionSettings }) {
             <Icon name="add" /> Add pattern
           </button>
           {overridden && (
-            <button title="Replace your patterns with the built-in read-only list" type="button" class="button tertiary small" onClick={() => post({ type: "settings.reset", key: "safeList" })}>
+            <button title="Restore the default patterns" type="button" class="button tertiary small" onClick={() => post({ type: "settings.reset", key: "safeList" })}>
               <Icon name="discard" /> Reset to defaults
             </button>
           )}
@@ -557,7 +522,7 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
   const [saved, flash] = useSavedFlash();
   const models = useSelector((s) => s.session.models);
   const modelOptions = useSelector((s) => s.session.modelOptions);
-  const name = settings.defaultModel ? (models?.availableModels.find((m) => m.modelId === settings.defaultModel)?.name ?? settings.defaultModel) : "Cursor's current default";
+  const name = settings.defaultModel ? (models?.availableModels.find((m) => m.modelId === settings.defaultModel)?.name ?? settings.defaultModel) : "Cursor default";
   const opts = Object.entries(settings.defaultModelOptions ?? {});
   const currentName = models ? (models.availableModels.find((m) => m.modelId === models.currentModelId)?.name ?? models.currentModelId) : undefined;
   return (
@@ -567,7 +532,6 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
         labelFor={false}
         settingKey="defaultModel"
         label="Model"
-        description="The model every new session starts with."
         source={settings.sources.defaultModel}
         saved={saved}
         control={
@@ -581,7 +545,7 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
         labelFor={false}
         settingKey="defaultModelOptions"
         label="Options"
-        description="Effort, context and other option values applied to new sessions."
+        description="Effort, context and other model options."
         source={settings.sources.defaultModelOptions}
         control={
           opts.length ? (
@@ -601,7 +565,6 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
         id="setting-defaultModel-use"
         labelFor={false}
         label="Change defaults"
-        description="Changes made inside a session apply to that session only."
         control={
           <>
         <button
@@ -619,7 +582,7 @@ export function ModelDefaultsRow({ settings }: { settings: ExtensionSettings }) 
         </button>
         {(settings.defaultModel || opts.length > 0) && (
           <button
-            title="Let new sessions use whatever the Cursor CLI defaults to"
+            title="Use Cursor's default"
             type="button"
             class="button secondary small"
             onClick={() => {

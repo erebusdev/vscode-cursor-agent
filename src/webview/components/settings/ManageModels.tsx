@@ -20,13 +20,12 @@ const GROUPS: ReadonlyArray<{
   {
     id: "cursor",
     title: "Cursor models",
-    blurb:
-      "Cursor's own models, including Grok and Composer. Count as Cursor usage.",
+    blurb: "Cursor's own models, billed as Cursor usage.",
   },
   {
     id: "api",
     title: "API models",
-    blurb: "Third-party models. Count as API usage.",
+    blurb: "Third-party models, billed as API usage.",
   },
 ];
 
@@ -123,8 +122,8 @@ export function AutoRow() {
     <SettingsGroup title="Auto">
       <SettingRow
         id="models-auto"
-        label="Offer Auto in the model picker"
-        description="Cursor chooses the model for each request, based on your account's Auto settings, and bills it as whichever model it picks. Offered as a switch at the top of the model picker."
+        label="Show Auto in the model picker"
+        description="Cursor picks the model for each request."
         control={
           <Toggle
             id="models-auto"
@@ -170,9 +169,7 @@ export function ManageModels() {
       label="Shown in the model picker"
       description={
         <>
-          Untick a model to hide it from the picker. A group's box ticks or
-          unticks all of its models. New models Cursor adds stay visible until
-          you hide them.
+          Untick a model to hide it.
           {usageLoading ? " Checking which models are Cursor's…" : ""}
         </>
       }
@@ -193,7 +190,7 @@ export function ManageModels() {
     >
       {all.length === 0 && (
         <div class="list-empty">
-          No models reported yet. Connect to the agent first.{" "}
+          No models yet.{" "}
           <button
             type="button"
             class="link-button"
