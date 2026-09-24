@@ -74,4 +74,5 @@ runs the tests against the real CLI and consumes Cursor usage.
 
 > [!NOTE]
 > No support provided, no contributions accepted. If something doesn't work
-> or you would like changes, fork it and modify it for your own use.
+> or you would like changes, [fork it on GitHub](https://github.com/erebusdev/vscode-cursor-agent)
+> and modify it for your own use.
