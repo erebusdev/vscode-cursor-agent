@@ -117,7 +117,8 @@ function HistoryRow({ session: s, current, selected, selecting, renaming, modelN
   const label = sessionLabel(s);
   const when = fullDate(s.updatedAt);
   const tooltip = [current ? `${label} (current session)` : `Resume “${label}”`, when && `Updated ${when}`, "Double-click to rename"].filter(Boolean).join("\n");
-  const meta = [modelName, s.sessionId.slice(0, 8)].filter(Boolean).join(" · ");
+  // Untitled sessions already show their id as the title.
+  const meta = [modelName, s.title?.trim() ? s.sessionId.slice(0, 8) : undefined].filter(Boolean).join(" · ");
 
   const onClick = (e: MouseEvent) => {
     window.clearTimeout(clickTimer.current);
@@ -131,7 +132,7 @@ function HistoryRow({ session: s, current, selected, selecting, renaming, modelN
   };
 
   return (
-    <li class={`hrow${current ? " current" : ""}${s.hidden ? " is-hidden" : ""}${selected ? " selected" : ""}${selecting ? " selecting" : ""}`}>
+    <li class={`hrow${current ? " current" : ""}${s.hidden ? " is-hidden" : ""}${selected ? " selected" : ""}${selecting ? " selecting" : ""}${renaming ? " renaming" : ""}`}>
       {/* The session icon turns into a checkbox on hover, focus or while selecting. */}
       <span class="hrow-lead">
         <Icon name={current ? "comment-discussion" : "comment"} class="hrow-icon" />
