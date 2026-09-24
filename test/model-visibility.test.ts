@@ -10,7 +10,8 @@ describe("model visibility", () => {
     expect(modelGroup("grok-4.5-high", cursorIds)).toBe("cursor");
     expect(modelGroup("claude-opus-5-5", cursorIds)).toBe("api");
     expect(modelGroup("auto-smart", cursorIds)).toBe("cursor");
-    expect(modelGroup("grok-4.7[context=256k]")).toBe("api");
+    expect(modelGroup("grok-4.7[context=256k]")).toBe("cursor");
+    expect(modelGroup("grok-4.7", cursorIds)).toBe("cursor");
     expect(modelGroup("vega-high")).toBe("cursor");
   });
 
@@ -19,7 +20,7 @@ describe("model visibility", () => {
     expect(isModelHidden("gpt-5.5", vis)).toBe(true);
     expect(isModelHidden("claude-opus-5-5", vis)).toBe(true);
     expect(isModelHidden("composer-2", vis)).toBe(false);
-    expect(visibleModels(models, "claude-opus-5-5", vis).map((m) => m.modelId)).toEqual(["auto-smart", "composer-2", "claude-opus-5-5"]);
+    expect(visibleModels(models, "claude-opus-5-5", vis).map((m) => m.modelId)).toEqual(["auto-smart", "composer-2", "grok-4.7", "claude-opus-5-5"]);
   });
 
   it("shows everything when nothing is hidden, so new models appear by default", () => {

@@ -5,8 +5,8 @@
 
 export type ModelGroup = "cursor" | "api";
 
-/** Cursor's own models when the usage API has not told us which ids count as "Cursor usage". */
-const CURSOR_MODEL_ID = /^(auto\b|composer|vega|cursor)/i;
+/** Cursor's own model families: auto routing, Composer, Vega, Grok, and anything Cursor-prefixed. */
+const CURSOR_MODEL_ID = /^(auto\b|composer|vega|grok|cursor)/i;
 
 export interface ModelVisibility {
   readonly hiddenModels: ReadonlyArray<string>;
@@ -16,12 +16,10 @@ export interface ModelVisibility {
 /** Group for a model id, preferring the usage API's list of Cursor-pool ids when available. */
 export function modelGroup(modelId: string, cursorModelIds?: ReadonlyArray<string>): ModelGroup {
   const base = modelId.replace(/\[.*$/, "");
-  if (cursorModelIds && cursorModelIds.length > 0) {
-    if (cursorModelIds.some((id) => id === base || base.startsWith(`${id}-`) || id.startsWith(`${base}-`))) return "cursor";
-    // Cursor's auto-routing entry is always Cursor's.
-    return CURSOR_MODEL_ID.test(base) && /^auto\b/i.test(base) ? "cursor" : "api";
-  }
-  return CURSOR_MODEL_ID.test(base) ? "cursor" : "api";
+  if (CURSOR_MODEL_ID.test(base)) return "cursor";
+  // The usage API's list catches ids the prefix rule does not know about (it lags new releases, so it only ever adds).
+  if (cursorModelIds?.some((id) => id === base || base.startsWith(`${id}-`) || id.startsWith(`${base}-`))) return "cursor";
+  return "api";
 }
 
 export function isModelHidden(modelId: string, visibility: Partial<ModelVisibility>, cursorModelIds?: ReadonlyArray<string>): boolean {
