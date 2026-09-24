@@ -54,6 +54,7 @@ path, set it in the view's settings (gear icon). The extension runs
 | `Cmd+Alt+C` | Open Cursor |
 | `Cmd+Alt+A` | Add selection to Cursor |
 | `Cmd+Alt+N` | New session (while the view is focused) |
+| Palette: *Cursor Agent: Copy Session Id* | Copies the current Cursor session id (also on each history row) |
 | `Enter` / `Shift+Enter` | Send / insert newline |
 | `Esc` | Stop the current turn |
 | `/` `@` `↑` | Commands, file mentions, previous prompt |

@@ -142,6 +142,15 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       host?.focusComposer();
     }),
+    vscode.commands.registerCommand("cursorAcp.copySessionId", async () => {
+      const id = runtime?.state.sessionId;
+      if (!id) {
+        void vscode.window.showInformationMessage("No Cursor session is open in this window yet.");
+        return;
+      }
+      await vscode.env.clipboard.writeText(id);
+      void vscode.window.setStatusBarMessage(`Copied Cursor session id ${id}`, 3000);
+    }),
     vscode.commands.registerCommand("cursorAcp.newSession", async () => {
       await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       ensureStarted();

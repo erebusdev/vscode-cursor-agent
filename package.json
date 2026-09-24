@@ -156,6 +156,12 @@
         "title": "Open Settings",
         "category": "Cursor Agent",
         "icon": "$(gear)"
+      },
+      {
+        "command": "cursorAcp.copySessionId",
+        "title": "Copy Session Id",
+        "category": "Cursor Agent",
+        "icon": "$(copy)"
       }
     ],
     "menus": {

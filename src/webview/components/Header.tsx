@@ -62,7 +62,7 @@ export function Header() {
     <header class="header">
       <div class="header-main">
         {session.sessionId ? (
-          <button type="button" class="header-title header-title-button" title="Rename session" onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })}>
+          <button type="button" class="header-title header-title-button" title={`Rename session\nSession id: ${session.sessionId}`} onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })}>
             {title}
           </button>
         ) : (
@@ -169,6 +169,7 @@ function HistoryButton() {
                     post({ type: "session.rename", sessionId: s.sessionId });
                   }}
                 />
+                <IconButton icon="copy" label={`Copy session id ${s.sessionId}`} onClick={() => post({ type: "copy", text: s.sessionId })} />
                 <IconButton icon="eye-closed" label="Hide from history" onClick={() => post({ type: "session.hide", sessionId: s.sessionId })} />
               </span>
             </div>
