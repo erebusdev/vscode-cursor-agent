@@ -3,7 +3,8 @@
  */
 import * as vscode from "vscode";
 import { execFile, type ExecFileException } from "node:child_process";
-import type { AgentProbe, ExtensionSettings, SettingsKey } from "../shared/protocol";
+import type { AgentProbe, ApprovalPolicy, ExtensionSettings, SettingsKey } from "../shared/protocol";
+import { DEFAULT_SAFE_LIST } from "./session/approvals";
 import { describeDefaultAgentCommands, resolveAgentExecutable } from "./acp/resolveExecutable";
 import { AGENT_PATH_KEY } from "./platform";
 import { planLaunch } from "./acp/windowsLaunch";
@@ -22,7 +23,7 @@ function sourceOf(inspect: ReturnType<vscode.WorkspaceConfiguration["inspect"]>)
 
 export function readExtensionSettings(): ExtensionSettings {
   const config = vscode.workspace.getConfiguration(SECTION);
-  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging"];
+  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging", "approvalPolicy", "safeList"];
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
@@ -37,6 +38,8 @@ export function readExtensionSettings(): ExtensionSettings {
     showThoughts: config.get<boolean>("showThoughts", true),
     notifyWhenHidden: config.get<boolean>("notifyWhenHidden", true),
     protocolLogging: config.get<boolean>("protocolLogging", false),
+    approvalPolicy: config.get<ApprovalPolicy>("approvalPolicy", "safe"),
+    safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]),
     sources,
   };
 }

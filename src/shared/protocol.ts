@@ -70,7 +70,11 @@ export interface PermissionState {
   readonly selectedOptionId?: string;
   /** Human-readable reason from the agent, e.g. "Not in allowlist: echo". */
   readonly reason?: string;
+  /** How a resolved request was decided: by the user, by the session allow-list, or by the policy. */
+  readonly resolution?: "user" | "session" | "auto";
 }
+
+export type ApprovalPolicy = "ask" | "safe" | "auto";
 
 export interface UserAttachment {
   readonly kind: "selection" | "file" | "image";
@@ -345,6 +349,10 @@ export interface SessionState {
   readonly turnStartedAt?: number;
   /** A message waiting to be sent when the current turn ends. */
   readonly queued?: { readonly text: string; readonly attachmentCount: number };
+  /** Client-side approval policy for this session. */
+  readonly approvalPolicy?: ApprovalPolicy;
+  /** Commands / tools allowed for the rest of this session via "Allow for session". */
+  readonly sessionAllowed?: ReadonlyArray<string>;
 }
 
 export interface UsageWindow {
@@ -408,6 +416,9 @@ export interface ExtensionSettings {
   readonly showThoughts: boolean;
   readonly notifyWhenHidden: boolean;
   readonly protocolLogging: boolean;
+  readonly approvalPolicy: ApprovalPolicy;
+  /** Regular expressions; see DEFAULT_SAFE_LIST. */
+  readonly safeList: ReadonlyArray<string>;
   /** Where the effective values come from, per key: "default" | "user" | "workspace" | "remote". */
   readonly sources: Readonly<Record<string, "default" | "user" | "workspace" | "remote">>;
 }
@@ -449,7 +460,8 @@ export type WebviewToExtension =
   | { readonly type: "queue.sendNow" }
   | { readonly type: "queue.edit" }
   | { readonly type: "queue.clear" }
-  | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string }
+  | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string; readonly scope?: "session" }
+  | { readonly type: "approvals.set"; readonly policy: ApprovalPolicy }
   | { readonly type: "question.respond"; readonly requestId: string; readonly answers: ReadonlyArray<QuestionAnswer> }
   | { readonly type: "question.skip"; readonly requestId: string }
   | { readonly type: "plan.respond"; readonly requestId: string; readonly accepted: boolean; readonly reason?: string }

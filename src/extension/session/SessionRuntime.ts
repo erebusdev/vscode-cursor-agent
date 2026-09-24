@@ -10,17 +10,8 @@ import { randomUUID } from "node:crypto";
 import { AcpConnection, type AcpClientHandlers, type CursorAskQuestionRequest, type CursorAskQuestionResponse, type CursorAvailableModel, type CursorCreatePlanRequest, type CursorCreatePlanResponse, type CursorUpdateTodosRequest } from "../acp/AcpConnection";
 import { AgentProcess, AgentProcessError } from "../acp/AgentProcess";
 import { JsonRpcClosedError, JsonRpcRemoteError, type JsonRpcLogger } from "../acp/jsonrpc";
-import type {
-  ConfigOption,
-  ConnectionState,
-  ExtensionToWebview,
-  PromptAttachmentInput,
-  Question,
-  QuestionAnswer,
-  SessionState,
-  SessionSummary,
-  UserAttachment,
-} from "../../shared/protocol";
+import type { ApprovalPolicy, ConfigOption, ConnectionState, ExtensionToWebview, PermissionOption, PromptAttachmentInput, Question, QuestionAnswer, SessionState, SessionSummary, ToolItem, UserAttachment } from "../../shared/protocol";
+import { compileSafeList, isSafe, sessionKey, subjectFrom, type CompiledSafeList, type PermissionSubject } from "./approvals";
 import { ThreadModel, isRecord } from "./ThreadModel";
 
 export interface AgentLaunchConfig {
@@ -73,13 +64,15 @@ export interface SessionRuntimeOptions {
   readonly workspaceName: string;
   readonly remoteName?: string;
   readonly getLaunchConfig: () => AgentLaunchConfig;
+  /** Approval defaults from settings; read on every session start and permission request. */
+  readonly getApprovalConfig: () => { policy: ApprovalPolicy; safeList: ReadonlyArray<string> };
   readonly storage: RuntimeStorage;
   readonly log: RuntimeLogger;
   readonly events: RuntimeEvents;
 }
 
 interface PendingRequest<T> {
-  resolve(value: T): void;
+  resolve(value: T, resolution?: "user" | "session" | "auto"): void;
   cancel(): void;
 }
 
@@ -192,6 +185,11 @@ export class SessionRuntime {
   private queued: { text: string; attachments: PromptAttachmentInput[] } | undefined;
   /** Set when the user pressed Stop, so a queued message waits instead of firing into the cancelled turn. */
   private stoppedByUser = false;
+  /** Client-side approval policy for the current session (starts from the settings default). */
+  private approvalPolicy: ApprovalPolicy = "safe";
+  /** "Allow for session" keys: command names or Cursor permission patterns. */
+  private sessionAllowed = new Set<string>();
+  private safeListCache: { source: string; compiled: CompiledSafeList } | undefined;
   private readonly pendingPermissions = new Map<string, PendingRequest<acp.RequestPermissionResponse>>();
   private readonly pendingQuestions = new Map<string, PendingRequest<CursorAskQuestionResponse>>();
   private readonly pendingPlans = new Map<string, PendingRequest<CursorCreatePlanResponse>>();
@@ -238,6 +236,8 @@ export class SessionRuntime {
       changedFiles: this.model.changedFiles(),
       ...(this.model.turnStart ? { turnStartedAt: this.model.turnStart } : {}),
       ...(this.queued ? { queued: { text: this.queued.text, attachmentCount: this.queued.attachments.length } } : {}),
+      approvalPolicy: this.approvalPolicy,
+      sessionAllowed: [...this.sessionAllowed],
     };
   }
 
@@ -602,6 +602,8 @@ export class SessionRuntime {
 
   private resetSessionState(): void {
     this.cancelAllPending();
+    this.approvalPolicy = this.options.getApprovalConfig().policy;
+    this.sessionAllowed.clear();
     this.modelOptionOverrides.clear();
     this.overridesVersion += 1;
     this.model.reset();
@@ -892,19 +894,68 @@ export class SessionRuntime {
 
   // --- agent → client requests ------------------------------------------------------------
 
+  private compiledSafeList(): CompiledSafeList {
+    const list = this.options.getApprovalConfig().safeList;
+    const source = JSON.stringify(list);
+    if (this.safeListCache?.source !== source) {
+      const compiled = compileSafeList(list);
+      for (const bad of compiled.invalid) this.options.log.warn(`Ignoring invalid safe-list pattern: ${bad}`);
+      this.safeListCache = { source, compiled };
+    }
+    return this.safeListCache.compiled;
+  }
+
+  /** Decides whether a permission request can be answered without asking, and why. */
+  private autoDecision(subject: PermissionSubject): "auto" | "session" | undefined {
+    if (this.approvalPolicy === "auto") return "auto";
+    if (this.sessionAllowed.has(sessionKey(subject))) return "session";
+    if (this.approvalPolicy === "safe" && isSafe(subject, this.compiledSafeList())) return "auto";
+    return undefined;
+  }
+
+  setApprovalPolicy(policy: ApprovalPolicy): void {
+    if (this.approvalPolicy === policy) return;
+    this.approvalPolicy = policy;
+    this.options.log.info(`Approval policy: ${policy}`);
+    // A switch to a more permissive policy resolves anything already waiting.
+    for (const [requestId, pending] of this.pendingPermissions) {
+      const item = this.model.getItems().find((i): i is ToolItem => i.type === "tool" && i.permission?.requestId === requestId);
+      if (!item) continue;
+      const decision = this.autoDecision(this.subjectOf(item));
+      if (decision) pending.resolve({ outcome: { outcome: "selected", optionId: this.allowOnceOption(item.permission!.options) } }, decision);
+    }
+    this.publishState();
+  }
+
+  private subjectOf(item: ToolItem): PermissionSubject {
+    return subjectFrom({ ...(item.command ? { command: item.command } : {}), title: item.title, ...(item.permission?.reason ? { reason: item.permission.reason } : {}) });
+  }
+
+  private allowOnceOption(options: ReadonlyArray<PermissionOption>): string {
+    return (options.find((o) => o.kind === "allow_once") ?? options.find((o) => o.kind === "allow_always") ?? options[0])!.optionId;
+  }
+
   private handlePermission(params: acp.RequestPermissionRequest, signal: AbortSignal): Promise<acp.RequestPermissionResponse> {
     const requestId = randomUUID();
     const item = this.model.attachPermission(params, requestId);
+    const subject = this.subjectOf(item);
+    const decision = this.autoDecision(subject);
+    if (decision) {
+      const optionId = this.allowOnceOption(item.permission!.options);
+      this.options.log.info(`Permission ${decision === "auto" ? "auto-approved" : "allowed for session"}: ${item.command ?? item.title}`);
+      this.model.resolvePermission(requestId, optionId, decision);
+      return Promise.resolve({ outcome: { outcome: "selected", optionId } });
+    }
     this.options.log.info(`Permission requested: ${item.title}`);
     return new Promise<acp.RequestPermissionResponse>((resolve) => {
-      const finish = (response: acp.RequestPermissionResponse, selected: string | undefined) => {
+      const finish = (response: acp.RequestPermissionResponse, selected: string | undefined, resolution: "user" | "session" | "auto" = "user") => {
         if (!this.pendingPermissions.delete(requestId)) return;
-        this.model.resolvePermission(requestId, selected);
+        this.model.resolvePermission(requestId, selected, resolution);
         this.publishState();
         resolve(response);
       };
       this.pendingPermissions.set(requestId, {
-        resolve: (response) => finish(response, response.outcome.outcome === "selected" ? response.outcome.optionId : undefined),
+        resolve: (response, resolution) => finish(response, response.outcome.outcome === "selected" ? response.outcome.optionId : undefined, resolution),
         cancel: () => finish({ outcome: { outcome: "cancelled" } }, undefined),
       });
       signal.addEventListener("abort", () => finish({ outcome: { outcome: "cancelled" } }, undefined));
@@ -913,11 +964,21 @@ export class SessionRuntime {
     });
   }
 
-  respondToPermission(requestId: string, optionId: string): void {
+  respondToPermission(requestId: string, optionId: string, scope?: "session"): void {
     const pending = this.pendingPermissions.get(requestId);
     if (!pending) return;
+    if (scope === "session") {
+      const item = this.model.getItems().find((i): i is ToolItem => i.type === "tool" && i.permission?.requestId === requestId);
+      if (item) {
+        const key = sessionKey(this.subjectOf(item));
+        this.sessionAllowed.add(key);
+        this.options.log.info(`Permission ${requestId}: ${optionId} (allowed for session: ${key})`);
+        pending.resolve({ outcome: { outcome: "selected", optionId } }, "session");
+        return;
+      }
+    }
     this.options.log.info(`Permission ${requestId}: ${optionId}`);
-    pending.resolve({ outcome: { outcome: "selected", optionId } });
+    pending.resolve({ outcome: { outcome: "selected", optionId } }, "user");
   }
 
   private handleAskQuestion(params: CursorAskQuestionRequest, signal: AbortSignal): Promise<CursorAskQuestionResponse> {

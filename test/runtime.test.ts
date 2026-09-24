@@ -1,3 +1,4 @@
+import { DEFAULT_SAFE_LIST } from "../src/extension/session/approvals";
 import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -7,7 +8,7 @@ import { SessionRuntime, type ModelPreferences, type SessionMeta } from "../src/
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 
-function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
+function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask") {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
   const logs: string[] = [];
@@ -18,6 +19,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
     cwd: here,
     workspaceName: "test",
     getLaunchConfig: () => ({ command: process.execPath, args: [FAKE_AGENT], env: { ...process.env, ...extraEnv }, protocolLogging: false }),
+    getApprovalConfig: () => ({ policy: approvalPolicy, safeList: DEFAULT_SAFE_LIST }),
     storage: {
       getLastSessionId: () => lastSession,
       setLastSessionId: (id) => (lastSession = id),
@@ -200,6 +202,40 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.title).not.toBe("My rename");
     runtime.hideSession(id);
     expect((await runtime.listSessions()).some((s) => s.sessionId === id)).toBe(false);
+  });
+
+  it("safe-list policy approves read-only commands silently and asks for the rest", async () => {
+    const { runtime } = makeRuntime({}, "safe");
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("run ls -la", []);
+    let tool = items(runtime).find((i) => i.type === "tool") as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.state).toBe("resolved");
+    expect(tool.permission?.resolution).toBe("auto");
+    const risky = runtime.prompt("run rm -rf build", []);
+    await waitFor(() => runtime.state.pendingPermissions === 1);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.state).toBe("pending");
+    // "Allow for session" remembers the command name.
+    runtime.respondToPermission(tool.permission!.requestId, tool.permission!.options[0]!.optionId, "session");
+    await risky;
+    expect(runtime.state.sessionAllowed).toEqual(["rm"]);
+    await runtime.prompt("run rm -rf dist", []);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.resolution).toBe("session");
+  });
+
+  it("auto policy approves everything and switching policy resolves a waiting request", async () => {
+    const { runtime } = makeRuntime({}, "ask");
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("run npm test", []);
+    await waitFor(() => runtime.state.pendingPermissions === 1);
+    runtime.setApprovalPolicy("auto");
+    await turn;
+    const tool = items(runtime).find((i) => i.type === "tool") as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.resolution).toBe("auto");
+    expect(runtime.state.approvalPolicy).toBe("auto");
   });
 
   it("renders edits as diffs and tracks changed files", async () => {

@@ -692,7 +692,7 @@ export class ThreadModel {
     return next;
   }
 
-  resolvePermission(requestId: string, selectedOptionId: string | undefined): void {
+  resolvePermission(requestId: string, selectedOptionId: string | undefined, resolution: "user" | "session" | "auto" = "user"): void {
     const item = this.findLast((i): i is ToolItem => i.type === "tool" && i.permission?.requestId === requestId);
     if (!item || !item.permission || item.permission.state !== "pending") return;
     this.update({
@@ -700,7 +700,7 @@ export class ThreadModel {
       permission: {
         ...item.permission,
         state: selectedOptionId ? "resolved" : "cancelled",
-        ...(selectedOptionId ? { selectedOptionId } : {}),
+        ...(selectedOptionId ? { selectedOptionId, resolution } : {}),
       },
     });
   }

@@ -336,6 +336,79 @@ function TextRow({ settings, k, label, description, placeholder, mono, onSaved }
   );
 }
 
+function ApprovalPolicyRow({ settings }: { settings: ExtensionSettings }) {
+  const [saved, flash] = useSavedFlash();
+  return (
+    <SettingRow
+      id="setting-approvalPolicy"
+      settingKey="approvalPolicy"
+      label="Approvals"
+      description="Default for new sessions; change it per session from the chat toolbar. Nothing is written to Cursor's own permission config."
+      source={settings.sources.approvalPolicy}
+      saved={saved}
+      inline={
+        <select
+          id="setting-approvalPolicy"
+          class="select-input"
+          value={settings.approvalPolicy}
+          onChange={(e) => {
+            updateSetting("approvalPolicy", (e.currentTarget as HTMLSelectElement).value);
+            flash();
+          }}
+        >
+          <option value="ask">Ask</option>
+          <option value="safe">Safe list</option>
+          <option value="auto">Auto</option>
+        </select>
+      }
+    />
+  );
+}
+
+function SafeListRow({ settings }: { settings: ExtensionSettings }) {
+  const [saved, flash] = useSavedFlash();
+  const [draft, setDraft] = useState(settings.safeList.join("\n"));
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) setDraft(settings.safeList.join("\n"));
+  }, [settings.safeList]);
+  const commit = () => {
+    const next = draft.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!sameArray(next, settings.safeList)) {
+      updateSetting("safeList", next);
+      flash();
+    }
+  };
+  return (
+    <SettingRow
+      id="setting-safeList"
+      settingKey="safeList"
+      label="Safe list"
+      description={
+        <>
+          One regular expression per line. Tested against each part of a shell command (split on <code>|</code>, <code>&amp;&amp;</code>, <code>;</code>) and against Cursor's tool pattern such as <code>Mcp(server:tool)</code>. Commands using redirection, <code>$(…)</code> or an inline shell always ask.
+        </>
+      }
+      source={settings.sources.safeList}
+      saved={saved}
+    >
+      <textarea
+        id="setting-safeList"
+        class="text-input mono safe-list-input"
+        rows={8}
+        spellcheck={false}
+        value={draft}
+        onFocus={() => (focused.current = true)}
+        onInput={(e) => setDraft((e.currentTarget as HTMLTextAreaElement).value)}
+        onBlur={() => {
+          focused.current = false;
+          commit();
+        }}
+      />
+    </SettingRow>
+  );
+}
+
 type BoolKey = "resumeLastSession" | "sendWithCtrlEnter" | "showThoughts" | "notifyWhenHidden" | "protocolLogging";
 
 function BoolRow({ settings, k, label, description }: { settings: ExtensionSettings; k: BoolKey; label: string; description: ComponentChildren }) {
@@ -490,6 +563,14 @@ export function SettingsView() {
               <AgentArgsRow settings={settings} onSaved={markConnectionChange} />
               <EnvRow settings={settings} onSaved={markConnectionChange} />
               <TextRow settings={settings} k="configDir" label="Config directory" description="Cursor's config directory. Only used by the usage panel to read local usage data; leave empty to use the default location." placeholder="~/.cursor" mono />
+            </section>
+
+            <section class="settings-section" aria-labelledby="settings-approvals">
+              <h3 id="settings-approvals" class="settings-heading">
+                Approvals
+              </h3>
+              <ApprovalPolicyRow settings={settings} />
+              <SafeListRow settings={settings} />
             </section>
 
             <section class="settings-section" aria-labelledby="settings-behaviour">

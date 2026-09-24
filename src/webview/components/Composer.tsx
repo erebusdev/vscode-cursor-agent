@@ -95,6 +95,41 @@ function ModePicker() {
   );
 }
 
+const APPROVAL_OPTIONS: ReadonlyArray<{ id: "ask" | "safe" | "auto"; label: string; description: string }> = [
+  { id: "ask", label: "Ask", description: "Prompt for every command and tool call" },
+  { id: "safe", label: "Safe list", description: "Read-only commands and tools run without asking" },
+  { id: "auto", label: "Auto", description: "Run everything without asking (this session)" },
+];
+
+function ApprovalsPicker() {
+  const policy = useSelector((s) => s.session.approvalPolicy);
+  const allowed = useSelector((s) => s.session.sessionAllowed ?? []);
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  if (!policy) return null;
+  const current = APPROVAL_OPTIONS.find((o) => o.id === policy) ?? APPROVAL_OPTIONS[0]!;
+  return (
+    <>
+      <button ref={anchor} type="button" class={`picker approvals-picker policy-${policy}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={`Approvals: ${current.description}${allowed.length ? ` · allowed this session: ${allowed.join(", ")}` : ""}`}>
+        <Icon name={policy === "auto" ? "unlock" : "shield"} class="picker-icon" />
+        <span class="picker-label">{current.label}</span>
+        <Icon name="chevron-down" class="picker-chevron" />
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Approvals" role="listbox" minWidth={240}>
+        <div class="popover-heading">Approvals</div>
+        <PopoverList
+          options={APPROVAL_OPTIONS.map((o) => ({ id: o.id, label: o.label, description: o.description, selected: o.id === policy }))}
+          onSelect={(id) => {
+            setOpen(false);
+            if (id !== policy) post({ type: "approvals.set", policy: id as "ask" | "safe" | "auto" });
+          }}
+        />
+        {allowed.length > 0 && <div class="popover-footnote">Allowed this session: {allowed.join(", ")}</div>}
+      </Popover>
+    </>
+  );
+}
+
 function ModelPicker() {
   const models = useSelector((s) => s.session.models);
   const [open, setOpen] = useState(false);
@@ -656,6 +691,7 @@ export function Composer() {
             <AddMenu />
             <ModePicker />
             <ModelPicker />
+            <ApprovalsPicker />
             {session.modelOptions.map((o) => (
               <OptionPill key={o.id} option={o} />
             ))}

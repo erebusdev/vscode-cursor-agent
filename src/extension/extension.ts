@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { ChatHost } from "./ChatHost";
 import { AGENT_PATH_KEY } from "./platform";
+import { DEFAULT_SAFE_LIST } from "./session/approvals";
+import type { ApprovalPolicy } from "../shared/protocol";
 import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
 import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences, type SessionMeta } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
@@ -76,6 +78,10 @@ export function activate(context: vscode.ExtensionContext): void {
     workspaceName: workspace?.name ?? "(no folder)",
     ...(vscode.env.remoteName ? { remoteName: vscode.env.remoteName } : {}),
     getLaunchConfig: launchConfig,
+    getApprovalConfig: () => {
+      const config = vscode.workspace.getConfiguration("cursorAcp");
+      return { policy: config.get<ApprovalPolicy>("approvalPolicy", "safe"), safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]) };
+    },
     storage,
     log: runtimeLogger,
     events: {

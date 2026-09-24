@@ -279,7 +279,10 @@ export class ChatHost implements vscode.Disposable {
           await this.runtime.cancel();
           return;
         case "permission.respond":
-          this.runtime.respondToPermission(message.requestId, message.optionId);
+          this.runtime.respondToPermission(message.requestId, message.optionId, message.scope);
+          return;
+        case "approvals.set":
+          this.runtime.setApprovalPolicy(message.policy);
           return;
         case "question.respond":
           this.runtime.respondToQuestion(message.requestId, message.answers);

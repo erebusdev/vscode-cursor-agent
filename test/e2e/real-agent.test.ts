@@ -32,6 +32,7 @@ describe.skipIf(!enabled)("real Cursor agent", () => {
       cwd,
       workspaceName: "e2e",
       getLaunchConfig: () => ({ command: agent, args: [], env: process.env, protocolLogging: true }),
+      getApprovalConfig: () => ({ policy: "ask", safeList: [] }),
       storage: {
         getLastSessionId: () => lastSession,
         setLastSessionId: (id) => (lastSession = id),

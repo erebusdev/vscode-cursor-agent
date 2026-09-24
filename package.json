@@ -347,6 +347,43 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Log every ACP JSON-RPC message to the *Cursor Agent* output channel (useful for debugging)."
+        },
+        "cursorAcp.approvalPolicy": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "safe",
+            "auto"
+          ],
+          "default": "safe",
+          "scope": "resource",
+          "enumDescriptions": [
+            "Prompt for every command and tool call.",
+            "Run read-only commands and tools from the safe list without asking; prompt for the rest.",
+            "Run everything without asking."
+          ],
+          "markdownDescription": "Default approval policy for new sessions. Can be changed per session from the chat toolbar. Nothing is written to Cursor's own permission config."
+        },
+        "cursorAcp.safeList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "^(cd|ls|pwd|whoami|id|date|uname|hostname|which|type|command -v|echo|printf|cat|head|tail|less|more|wc|file|stat|du|df|tree|realpath|dirname|basename|true|false)\\b",
+            "^(grep|egrep|fgrep|rg|ag|find|fd|locate)\\b",
+            "^(sort|uniq|cut|tr|column|jq|yq|diff|comm|nl|tac|rev|sed -n)\\b",
+            "^git (status|diff|log|show|branch|remote|rev-parse|blame|ls-files|ls-remote|describe|tag|stash list|shortlog|reflog|cat-file|config --get|worktree list)\\b",
+            "^(node|npm|npx|pnpm|yarn|bun|deno|python3?|pip3?|ruby|gem|go|cargo|rustc|java|javac|dotnet|php|composer|swift|docker|kubectl|terraform|aws|gcloud|az|gh|code|cursor|agent) (-v|--version|-V|version)$",
+            "^(npm|pnpm|yarn) (ls|list|view|info|outdated|why|audit)\\b",
+            "^gh (pr|issue|repo|run|release|workflow|search) (view|list|status|checks|diff|code|prs|issues)\\b",
+            "^docker (ps|images|logs|inspect|version|info)\\b",
+            "^kubectl (get|describe|logs|version)\\b",
+            "^acli \\S+ \\S+ (search|view|list|get)\\b",
+            "^Mcp\\([^)]*:(get|list|search|read|fetch|find|query|describe|lookup|discover|view)[A-Za-z0-9_]*\\)$"
+          ],
+          "scope": "resource",
+          "markdownDescription": "Regular expressions for the *Safe list* policy. Each is tested against every segment of a shell command (split on `|`, `&&`, `||`, `;`), and against Cursor's permission pattern for tools, e.g. `Mcp(server:tool)`. Commands using redirection, command substitution or an inline shell always prompt."
         }
       }
     }

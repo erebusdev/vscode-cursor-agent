@@ -119,6 +119,10 @@ export function Transcript() {
         case "Y":
           handled = respondToPermission(perm, "allow_once");
           break;
+        case "s":
+        case "S":
+          handled = respondToPermission(perm, "allow_once", "session");
+          break;
         case "Enter":
           if (tag === "BUTTON") return; // let the focused button's click fire
           handled = respondToPermission(perm, "allow_once");

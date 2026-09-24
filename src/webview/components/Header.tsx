@@ -70,6 +70,11 @@ export function Header() {
             {title}
           </span>
         )}
+        {session.approvalPolicy === "auto" && (
+          <span class="auto-badge" title="Approvals: Auto. Every command and tool call runs without asking for this session.">
+            <Icon name="unlock" /> Auto
+          </span>
+        )}
         <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]} role="status" aria-label={STATUS_LABEL[c]}>
           {busy ? <Spinner class="status-spinner" /> : <span class="status-dot" />}
           {c !== "ready" && c !== "running" && <span class="status-label">{STATUS_LABEL[c]}</span>}
