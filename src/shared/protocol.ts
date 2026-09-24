@@ -123,6 +123,8 @@ export interface ToolItem {
   readonly toolCallId: string;
   readonly kind: ToolKind;
   readonly title: string;
+  /** Hover text for the title when it is a friendly rewrite (MCP calls: the full server id and tool name). */
+  readonly tooltip?: string;
   readonly status: ToolStatus;
   /** Shell command for execute tools. */
   readonly command?: string;

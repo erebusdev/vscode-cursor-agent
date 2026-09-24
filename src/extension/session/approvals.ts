@@ -84,24 +84,45 @@ export function subjectFrom(input: { command?: string; title: string; reason?: s
   return { ...(input.command ? { command: input.command } : {}), ...(pattern ? { pattern } : {}), title: input.title };
 }
 
+/** An MCP tool call's server id (Cursor's `providerIdentifier`) and tool name. */
+export interface McpTool {
+  readonly server: string;
+  readonly tool: string;
+}
+
 /**
- * Cursor's `Mcp(server:tool)` pattern for an MCP tool call. Permission
- * requests for MCP tools carry no reason text (their content is the tool's
- * arguments), so the pattern is rebuilt from the call's raw input
+ * The MCP server and tool behind a tool call, from the call's raw input
  * (`providerIdentifier` / `toolName`) or, failing that, from the title Cursor
- * gives the request: `<server>-<tool>: <tool>` (or `<server>: <tool>`).
+ * gives it: `<server>-<tool>: <tool>` (or `<server>: <tool>`). The generic
+ * first title, `MCP: tool`, names neither.
  */
-export function mcpPatternFrom(rawInput: unknown, title: string | undefined): string | undefined {
+export function mcpToolFrom(rawInput: unknown, title: string | undefined): McpTool | undefined {
   if (typeof rawInput === "object" && rawInput !== null && !Array.isArray(rawInput)) {
     const r = rawInput as Record<string, unknown>;
-    if (typeof r.providerIdentifier === "string" && r.providerIdentifier && typeof r.toolName === "string" && r.toolName) return `Mcp(${r.providerIdentifier}:${r.toolName})`;
+    if (typeof r.providerIdentifier === "string" && r.providerIdentifier && typeof r.toolName === "string" && r.toolName) return { server: r.providerIdentifier, tool: r.toolName };
   }
   if (!title) return undefined;
   const joined = /^(\S+)-(\S+): \2$/.exec(title.trim());
-  if (joined) return `Mcp(${joined[1]}:${joined[2]})`;
+  if (joined) return { server: joined[1]!, tool: joined[2]! };
   const plain = /^([A-Za-z0-9_.-]+): ([A-Za-z0-9_.-]+)$/.exec(title.trim());
-  if (plain && plain[1] !== "MCP") return `Mcp(${plain[1]}:${plain[2]})`;
+  if (plain && plain[1] !== "MCP") return { server: plain[1]!, tool: plain[2]! };
   return undefined;
+}
+
+/**
+ * Cursor's `Mcp(server:tool)` pattern for an MCP tool call. Permission
+ * requests for MCP tools carry no reason text (their content is the tool's
+ * arguments), so the pattern is rebuilt from the call (see mcpToolFrom).
+ */
+export function mcpPatternFrom(rawInput: unknown, title: string | undefined): string | undefined {
+  const mcp = mcpToolFrom(rawInput, title);
+  return mcp ? `Mcp(${mcp.server}:${mcp.tool})` : undefined;
+}
+
+/** The server and tool of an `Mcp(server:tool)` pattern. */
+export function mcpToolFromPattern(pattern: string | undefined): McpTool | undefined {
+  const match = pattern ? /^Mcp\(([^:()]+):([^()]+)\)$/.exec(pattern) : null;
+  return match ? { server: match[1]!, tool: match[2]! } : undefined;
 }
 
 /** Key under which "Allow for session" remembers a subject: the command name, else Cursor's pattern, else the title. */

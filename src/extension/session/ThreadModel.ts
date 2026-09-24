@@ -11,7 +11,7 @@
  *  - items created while `replay` is on are flagged and never "streaming"
  */
 import type * as acp from "@agentclientprotocol/sdk";
-import { mcpPatternFrom } from "./approvals";
+import { mcpPatternFrom, mcpToolFrom, mcpToolFromPattern, type McpTool } from "./approvals";
 import { isAbsolute, relative, sep } from "node:path";
 import type {
   ExtensionToWebview,
@@ -169,6 +169,46 @@ interface ChangeTotals {
   displayPath: string;
   additions: number;
   deletions: number;
+}
+
+/** Spellings that plain capitalisation gets wrong. */
+const KNOWN_NAMES: Readonly<Record<string, string>> = { github: "GitHub", gitlab: "GitLab" };
+
+/** "cloudflare-docs" → "Cloudflare docs"; known names keep their own spelling ("github" → "GitHub"). */
+function humaniseName(id: string): string {
+  const words = id.split(/[-_\s]+/).filter(Boolean).map((w) => KNOWN_NAMES[w.toLowerCase()] ?? w);
+  const text = words.join(" ");
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : id;
+}
+
+/**
+ * A readable name for an MCP server id. Cursor names plugin servers
+ * `plugin-<plugin>-<server>`, where the server name usually repeats the plugin
+ * name: `plugin-sentry-sentry` → "Sentry", `plugin-cloudflare-cloudflare-docs`
+ * → "Cloudflare docs". Other (custom) servers are capitalised: `github` → "GitHub".
+ */
+export function mcpServerDisplayName(server: string): string {
+  const plugin = /^plugin-(.+)$/.exec(server)?.[1];
+  if (!plugin) return humaniseName(server);
+  const parts = plugin.split("-");
+  // Plugin and server names can contain dashes; find the split where the server name starts with the plugin name.
+  for (let i = 1; i < parts.length; i++) {
+    const name = parts.slice(0, i).join("-");
+    const rest = parts.slice(i).join("-");
+    if (rest === name) return humaniseName(name);
+    if (rest.startsWith(`${name}-`)) return `${humaniseName(name)} ${humaniseName(rest.slice(name.length + 1)).toLowerCase()}`;
+  }
+  return parts.length > 1 ? `${humaniseName(parts[0]!)} ${humaniseName(parts.slice(1).join("-")).toLowerCase()}` : humaniseName(plugin);
+}
+
+/** Tool names are shown as-is, except that snake_case reads as words: `execute_sentry_tool` → "execute sentry tool". */
+export function mcpToolDisplayName(tool: string): string {
+  return tool.includes("_") ? tool.split("_").filter(Boolean).join(" ") : tool;
+}
+
+/** Transcript title and hover text for an MCP tool call: "Atlassian · atlassianUserInfo". */
+export function mcpToolTitle(mcp: McpTool): { title: string; tooltip: string } {
+  return { title: `${mcpServerDisplayName(mcp.server)} · ${mcpToolDisplayName(mcp.tool)}`, tooltip: `MCP server ${mcp.server}, tool ${mcp.tool}` };
 }
 
 export function stripCursorTitleBackticks(title: string): string {
@@ -457,15 +497,20 @@ export class ThreadModel {
 
     const rawInput = update.rawInput !== undefined && update.rawInput !== null ? update.rawInput : this.toolRawInput.get(update.toolCallId);
     if (rawInput !== undefined) this.toolRawInput.set(update.toolCallId, rawInput);
-    const title = typeof update.title === "string" && update.title.trim() ? this.prettifyTitle(update.title.trim()) : base.title;
     const kind = update.kind ? normalizeToolKind(update.kind) : base.kind;
+    const updateTitle = typeof update.title === "string" ? update.title : undefined;
+    // MCP calls arrive as "MCP: tool", then "<server>-<tool>: <tool>"; show "Server · tool" once either is known.
+    const mcpTool = kind === "other" ? (mcpToolFrom(rawInput, updateTitle) ?? mcpToolFromPattern(base.mcpPattern)) : undefined;
+    const mcpTitle = mcpTool ? mcpToolTitle(mcpTool) : undefined;
+    const title = mcpTitle?.title ?? (updateTitle?.trim() ? this.prettifyTitle(updateTitle.trim()) : base.title);
+    const tooltip = mcpTitle?.tooltip ?? base.tooltip;
     const status = update.status !== undefined && update.status !== null ? normalizeToolStatus(update.status, base.status) : base.status;
     const command = extractCommand(rawInput, title) ?? base.command;
     const rawSubtitle = extractSubtitle(rawInput, (p) => this.toDisplayPath(p)) ?? base.subtitle;
     // Drop the subtitle when the title already names the same path (Cursor titles edits/reads by path).
     const subtitle = rawSubtitle && title.includes(rawSubtitle) ? undefined : rawSubtitle;
     const inputText = prettyInput(rawInput) ?? base.inputText;
-    const mcpPattern = kind === "other" ? (mcpPatternFrom(rawInput, typeof update.title === "string" ? update.title : undefined) ?? base.mcpPattern) : base.mcpPattern;
+    const mcpPattern = kind === "other" ? (mcpPatternFrom(rawInput, updateTitle) ?? base.mcpPattern) : base.mcpPattern;
 
     let output = base.output;
     let fileContent = base.fileContent;
@@ -528,6 +573,7 @@ export class ThreadModel {
       toolCallId: update.toolCallId,
       kind,
       title,
+      ...(tooltip ? { tooltip } : {}),
       status,
       ...(command ? { command } : {}),
       ...(subtitle ? { subtitle } : {}),
