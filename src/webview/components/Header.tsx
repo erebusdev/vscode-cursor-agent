@@ -71,7 +71,7 @@ export function Header() {
           </span>
         )}
         {session.sessionId && (
-          <IconButton icon="copy" class="header-copy-id" label={`Copy session id ${session.sessionId}`} onClick={() => post({ type: "copy", text: session.sessionId! })} />
+          <IconButton icon="copy" class="header-copy-id" label="Copy session id" title={`Copy session id to clipboard\n${session.sessionId}`} onClick={() => post({ type: "copy", text: session.sessionId! })} />
         )}
         {session.approvalPolicy === "auto" && (
           <span class="auto-badge" title="Approvals: Auto. Every command and tool call runs without asking for this session.">
