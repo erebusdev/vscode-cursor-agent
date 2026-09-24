@@ -185,6 +185,8 @@ export class SessionRuntime {
   private queue: Array<{ text: string; attachments: PromptAttachmentInput[] }> = [];
   /** Set when the user pressed Stop, so a queued message waits instead of firing into the cancelled turn. */
   private stoppedByUser = false;
+  /** Set while an interrupt-and-send is cancelling the current turn, so the queue does not auto-send over it. */
+  private interrupting = false;
   /** Client-side approval policy for the current session (starts from the settings default). */
   private approvalPolicy: ApprovalPolicy = "safe";
   /** "Allow for session" keys: command names or Cursor permission patterns. */
@@ -778,8 +780,19 @@ export class SessionRuntime {
         return;
       }
       this.options.log.info("Interrupting the current turn to send a new prompt.");
-      await this.cancel(false);
-      if (this.disposed || this.isRunning) return;
+      this.interrupting = true;
+      try {
+        await this.cancel(false);
+      } finally {
+        this.interrupting = false;
+      }
+      if (this.disposed) return;
+      if (this.isRunning) {
+        // Something else took the slot (should not happen); keep the message rather than lose it.
+        this.queue.unshift({ text, attachments: [...attachments] });
+        this.publishState();
+        return;
+      }
     }
     this.stoppedByUser = false;
     if (!this.hasSession) {
@@ -843,7 +856,7 @@ export class SessionRuntime {
         }
         // The next queued message follows on its own unless the user explicitly stopped the turn, in
         // which case the queue stays put so they can reconsider it.
-        if (this.queue.length > 0 && !this.stoppedByUser && !this.disposed) {
+        if (this.queue.length > 0 && !this.stoppedByUser && !this.interrupting && !this.disposed) {
           const next = this.queue.shift()!;
           void this.prompt(next.text, next.attachments);
         }

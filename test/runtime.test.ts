@@ -179,6 +179,22 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(users.map((u) => u.text)).toEqual(["sleep 20000", "later"]);
   });
 
+  it("send-now picks the chosen queued message and the rest follow in order", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.prompt("first queued", []);
+    await runtime.prompt("second queued", []);
+    await runtime.prompt("third queued", []);
+    await runtime.sendQueuedNow(1);
+    await turn.catch(() => undefined);
+    await waitFor(() => runtime.state.queued === undefined && runtime.state.connection === "ready", 20_000);
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 20000", "second queued", "first queued", "third queued"]);
+  });
+
   it("interrupt mode cancels the running turn and sends immediately", async () => {
     const { runtime } = makeRuntime();
     active.push(runtime);
