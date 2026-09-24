@@ -86,7 +86,7 @@ const EMPTY_SESSION: SessionState = {
 const state: StoreState = {
   ready: false,
   session: EMPTY_SESSION,
-  settings: { sendWithCtrlEnter: false, showThoughts: true, hiddenModels: [], hiddenModelGroups: [] },
+  settings: { sendWithCtrlEnter: false, showThoughts: true, hiddenModels: [] },
   ids: [],
   items: new Map(),
   sessions: { list: [], loading: false },
@@ -106,7 +106,7 @@ const state: StoreState = {
 
 /** Older hosts (or test harnesses) may omit newer optional fields; keep the shape stable for the UI. */
 function normalizeSettings(settings: UiSettings): UiSettings {
-  return { ...settings, hiddenModels: settings.hiddenModels ?? [], hiddenModelGroups: settings.hiddenModelGroups ?? [] };
+  return { ...settings, hiddenModels: settings.hiddenModels ?? [] };
 }
 
 export function getState(): StoreState {

@@ -135,13 +135,12 @@ function ModelPicker() {
   const models = useSelector((s) => s.session.models);
   const modelOptions = useSelector((s) => s.session.modelOptions);
   const visibility = useSelector((s) => s.settings);
-  const cursorIds = useSelector((s) => s.usage.summary?.autoModels);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const anchor = useRef<HTMLButtonElement>(null);
   if (!models || models.availableModels.length === 0) return null;
   const current = models.availableModels.find((m) => m.modelId === models.currentModelId);
-  const shown = visibleModels(models.availableModels, models.currentModelId, visibility, cursorIds);
+  const shown = visibleModels(models.availableModels, models.currentModelId, visibility);
   const hiddenCount = models.availableModels.length - shown.length;
   const q = filter.trim().toLowerCase();
   const filtered = q ? shown.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : shown;

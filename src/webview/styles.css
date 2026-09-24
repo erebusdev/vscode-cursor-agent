@@ -2769,6 +2769,9 @@ button.chip:disabled {
   outline: 1px solid var(--focus);
   outline-offset: 1px;
 }
+.checkbox.mixed .codicon {
+  color: var(--muted);
+}
 
 .agent-path {
   display: flex;

@@ -1,6 +1,7 @@
 /**
- * Which models the picker shows. Hiding is an explicit list (ids) plus optional
- * whole groups, so a model Cursor adds later is visible until someone hides it.
+ * Which models the picker shows. Hiding is an explicit list of ids, so a model
+ * Cursor adds later is visible until someone hides it. Groups only organise the
+ * manager pane; ticking a group is a bulk action over its models.
  */
 
 export type ModelGroup = "cursor" | "api";
@@ -10,7 +11,6 @@ const CURSOR_MODEL_ID = /^(auto\b|composer|vega|grok|cursor)/i;
 
 export interface ModelVisibility {
   readonly hiddenModels: ReadonlyArray<string>;
-  readonly hiddenModelGroups: ReadonlyArray<ModelGroup>;
 }
 
 /** Group for a model id, preferring the usage API's list of Cursor-pool ids when available. */
@@ -22,12 +22,11 @@ export function modelGroup(modelId: string, cursorModelIds?: ReadonlyArray<strin
   return "api";
 }
 
-export function isModelHidden(modelId: string, visibility: Partial<ModelVisibility>, cursorModelIds?: ReadonlyArray<string>): boolean {
-  if ((visibility.hiddenModels ?? []).includes(modelId)) return true;
-  return (visibility.hiddenModelGroups ?? []).includes(modelGroup(modelId, cursorModelIds));
+export function isModelHidden(modelId: string, visibility: Partial<ModelVisibility>): boolean {
+  return (visibility.hiddenModels ?? []).includes(modelId);
 }
 
 /** Models to offer in the picker: everything not hidden, plus the current one even if hidden. */
-export function visibleModels<T extends { modelId: string }>(models: ReadonlyArray<T>, currentModelId: string | undefined, visibility: Partial<ModelVisibility>, cursorModelIds?: ReadonlyArray<string>): T[] {
-  return models.filter((m) => m.modelId === currentModelId || !isModelHidden(m.modelId, visibility, cursorModelIds));
+export function visibleModels<T extends { modelId: string }>(models: ReadonlyArray<T>, currentModelId: string | undefined, visibility: Partial<ModelVisibility>): T[] {
+  return models.filter((m) => m.modelId === currentModelId || !isModelHidden(m.modelId, visibility));
 }

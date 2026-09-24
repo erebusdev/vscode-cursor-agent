@@ -246,7 +246,6 @@ export class ChatHost implements vscode.Disposable {
       sendWithCtrlEnter: config.get<boolean>("sendWithCtrlEnter", false),
       showThoughts: config.get<boolean>("showThoughts", true),
       hiddenModels: config.get<string[]>("hiddenModels", []),
-      hiddenModelGroups: config.get<Array<"cursor" | "api">>("hiddenModelGroups", []),
     };
   }
 

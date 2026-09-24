@@ -414,18 +414,6 @@
           "default": [],
           "markdownDescription": "Model ids hidden from the model picker. New models Cursor adds stay visible until hidden. Managed from *Manage models…* at the bottom of the picker."
         },
-        "cursorAcp.hiddenModelGroups": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "cursor",
-              "api"
-            ]
-          },
-          "default": [],
-          "markdownDescription": "Hide a whole group of models from the picker: `cursor` (Cursor's own models, billed as Cursor usage) or `api` (third-party models billed as API usage)."
-        },
         "cursorAcp.defaultModel": {
           "type": "string",
           "default": "",

@@ -400,8 +400,6 @@ export interface UiSettings {
   readonly showThoughts: boolean;
   /** Model ids hidden from the picker. */
   readonly hiddenModels: ReadonlyArray<string>;
-  /** Whole groups hidden from the picker. */
-  readonly hiddenModelGroups: ReadonlyArray<"cursor" | "api">;
 }
 
 /** Full extension configuration, mirrored from VS Code settings for the in-app settings panel. */
@@ -424,7 +422,6 @@ export interface ExtensionSettings {
   /** Regular expressions; see DEFAULT_SAFE_LIST. */
   readonly safeList: ReadonlyArray<string>;
   readonly hiddenModels: ReadonlyArray<string>;
-  readonly hiddenModelGroups: ReadonlyArray<"cursor" | "api">;
   /** Model used for new sessions; empty = whatever Cursor's CLI currently defaults to. */
   readonly defaultModel: string;
   /** Option values (effort, context, fast…) applied to new sessions. */

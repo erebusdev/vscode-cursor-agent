@@ -15,15 +15,14 @@ describe("model visibility", () => {
     expect(modelGroup("vega-high")).toBe("cursor");
   });
 
-  it("hides by id and by group, but never the current model", () => {
-    const vis = { hiddenModels: ["gpt-5.5"], hiddenModelGroups: ["api" as const] };
+  it("hides by id, but never the current model", () => {
+    const vis = { hiddenModels: ["gpt-5.5", "claude-opus-5-5"] };
     expect(isModelHidden("gpt-5.5", vis)).toBe(true);
-    expect(isModelHidden("claude-opus-5-5", vis)).toBe(true);
     expect(isModelHidden("composer-2", vis)).toBe(false);
     expect(visibleModels(models, "claude-opus-5-5", vis).map((m) => m.modelId)).toEqual(["auto-smart", "composer-2", "grok-4.7", "claude-opus-5-5"]);
   });
 
   it("shows everything when nothing is hidden, so new models appear by default", () => {
-    expect(visibleModels(models, undefined, { hiddenModels: [], hiddenModelGroups: [] })).toHaveLength(models.length);
+    expect(visibleModels(models, undefined, { hiddenModels: [] })).toHaveLength(models.length);
   });
 });
