@@ -367,6 +367,39 @@ button.chip:disabled {
   white-space: nowrap;
   min-width: 0;
 }
+.header-title-button {
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  margin: 0 -2px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.header-title-button:hover {
+  background: var(--hover-bg);
+}
+.popover-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.popover-row > .popover-item {
+  flex: 1 1 auto;
+}
+.popover-row-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  padding-right: 2px;
+}
+.popover-row:hover .popover-row-actions,
+.popover-row:focus-within .popover-row-actions {
+  opacity: 1;
+}
 .header-side {
   display: flex;
   align-items: center;

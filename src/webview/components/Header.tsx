@@ -61,9 +61,15 @@ export function Header() {
   return (
     <header class="header">
       <div class="header-main">
-        <span class="header-title" title={title}>
-          {title}
-        </span>
+        {session.sessionId ? (
+          <button type="button" class="header-title header-title-button" title="Rename session" onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })}>
+            {title}
+          </button>
+        ) : (
+          <span class="header-title" title={title}>
+            {title}
+          </span>
+        )}
         <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]} role="status" aria-label={STATUS_LABEL[c]}>
           {busy ? <Spinner class="status-spinner" /> : <span class="status-dot" />}
           {c !== "ready" && c !== "running" && <span class="status-label">{STATUS_LABEL[c]}</span>}
@@ -129,26 +135,38 @@ function HistoryButton() {
         {!sessions.loading && !sessions.error && sessions.list.length === 0 && <div class="popover-empty">No sessions yet.</div>}
         <div class="popover-list">
           {sessions.list.map((s) => (
-            <button
-              key={s.sessionId}
-              type="button"
-              role="option"
-              aria-selected={false}
-              class="popover-item"
-              title={s.cwd ?? s.sessionId}
-              onClick={() => {
-                setOpen(false);
-                post({ type: "session.load", sessionId: s.sessionId });
-              }}
-            >
-              <span class="popover-item-check">
-                <Icon name="comment-discussion" />
+            <div key={s.sessionId} class="popover-row">
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                class="popover-item"
+                title={s.cwd ?? s.sessionId}
+                onClick={() => {
+                  setOpen(false);
+                  post({ type: "session.load", sessionId: s.sessionId });
+                }}
+              >
+                <span class="popover-item-check">
+                  <Icon name="comment-discussion" />
+                </span>
+                <span class="popover-item-main">
+                  <span class="popover-item-label">{s.title?.trim() || s.sessionId.slice(0, 8)}</span>
+                  {s.updatedAt && <span class="popover-item-desc">{relativeTime(s.updatedAt)}</span>}
+                </span>
+              </button>
+              <span class="popover-row-actions">
+                <IconButton
+                  icon="edit"
+                  label="Rename session"
+                  onClick={() => {
+                    setOpen(false);
+                    post({ type: "session.rename", sessionId: s.sessionId });
+                  }}
+                />
+                <IconButton icon="eye-closed" label="Hide from history" onClick={() => post({ type: "session.hide", sessionId: s.sessionId })} />
               </span>
-              <span class="popover-item-main">
-                <span class="popover-item-label">{s.title?.trim() || s.sessionId.slice(0, 8)}</span>
-                {s.updatedAt && <span class="popover-item-desc">{relativeTime(s.updatedAt)}</span>}
-              </span>
-            </button>
+            </div>
           ))}
         </div>
       </Popover>

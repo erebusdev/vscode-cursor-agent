@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { ExtensionToWebview, ThreadItem, ToolItem } from "../src/shared/protocol";
-import { SessionRuntime, type ModelPreferences } from "../src/extension/session/SessionRuntime";
+import { SessionRuntime, type ModelPreferences, type SessionMeta } from "../src/extension/session/SessionRuntime";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
@@ -13,6 +13,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
   const logs: string[] = [];
   let lastSession: string | undefined;
   let prefs: ModelPreferences = {};
+  let meta: SessionMeta = { titles: {}, hidden: [] };
   const runtime = new SessionRuntime({
     cwd: here,
     workspaceName: "test",
@@ -22,6 +23,8 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
       setLastSessionId: (id) => (lastSession = id),
       getModelPreferences: () => prefs,
       setModelPreferences: (p) => (prefs = p),
+      getSessionMeta: () => meta,
+      setSessionMeta: (m) => (meta = m),
     },
     log: { info: (m) => logs.push(m), warn: (m) => logs.push(m), error: (m) => logs.push(m), protocol: () => {}, stderr: () => {} },
     events: {
@@ -181,6 +184,22 @@ describe("SessionRuntime against a fake ACP agent", () => {
     const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
     expect(users.map((u) => u.text)).toEqual(["sleep 20000", "now please"]);
     expect(runtime.state.connection).toBe("ready");
+  });
+
+  it("applies local renames and hides sessions in the history list", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("hello", []);
+    const id = runtime.state.sessionId!;
+    runtime.renameSession(id, "My rename");
+    expect(runtime.state.title).toBe("My rename");
+    const listed = await runtime.listSessions();
+    expect(listed.find((s) => s.sessionId === id)?.title).toBe("My rename");
+    runtime.renameSession(id, "");
+    expect(runtime.state.title).not.toBe("My rename");
+    runtime.hideSession(id);
+    expect((await runtime.listSessions()).some((s) => s.sessionId === id)).toBe(false);
   });
 
   it("renders edits as diffs and tracks changed files", async () => {

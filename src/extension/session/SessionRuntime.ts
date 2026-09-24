@@ -35,11 +35,19 @@ export interface ModelPreferences {
   readonly options?: Readonly<Record<string, string | boolean>>;
 }
 
+/** Local, per-user tweaks to Cursor's session list: renamed titles and hidden sessions (ACP has neither). */
+export interface SessionMeta {
+  readonly titles: Readonly<Record<string, string>>;
+  readonly hidden: ReadonlyArray<string>;
+}
+
 export interface RuntimeStorage {
   getLastSessionId(): string | undefined;
   setLastSessionId(sessionId: string | undefined): void;
   getModelPreferences(): ModelPreferences;
   setModelPreferences(prefs: ModelPreferences): void;
+  getSessionMeta(): SessionMeta;
+  setSessionMeta(meta: SessionMeta): void;
 }
 
 export interface RuntimeLogger {
@@ -213,7 +221,7 @@ export class SessionRuntime {
     return {
       connection: this.connectionState,
       ...(this.sessionId ? { sessionId: this.sessionId } : {}),
-      ...(this.title ? { title: this.title } : {}),
+      ...(this.effectiveTitle() ? { title: this.effectiveTitle() } : {}),
       cwd: this.options.cwd,
       workspaceName: this.options.workspaceName,
       ...(this.options.remoteName ? { remoteName: this.options.remoteName } : {}),
@@ -711,16 +719,42 @@ export class SessionRuntime {
     await this.start(sessionId);
   }
 
+  /** The session title with the user's local rename applied. */
+  private effectiveTitle(): string | undefined {
+    const override = this.sessionId ? this.options.storage.getSessionMeta().titles[this.sessionId] : undefined;
+    return override?.trim() || this.title;
+  }
+
+  /** Stores a local title for a session (empty clears it). Cursor's ACP has no rename, so this never reaches the agent. */
+  renameSession(sessionId: string, title: string): void {
+    const meta = this.options.storage.getSessionMeta();
+    const titles = { ...meta.titles };
+    if (title.trim()) titles[sessionId] = title.trim();
+    else delete titles[sessionId];
+    this.options.storage.setSessionMeta({ ...meta, titles });
+    if (sessionId === this.sessionId) this.publishState();
+  }
+
+  /** Hides a session from the history list. The session itself is untouched and can still be resumed by id. */
+  hideSession(sessionId: string): void {
+    const meta = this.options.storage.getSessionMeta();
+    if (meta.hidden.includes(sessionId)) return;
+    this.options.storage.setSessionMeta({ ...meta, hidden: [...meta.hidden, sessionId] });
+  }
+
   async listSessions(): Promise<SessionSummary[]> {
     const connection = await this.ensureConnected();
     if (!this.initializeResult?.agentCapabilities?.sessionCapabilities?.list) {
       throw new Error("This agent does not support listing sessions.");
     }
     const response = await connection.listSessions({ cwd: this.options.cwd });
+    const meta = this.options.storage.getSessionMeta();
+    const hidden = new Set(meta.hidden);
     return response.sessions
+      .filter((s) => !hidden.has(s.sessionId))
       .map((s) => ({
         sessionId: s.sessionId,
-        ...(s.title ? { title: s.title } : {}),
+        ...(meta.titles[s.sessionId]?.trim() ? { title: meta.titles[s.sessionId] } : s.title ? { title: s.title } : {}),
         ...(s.cwd ? { cwd: s.cwd } : {}),
         ...(s.updatedAt ? { updatedAt: s.updatedAt } : {}),
       }))

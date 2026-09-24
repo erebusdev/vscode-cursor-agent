@@ -299,6 +299,21 @@ export class ChatHost implements vscode.Disposable {
         case "session.list":
           await this.sendSessionList();
           return;
+        case "session.rename": {
+          let title = message.title;
+          if (title === undefined) {
+            const current = message.sessionId === this.runtime.state.sessionId ? this.runtime.state.title : undefined;
+            title = await vscode.window.showInputBox({ prompt: "Session title", value: current ?? "", placeHolder: "Leave empty to use Cursor's title" });
+            if (title === undefined) return; // cancelled
+          }
+          this.runtime.renameSession(message.sessionId, title);
+          await this.sendSessionList();
+          return;
+        }
+        case "session.hide":
+          this.runtime.hideSession(message.sessionId);
+          await this.sendSessionList();
+          return;
         case "session.reconnect":
           await this.runtime.reconnect();
           return;

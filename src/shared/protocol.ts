@@ -456,6 +456,8 @@ export type WebviewToExtension =
   | { readonly type: "session.new" }
   | { readonly type: "session.load"; readonly sessionId: string }
   | { readonly type: "session.list" }
+  | { readonly type: "session.rename"; readonly sessionId: string; readonly title?: string }
+  | { readonly type: "session.hide"; readonly sessionId: string }
   | { readonly type: "session.reconnect" }
   | { readonly type: "mode.set"; readonly modeId: string }
   | { readonly type: "model.set"; readonly modelId: string }

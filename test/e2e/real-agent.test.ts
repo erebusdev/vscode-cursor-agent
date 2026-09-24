@@ -37,6 +37,8 @@ describe.skipIf(!enabled)("real Cursor agent", () => {
         setLastSessionId: (id) => (lastSession = id),
         getModelPreferences: () => prefs,
         setModelPreferences: (p) => (prefs = p),
+        getSessionMeta: () => ({ titles: {}, hidden: [] }),
+        setSessionMeta: () => undefined,
       },
       log: { info: (m) => logs.push(m), warn: (m) => logs.push(m), error: (m) => logs.push(`ERROR ${m}`), protocol: (d, l) => logs.push(`${d} ${l.slice(0, 300)}`), stderr: (t) => logs.push(`stderr ${t}`) },
       events: { message: () => {}, permissionRequested: () => {}, turnFinished: () => {}, questionAsked: () => {} },

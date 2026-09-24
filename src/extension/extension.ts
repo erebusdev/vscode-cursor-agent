@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { ChatHost } from "./ChatHost";
 import { AGENT_PATH_KEY } from "./platform";
 import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
-import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences } from "./session/SessionRuntime";
+import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences, type SessionMeta } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
 import type { WebviewToExtension } from "../shared/protocol";
 
@@ -57,6 +57,8 @@ export function activate(context: vscode.ExtensionContext): void {
     setLastSessionId: (id: string | undefined) => void context.workspaceState.update(`cursorAcp.lastSession:${cwd}`, id),
     getModelPreferences: () => context.globalState.get<ModelPreferences>("cursorAcp.modelPreferences", {}),
     setModelPreferences: (prefs: ModelPreferences) => void context.globalState.update("cursorAcp.modelPreferences", prefs),
+    getSessionMeta: () => context.globalState.get<SessionMeta>("cursorAcp.sessionMeta", { titles: {}, hidden: [] }),
+    setSessionMeta: (meta: SessionMeta) => void context.globalState.update("cursorAcp.sessionMeta", meta),
   };
 
   const runtimeLogger = {
