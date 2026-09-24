@@ -2121,6 +2121,74 @@ button.chip:disabled {
 .model-popover {
   max-width: 320px;
 }
+.popover-footer {
+  border-top: 1px solid var(--border);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.popover-footer .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.models-group {
+  padding: 6px 0 4px;
+}
+.models-group + .models-group {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 10px;
+}
+.models-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.models-group-head .pane-heading {
+  margin: 0;
+  flex: 1 1 auto;
+}
+.models-group-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.models-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  min-width: 0;
+}
+.models-row.dim {
+  opacity: 0.55;
+}
+.models-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.models-row-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.models-row-current {
+  flex: none;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 7px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
 .model-popover .popover-list {
   max-height: 260px;
 }

@@ -58,6 +58,8 @@ export interface StoreState {
   settingsOpen: boolean;
   /** Whether the detailed usage view is shown in place of the transcript. */
   usageOpen: boolean;
+  /** Whether the manage-models view is shown in place of the transcript. */
+  modelsOpen: boolean;
   /** Progress of a guided setup step (installer / login running in a terminal). */
   setupStatus: { phase: "idle" | "installing" | "loggingIn"; text?: string };
   /** Latest @-mention file search results. */
@@ -84,7 +86,7 @@ const EMPTY_SESSION: SessionState = {
 const state: StoreState = {
   ready: false,
   session: EMPTY_SESSION,
-  settings: { sendWithCtrlEnter: false, showThoughts: true },
+  settings: { sendWithCtrlEnter: false, showThoughts: true, hiddenModels: [], hiddenModelGroups: [] },
   ids: [],
   items: new Map(),
   sessions: { list: [], loading: false },
@@ -93,6 +95,7 @@ const state: StoreState = {
   probe: undefined,
   settingsOpen: false,
   usageOpen: false,
+  modelsOpen: false,
   setupStatus: { phase: "idle" },
   fileResults: undefined,
   toasts: [],
@@ -237,14 +240,30 @@ export function clearAttachments(): void {
 export function setSettingsOpen(open: boolean): void {
   if (state.settingsOpen === open) return;
   state.settingsOpen = open;
-  if (open) state.usageOpen = false;
+  if (open) {
+    state.usageOpen = false;
+    state.modelsOpen = false;
+  }
   notify();
 }
 
 export function setUsageOpen(open: boolean): void {
   if (state.usageOpen === open) return;
   state.usageOpen = open;
-  if (open) state.settingsOpen = false;
+  if (open) {
+    state.settingsOpen = false;
+    state.modelsOpen = false;
+  }
+  notify();
+}
+
+export function setModelsOpen(open: boolean): void {
+  if (state.modelsOpen === open) return;
+  state.modelsOpen = open;
+  if (open) {
+    state.settingsOpen = false;
+    state.usageOpen = false;
+  }
   notify();
 }
 

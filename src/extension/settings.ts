@@ -23,7 +23,7 @@ function sourceOf(inspect: ReturnType<vscode.WorkspaceConfiguration["inspect"]>)
 
 export function readExtensionSettings(): ExtensionSettings {
   const config = vscode.workspace.getConfiguration(SECTION);
-  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging", "approvalPolicy", "safeList"];
+  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging", "approvalPolicy", "safeList", "hiddenModels", "hiddenModelGroups"];
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
@@ -40,6 +40,8 @@ export function readExtensionSettings(): ExtensionSettings {
     protocolLogging: config.get<boolean>("protocolLogging", false),
     approvalPolicy: config.get<ApprovalPolicy>("approvalPolicy", "safe"),
     safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]),
+    hiddenModels: config.get<string[]>("hiddenModels", []),
+    hiddenModelGroups: config.get<Array<"cursor" | "api">>("hiddenModelGroups", []),
     sources,
   };
 }

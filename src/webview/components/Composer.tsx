@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
-import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, useSelector } from "../store";
+import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, setModelsOpen, useSelector } from "../store";
+import { visibleModels } from "../../shared/modelVisibility";
 import { getPersisted, persist, post } from "../vscode";
 import { readImageFile } from "../attachments";
 import { Popover, PopoverList } from "./Popover";
@@ -132,13 +133,17 @@ function ApprovalsPicker() {
 
 function ModelPicker() {
   const models = useSelector((s) => s.session.models);
+  const visibility = useSelector((s) => s.settings);
+  const cursorIds = useSelector((s) => s.usage.summary?.autoModels);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const anchor = useRef<HTMLButtonElement>(null);
   if (!models || models.availableModels.length === 0) return null;
   const current = models.availableModels.find((m) => m.modelId === models.currentModelId);
+  const shown = visibleModels(models.availableModels, models.currentModelId, visibility, cursorIds);
+  const hiddenCount = models.availableModels.length - shown.length;
   const q = filter.trim().toLowerCase();
-  const filtered = q ? models.availableModels.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : models.availableModels;
+  const filtered = q ? shown.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : shown;
   return (
     <>
       <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Model">
@@ -185,6 +190,19 @@ function ModelPicker() {
           }}
           emptyText="No matching models"
         />
+        <div class="popover-footer">
+          <button
+            type="button"
+            class="link-button"
+            onClick={() => {
+              setOpen(false);
+              setFilter("");
+              setModelsOpen(true);
+            }}
+          >
+            <Icon name="settings" /> Manage models…{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}
+          </button>
+        </div>
       </Popover>
     </>
   );

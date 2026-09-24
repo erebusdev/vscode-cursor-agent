@@ -398,6 +398,10 @@ export interface UsageSummary {
 export interface UiSettings {
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;
+  /** Model ids hidden from the picker. */
+  readonly hiddenModels: ReadonlyArray<string>;
+  /** Whole groups hidden from the picker. */
+  readonly hiddenModelGroups: ReadonlyArray<"cursor" | "api">;
 }
 
 /** Full extension configuration, mirrored from VS Code settings for the in-app settings panel. */
@@ -419,6 +423,8 @@ export interface ExtensionSettings {
   readonly approvalPolicy: ApprovalPolicy;
   /** Regular expressions; see DEFAULT_SAFE_LIST. */
   readonly safeList: ReadonlyArray<string>;
+  readonly hiddenModels: ReadonlyArray<string>;
+  readonly hiddenModelGroups: ReadonlyArray<"cursor" | "api">;
   /** Where the effective values come from, per key: "default" | "user" | "workspace" | "remote". */
   readonly sources: Readonly<Record<string, "default" | "user" | "workspace" | "remote">>;
 }

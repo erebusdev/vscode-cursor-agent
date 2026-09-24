@@ -387,6 +387,26 @@
           ],
           "scope": "resource",
           "markdownDescription": "Regular expressions for the *Safe list* policy. Each is tested against every segment of a shell command (split on `|`, `&&`, `||`, `;`), and against Cursor's permission pattern for tools, e.g. `Mcp(server:tool)`. Commands using redirection, command substitution or an inline shell always prompt."
+        },
+        "cursorAcp.hiddenModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Model ids hidden from the model picker. New models Cursor adds stay visible until hidden. Managed from *Manage models…* at the bottom of the picker."
+        },
+        "cursorAcp.hiddenModelGroups": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cursor",
+              "api"
+            ]
+          },
+          "default": [],
+          "markdownDescription": "Hide a whole group of models from the picker: `cursor` (Cursor's own models, billed as Cursor usage) or `api` (third-party models billed as API usage)."
         }
       }
     }
