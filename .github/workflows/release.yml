@@ -1,8 +1,8 @@
 name: Release
 
 # Every push to main releases automatically. The bump is derived from the
-# commits since the last tag (see "Decide bump"); "Run workflow" lets you
-# force a specific bump instead.
+# commit subjects since the last tag (see "Decide bump"); "Run workflow" lets
+# you force a specific bump instead.
 
 on:
   push:
@@ -53,16 +53,22 @@ jobs:
         run: |
           set -euo pipefail
           last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
-          if [ -n "$last" ]; then range="$last..HEAD"; else range="HEAD"; fi
-          log=$(git log --format='%s%n%b' "$range")
           bump=patch
           if [ "$FORCED" != "auto" ]; then
             bump="$FORCED"
-          elif printf '%s\n' "$log" | grep -Eq '^[a-z]+(\([^)]*\))?!:|^BREAKING CHANGE:|#major'; then
-            bump=major
-          elif printf '%s\n' "$log" | grep -Eq '^feat(\([^)]*\))?:|#minor'; then
-            bump=minor
+          elif [ -n "$last" ]; then
+            # Only commits since the last release count. Subject lines decide: a
+            # conventional "type!:" prefix or a standalone "#major" word bumps major,
+            # "feat:" or a standalone "#minor" word bumps minor, anything else patch.
+            subjects=$(git log --format='%s' "$last..HEAD")
+            footers=$(git log --format='%b' "$last..HEAD" | grep -E '^BREAKING CHANGE:' || true)
+            if printf '%s\n' "$subjects" | grep -Eq '^[a-z]+(\([^)]*\))?!:|(^|[[:space:]])#major([[:space:]]|$)' || [ -n "$footers" ]; then
+              bump=major
+            elif printf '%s\n' "$subjects" | grep -Eq '^feat(\([^)]*\))?:|(^|[[:space:]])#minor([[:space:]]|$)'; then
+              bump=minor
+            fi
           fi
+          # No tag yet means this is the first release: a plain patch bump of package.json.
           echo "Last tag: ${last:-none}; bump: $bump"
           echo "bump=$bump" >> "$GITHUB_OUTPUT"
 
