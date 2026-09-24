@@ -4,12 +4,7 @@
 #   ./build.sh                 build + package
 #   ./build.sh --check         also run typecheck and the unit tests first
 #   ./build.sh --install [...] then install the VSIX with the `code` CLI; any
-#                              extra arguments are passed to `code`, e.g.
-#                              ./build.sh --install --profile "Flexnet"
-#
-# The VSIX itself is profile-agnostic; which VS Code profile it lands in is
-# decided at install time (Extensions view → "Install from VSIX…", or the
-# --profile flag of `code --install-extension`).
+#                              extra arguments are passed to `code`.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -44,5 +39,5 @@ if [[ $install -eq 1 ]]; then
   fi
   code --install-extension "$vsix" "$@"
 else
-  echo "Install with: code --install-extension $vsix   (add --profile <name> to target a profile)"
+  echo "Install with: code --install-extension $vsix"
 fi
