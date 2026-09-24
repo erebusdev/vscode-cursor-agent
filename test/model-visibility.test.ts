@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isModelHidden, modelFamily, modelGroup, sortModelsByFamily, visibleModels } from "../src/shared/modelVisibility";
+import { isAutoModel, isModelHidden, modelFamily, modelGroup, sortModelsByFamily, visibleModels } from "../src/shared/modelVisibility";
 
 const models = [{ modelId: "auto-smart" }, { modelId: "composer-2" }, { modelId: "grok-4.7" }, { modelId: "claude-opus-5-5" }, { modelId: "gpt-5.5" }];
 const cursorIds = ["default", "composer-2", "composer-2-fast", "grok-4.5", "grok-4.5-high"];
@@ -36,5 +36,24 @@ describe("family ordering", () => {
     expect(modelFamily("auto-smart")).toBe("auto");
     const ids = ["gpt-5", "claude-sonnet-4-5", "grok-4.5", "claude-sonnet-5", "gpt-5.5", "auto-smart", "grok-4.7"];
     expect(sortModelsByFamily(ids.map((modelId) => ({ modelId }))).map((m) => m.modelId)).toEqual(["auto-smart", "claude-sonnet-5", "claude-sonnet-4-5", "gpt-5.5", "gpt-5", "grok-4.7", "grok-4.5"]);
+  });
+});
+
+describe("Auto", () => {
+  it("recognises the CLI's real Auto entry and keeps it out of the Cursor and API groups", () => {
+    expect(isAutoModel("default", "Auto")).toBe(true);
+    expect(isAutoModel("default[]")).toBe(true);
+    expect(isAutoModel("auto-smart")).toBe(true);
+    expect(isAutoModel("some-id", "Auto")).toBe(true);
+    expect(isAutoModel("composer-2.5", "Composer 2.5")).toBe(false);
+    expect(isAutoModel("claude-opus-5-5", "Claude Opus 5.5")).toBe(false);
+    // Even if the usage API lists it among Cursor-billed ids, Auto stays Auto.
+    expect(modelGroup("default", ["default", "composer-2.5"], "Auto")).toBe("auto");
+    expect(modelGroup("default")).toBe("auto");
+  });
+
+  it("keeps single-model families next to their neighbours by name, with no lab grouping", () => {
+    const ids = ["gpt-5.5", "kimi-k3", "muse-spark-1.3", "gpt-5.6-sol", "kimi-k2.7-code", "glm-5.2", "gemini-3.1-pro"];
+    expect(sortModelsByFamily(ids.map((modelId) => ({ modelId }))).map((m) => m.modelId)).toEqual(["gemini-3.1-pro", "glm-5.2", "gpt-5.6-sol", "gpt-5.5", "kimi-k2.7-code", "kimi-k3", "muse-spark-1.3"]);
   });
 });

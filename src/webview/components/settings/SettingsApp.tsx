@@ -12,7 +12,7 @@ import { post } from "../../vscode";
 import { Toasts } from "../Toasts";
 import { Icon, Spinner } from "../ui";
 import { SettingRow, SettingsGroup } from "./controls";
-import { ManageModels } from "./ManageModels";
+import { AutoRow, ManageModels } from "./ManageModels";
 import { McpSection } from "./McpSection";
 import { AgentArgsRow, AgentPathRow, ApprovalPolicyRow, BoolRow, EnvRow, ModelDefaultsRow, SafeListEditor, SendShortcutRow, TextRow } from "./rows";
 
@@ -162,6 +162,7 @@ function ModelsPage({ settings }: { settings: ExtensionSettings }) {
       <SettingsGroup title="Defaults for new sessions">
         <ModelDefaultsRow settings={settings} />
       </SettingsGroup>
+      <AutoRow />
       <SettingsGroup title="Visible models">
         <ManageModels />
       </SettingsGroup>

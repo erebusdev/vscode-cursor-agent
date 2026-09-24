@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
-import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, openSettings, useSelector } from "../store";
-import { visibleModels } from "../../shared/modelVisibility";
+import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, openSettings, getState, useSelector } from "../store";
+import { isAutoModel, visibleModels } from "../../shared/modelVisibility";
+import { Toggle } from "./settings/controls";
 import { getPersisted, persist, post } from "../vscode";
 import { readImageFile } from "../attachments";
 import { Popover, PopoverList } from "./Popover";
@@ -140,10 +141,25 @@ function ModelPicker() {
   const anchor = useRef<HTMLButtonElement>(null);
   if (!models || models.availableModels.length === 0) return null;
   const current = models.availableModels.find((m) => m.modelId === models.currentModelId);
-  const shown = visibleModels(models.availableModels, models.currentModelId, visibility);
-  const hiddenCount = models.availableModels.length - shown.length;
+  // Auto is not a model in the list: it is a switch above it (Cursor picks the model per request).
+  const auto = models.availableModels.find((m) => isAutoModel(m.modelId, m.name));
+  const autoOn = !!auto && auto.modelId === models.currentModelId;
+  const specific = models.availableModels.filter((m) => m !== auto);
+  const shown = visibleModels(specific, models.currentModelId, visibility);
+  const autoOffered = !!auto && (autoOn || !visibility.hiddenModels.includes(auto.modelId));
+  const hiddenCount = specific.length - shown.length;
   const q = filter.trim().toLowerCase();
   const filtered = q ? shown.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : shown;
+  /** Model to return to when Auto is switched off: the last one used, else the default, else the first shown. */
+  const manualModel = (): string | undefined => {
+    const available = (id: string | undefined) => (id && specific.some((m) => m.modelId === id) ? id : undefined);
+    return available(getState().lastManualModelId) ?? available(getState().extSettings?.defaultModel) ?? shown[0]?.modelId;
+  };
+  const setAuto = (on: boolean) => {
+    if (!auto) return;
+    const target = on ? auto.modelId : manualModel();
+    if (target && target !== models.currentModelId) post({ type: "model.set", modelId: target });
+  };
   return (
     <>
       <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={`Model and options${modelOptions.length ? `: ${modelOptions.map((o) => `${o.name} ${optionValueLabel(o)}`).join(", ")}` : ""}`}>
@@ -163,6 +179,17 @@ function ModelPicker() {
         minWidth={240}
         class="model-popover"
       >
+        {autoOffered && (
+          <div class="model-auto-row">
+            <label class="model-auto-text" for="model-auto-switch">
+              <span class="model-auto-name">Auto</span>
+              <span class="model-auto-desc">Cursor picks the model for each request</span>
+            </label>
+            <span title={autoOn ? "Turn Auto off and choose a model" : "Let Cursor pick the model for each request"}>
+              <Toggle id="model-auto-switch" checked={autoOn} onChange={setAuto} />
+            </span>
+          </div>
+        )}
         <input
           type="text"
           class="text-input popover-filter"

@@ -4,8 +4,18 @@
  * manager pane; ticking a group is a bulk action over its models.
  */
 
-/** Auto routes to any model (Cursor's or third-party) and is billed as the model it picks, so it is its own group. */
+/**
+ * Auto is not a model: Cursor routes each request to a model (its own or a
+ * third-party one, depending on the account's Auto settings) and bills it as
+ * that model. It is kept out of the model groups and shown as a switch.
+ */
 export type ModelGroup = "auto" | "cursor" | "api";
+
+/** True for Cursor's Auto entry. The CLI reports it as id `default` named "Auto"; older builds used `auto…` ids. */
+export function isAutoModel(modelId: string, name?: string): boolean {
+  const base = modelId.replace(/\[.*$/, "").trim().toLowerCase();
+  return base === "default" || /^auto\b/.test(base) || name?.trim().toLowerCase() === "auto";
+}
 
 /** Cursor's own model families: Composer, Vega, Grok, and anything Cursor-prefixed. */
 const CURSOR_MODEL_ID = /^(composer|vega|grok|cursor)/i;
@@ -15,9 +25,9 @@ export interface ModelVisibility {
 }
 
 /** Group for a model id, preferring the usage API's list of Cursor-pool ids when available. */
-export function modelGroup(modelId: string, cursorModelIds?: ReadonlyArray<string>): ModelGroup {
+export function modelGroup(modelId: string, cursorModelIds?: ReadonlyArray<string>, name?: string): ModelGroup {
   const base = modelId.replace(/\[.*$/, "");
-  if (/^auto\b/i.test(base)) return "auto";
+  if (isAutoModel(modelId, name)) return "auto";
   if (CURSOR_MODEL_ID.test(base)) return "cursor";
   // The usage API's list catches ids the prefix rule does not know about (it lags new releases, so it only ever adds).
   if (cursorModelIds?.some((id) => id === base || base.startsWith(`${id}-`) || id.startsWith(`${base}-`))) return "cursor";
@@ -36,7 +46,7 @@ export function visibleModels<T extends { modelId: string }>(models: ReadonlyArr
 /** Family of a model id: the leading name before any version, e.g. "claude-opus", "gpt", "grok", "composer". */
 export function modelFamily(modelId: string): string {
   const base = modelId.replace(/\[.*$/, "").toLowerCase();
-  if (/^auto\b/.test(base)) return "auto";
+  if (isAutoModel(base)) return "auto";
   // Cut at the first token that starts with a digit ("claude-opus-5-5" → "claude-opus", "gpt-5.5" → "gpt", "o3-pro" → "o3-pro").
   const tokens = base.split(/[-_.]/);
   const cut = tokens.findIndex((t, i) => i > 0 && /^\d/.test(t));

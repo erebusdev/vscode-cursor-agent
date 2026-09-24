@@ -1,3 +1,4 @@
+import { isAutoModel } from "../shared/modelVisibility";
 import { useEffect, useReducer, useRef } from "preact/hooks";
 import type {
   AgentProbe,
@@ -45,6 +46,8 @@ export interface StoreState {
   /** True once the first snapshot arrived. */
   ready: boolean;
   session: SessionState;
+  /** Last specific (non-Auto) model the session used; turning the Auto switch off returns to it. */
+  lastManualModelId?: string;
   settings: UiSettings;
   /** Ordered item ids. New array reference only when membership/order changes. */
   ids: ReadonlyArray<string>;
@@ -293,6 +296,8 @@ export function handleMessage(msg: ExtensionToWebview): void {
     }
     case "session": {
       state.session = msg.session;
+      const current = msg.session.models?.availableModels.find((m) => m.modelId === msg.session.models?.currentModelId);
+      if (current && !isAutoModel(current.modelId, current.name)) state.lastManualModelId = current.modelId;
       break;
     }
     case "settings": {
