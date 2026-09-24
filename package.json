@@ -43,7 +43,8 @@
   "activationEvents": [
     "onStartupFinished",
     "onWebviewPanel:cursorAcp.panel",
-    "onWebviewPanel:cursorAcp.settings"
+    "onWebviewPanel:cursorAcp.settings",
+    "onWebviewPanel:cursorAcp.history"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -114,7 +115,13 @@
       },
       {
         "command": "cursorAcp.showHistory",
-        "title": "Session History…",
+        "title": "Session History",
+        "category": "Cursor Agent",
+        "icon": "$(history)"
+      },
+      {
+        "command": "cursorAcp.quickHistory",
+        "title": "Resume Session…",
         "category": "Cursor Agent",
         "icon": "$(history)"
       },

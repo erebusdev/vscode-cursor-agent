@@ -822,7 +822,20 @@ export class SessionRuntime {
     this.options.storage.setSessionMeta({ ...meta, hidden: [...meta.hidden, sessionId] });
   }
 
-  async listSessions(): Promise<SessionSummary[]> {
+  /** Shows or hides several sessions at once (the history tab's bulk actions and Unhide). */
+  setSessionsHidden(sessionIds: ReadonlyArray<string>, hide: boolean): void {
+    const meta = this.options.storage.getSessionMeta();
+    const hidden = new Set(meta.hidden);
+    for (const id of sessionIds) {
+      if (hide) hidden.add(id);
+      else hidden.delete(id);
+    }
+    if (hidden.size === meta.hidden.length && meta.hidden.every((id) => hidden.has(id))) return;
+    this.options.storage.setSessionMeta({ ...meta, hidden: [...hidden] });
+  }
+
+  /** Lists this folder's sessions, newest first. Hidden ones are left out unless `includeHidden` (then flagged `hidden`). */
+  async listSessions(options: { readonly includeHidden?: boolean } = {}): Promise<SessionSummary[]> {
     const connection = await this.ensureConnected();
     if (!this.initializeResult?.agentCapabilities?.sessionCapabilities?.list) {
       throw new Error("This agent does not support listing sessions.");
@@ -831,12 +844,14 @@ export class SessionRuntime {
     const meta = this.options.storage.getSessionMeta();
     const hidden = new Set(meta.hidden);
     return response.sessions
-      .filter((s) => !hidden.has(s.sessionId))
+      .filter((s) => options.includeHidden || !hidden.has(s.sessionId))
       .map((s) => ({
         sessionId: s.sessionId,
         ...(meta.titles[s.sessionId]?.trim() ? { title: meta.titles[s.sessionId] } : s.title ? { title: s.title } : {}),
         ...(s.cwd ? { cwd: s.cwd } : {}),
         ...(s.updatedAt ? { updatedAt: s.updatedAt } : {}),
+        ...(hidden.has(s.sessionId) ? { hidden: true } : {}),
+        ...(meta.models?.[s.sessionId]?.modelId ? { modelId: meta.models[s.sessionId]!.modelId } : {}),
       }))
       .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
   }
