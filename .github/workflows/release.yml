@@ -1,18 +1,20 @@
 name: Release
 
-# Manual: Actions → Release → Run workflow → pick patch / minor / major.
-# Bumps package.json, commits and tags vX.Y.Z on main, builds the VSIX and
-# attaches it to a GitHub Release with auto-generated notes.
+# Every push to main releases automatically. The bump is derived from the
+# commits since the last tag (see "Decide bump"); "Run workflow" lets you
+# force a specific bump instead.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump
+        description: Force a version bump
         type: choice
         required: true
-        default: patch
-        options: [patch, minor, major]
+        default: auto
+        options: [auto, patch, minor, major]
 
 permissions:
   contents: write
@@ -24,6 +26,11 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The bot's own "Release vX.Y.Z" commit does not trigger workflows (GITHUB_TOKEN pushes
+    # never do), but guard anyway. "[skip release]" in the head commit skips a release.
+    if: >-
+      !startsWith(github.event.head_commit.message, 'Release v') &&
+      !contains(github.event.head_commit.message, '[skip release]')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,12 +46,32 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+      - name: Decide bump
+        id: decide
+        env:
+          FORCED: ${{ inputs.bump || 'auto' }}
+        run: |
+          set -euo pipefail
+          last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -n "$last" ]; then range="$last..HEAD"; else range="HEAD"; fi
+          log=$(git log --format='%s%n%b' "$range")
+          bump=patch
+          if [ "$FORCED" != "auto" ]; then
+            bump="$FORCED"
+          elif printf '%s\n' "$log" | grep -Eq '^[a-z]+(\([^)]*\))?!:|^BREAKING CHANGE:|#major'; then
+            bump=major
+          elif printf '%s\n' "$log" | grep -Eq '^feat(\([^)]*\))?:|#minor'; then
+            bump=minor
+          fi
+          echo "Last tag: ${last:-none}; bump: $bump"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
       - name: Bump version and tag
         id: bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          npm version "${{ inputs.bump }}" -m "Release v%s"
+          npm version "${{ steps.decide.outputs.bump }}" -m "Release v%s"
           echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - run: npm run package
