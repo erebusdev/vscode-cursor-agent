@@ -288,6 +288,12 @@
           "scope": "machine-overridable",
           "markdownDescription": "Path to the Cursor Agent CLI executable (or a wrapper script) that supports `acp`. Leave empty to auto-detect `cursor-agent` (then `agent`) from PATH, your login shell and common install directories; a configured value is always used instead. The extension runs `<agentPath> [agentArgs...] acp`. Example: `/Users/me/.local/bin/cursor-flexnet`. Resolved on the machine that hosts the workspace (the remote host when using Remote SSH)."
         },
+        "cursorAcp.agentPathWindows": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Agent path used only when VS Code's extension host runs on Windows itself. WSL and remote windows ignore this and use `cursorAcp.agentPath`. Leave empty to auto-detect `agent.exe` / `agent.cmd` from PATH and `%LOCALAPPDATA%\\cursor-agent`."
+        },
         "cursorAcp.agentArgs": {
           "type": "array",
           "items": {

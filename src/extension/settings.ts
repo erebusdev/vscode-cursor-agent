@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { execFile, type ExecFileException } from "node:child_process";
 import type { AgentProbe, ExtensionSettings, SettingsKey } from "../shared/protocol";
 import { describeDefaultAgentCommands, resolveAgentExecutable } from "./acp/resolveExecutable";
+import { AGENT_PATH_KEY } from "./platform";
 
 const SECTION = "cursorAcp";
 
@@ -20,11 +21,13 @@ function sourceOf(inspect: ReturnType<vscode.WorkspaceConfiguration["inspect"]>)
 
 export function readExtensionSettings(): ExtensionSettings {
   const config = vscode.workspace.getConfiguration(SECTION);
-  const keys: SettingsKey[] = ["agentPath", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging"];
+  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging"];
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
     agentPath: config.get<string>("agentPath", ""),
+    agentPathWindows: config.get<string>("agentPathWindows", ""),
+    agentPathKey: AGENT_PATH_KEY,
     agentArgs: config.get<string[]>("agentArgs", []),
     environment: config.get<Record<string, string>>("environment", {}),
     configDir: config.get<string>("configDir", ""),

@@ -12,6 +12,7 @@ import { DiffContentProvider } from "./DiffContentProvider";
 import { MessageBatcher } from "./MessageBatcher";
 import { fetchCursorUsage } from "./session/usage";
 import { probeAgent, readExtensionSettings, resetExtensionSetting, updateExtensionSetting } from "./settings";
+import { AGENT_PATH_KEY } from "./platform";
 
 function isSubsequence(needle: string, haystack: string): boolean {
   let i = 0;
@@ -62,7 +63,7 @@ export class ChatHost implements vscode.Disposable {
         if (event.affectsConfiguration("cursorAcp")) {
           this.send({ type: "settings", settings: this.uiSettings() });
           this.send({ type: "extensionSettings", settings: readExtensionSettings() });
-          if (event.affectsConfiguration("cursorAcp.agentPath") || event.affectsConfiguration("cursorAcp.environment")) {
+          if (event.affectsConfiguration(`cursorAcp.${AGENT_PATH_KEY}`) || event.affectsConfiguration("cursorAcp.environment")) {
             void this.probe();
           }
         }
@@ -342,7 +343,7 @@ export class ChatHost implements vscode.Disposable {
           const picked = await vscode.window.showOpenDialog({ canSelectMany: false, canSelectFolders: false, openLabel: "Use as Cursor Agent executable", title: "Select the Cursor Agent CLI (or a wrapper script)" });
           const uri = picked?.[0];
           if (uri) {
-            await updateExtensionSetting("agentPath", uri.fsPath);
+            await updateExtensionSetting(AGENT_PATH_KEY, uri.fsPath);
             this.send({ type: "extensionSettings", settings: readExtensionSettings() });
             await this.probe();
           }
@@ -397,9 +398,10 @@ export class ChatHost implements vscode.Disposable {
   /** Resolves the configured executable and reads its version; results go to the settings panel. */
   async probe(): Promise<void> {
     const settings = readExtensionSettings();
-    this.send({ type: "agentProbe", probe: { state: "checking", configuredPath: settings.agentPath, checkedAt: Date.now() } });
+    const configuredPath = settings[AGENT_PATH_KEY];
+    this.send({ type: "agentProbe", probe: { state: "checking", configuredPath, checkedAt: Date.now() } });
     const env: NodeJS.ProcessEnv = { ...process.env, ...settings.environment };
-    const probe = await probeAgent(settings.agentPath, env);
+    const probe = await probeAgent(configuredPath, env);
     this.lastProbe = probe;
     this.log.info(`Agent probe: ${probe.state}${probe.resolvedPath ? ` (${probe.resolvedPath}${probe.version ? `, ${probe.version}` : ""})` : ""}${probe.error ? ` – ${probe.error}` : ""}`);
     this.send({ type: "agentProbe", probe });

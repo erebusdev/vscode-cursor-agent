@@ -1,8 +1,10 @@
 /**
  * Spawns and supervises the `agent acp` child process.
  */
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { AGENT_PATH_KEY, IS_WINDOWS } from "../platform";
 import { describeDefaultAgentCommands, resolveAgentExecutable } from "./resolveExecutable";
+import { planLaunch, type LaunchPlan } from "./windowsLaunch";
 
 export interface AgentSpawnOptions {
   readonly command: string;
@@ -36,6 +38,7 @@ export class AgentProcess {
     readonly child: ChildProcessWithoutNullStreams,
     readonly resolvedCommand: string,
     readonly displayCommand: string,
+    readonly plan: LaunchPlan,
   ) {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
@@ -67,20 +70,25 @@ export class AgentProcess {
     if (!found) {
       throw new AgentProcessError(
         options.command.trim() ? `Cursor Agent executable not found: "${options.command.trim()}".` : `Cursor Agent CLI not found (looked for ${describeDefaultAgentCommands()}).`,
-        "Install the Cursor Agent CLI, or set `cursorAcp.agentPath` to the full path of the `agent` CLI (or a wrapper script), e.g. /Users/me/.local/bin/agent.",
+        IS_WINDOWS
+          ? `Install the Cursor Agent CLI (irm 'https://cursor.com/install?win32=true' | iex), or set \`cursorAcp.${AGENT_PATH_KEY}\` to the full path of agent.cmd, e.g. %LOCALAPPDATA%\\cursor-agent\\agent.cmd.`
+          : "Install the Cursor Agent CLI, or set `cursorAcp.agentPath` to the full path of the `agent` CLI (or a wrapper script), e.g. /Users/me/.local/bin/agent.",
       );
     }
     const resolved = found.path;
     const displayCommand = [resolved, ...options.args].join(" ");
-    const child = spawn(resolved, [...options.args], {
+    const plan = planLaunch(resolved, options.args, options.env);
+    const child = spawn(plan.file, [...plan.args], {
       cwd: options.cwd,
-      env: options.env,
+      env: plan.env ? { ...options.env, ...plan.env } : options.env,
       stdio: ["pipe", "pipe", "pipe"],
-      // The wrapper scripts are plain sh; no shell needed, and avoiding one keeps argv intact.
+      // Never a shell: on POSIX the wrappers are plain sh scripts, and on Windows the plan
+      // already names the interpreter explicitly (see windowsLaunch.ts).
       shell: false,
       windowsHide: true,
+      windowsVerbatimArguments: plan.windowsVerbatimArguments ?? false,
     });
-    const process = new AgentProcess(child, resolved, displayCommand);
+    const process = new AgentProcess(child, resolved, displayCommand, plan);
     if (options.onStderr) {
       child.stderr.on("data", (chunk: string) => options.onStderr?.(chunk));
     }
@@ -97,7 +105,7 @@ export class AgentProcess {
             `Failed to launch "${displayCommand}": ${error.message}`,
             error.code === "EACCES"
               ? "The file is not executable. Check its permissions (chmod +x)."
-              : "Check `cursorAcp.agentPath` and that the Cursor Agent CLI is installed on this machine.",
+              : `Check \`cursorAcp.${AGENT_PATH_KEY}\` and that the Cursor Agent CLI is installed on this machine.`,
           ),
         );
       };
@@ -111,6 +119,32 @@ export class AgentProcess {
 
   get pid(): number | undefined {
     return this.child.pid;
+  }
+
+  private killTreeWindows(pid: number, graceMs: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        dispose();
+        resolve();
+      };
+      const dispose = this.onExit(finish);
+      const timer = setTimeout(() => {
+        // taskkill did not report an exit in time; fall back to Node's TerminateProcess.
+        try {
+          this.child.kill();
+        } catch {
+          // ignore
+        }
+        setTimeout(finish, 500);
+      }, graceMs);
+      execFile("taskkill", ["/pid", String(pid), "/t", "/f"], { windowsHide: true }, () => {
+        // Exit is observed through the 'exit' event; errors here (already gone) are fine.
+      });
+    });
   }
 
   get exit(): AgentExit | undefined {
@@ -137,6 +171,10 @@ export class AgentProcess {
    * Graceful stop: close stdin, SIGTERM, then SIGKILL after a grace period.
    * Always resolves within `graceMs` (plus a short SIGKILL wait), even if the
    * child never reports an exit, so shutdown cannot hang on a stuck agent.
+   *
+   * On Windows there are no signals and the agent may be a tree
+   * (cmd.exe → powershell.exe → node.exe), so `taskkill /t /f` is used
+   * instead; it takes the whole tree down in one go.
    */
   async kill(graceMs = 1500): Promise<void> {
     if (this.exited) return;
@@ -147,6 +185,10 @@ export class AgentProcess {
       if (!child.stdin.destroyed) child.stdin.end();
     } catch {
       // ignore
+    }
+    if (IS_WINDOWS) {
+      await this.killTreeWindows(child.pid, graceMs);
+      return;
     }
     let signalled = false;
     try {

@@ -30,11 +30,16 @@ find the CLI, or you launch it through a wrapper script, set the path in the
 view's settings (gear icon) or in `cursorAcp.agentPath`. The extension runs
 `<agentPath> [agentArgs...] acp`.
 
+On Windows, install the CLI with `irm 'https://cursor.com/install?win32=true' | iex`
+for native use, or inside WSL with the command above for WSL windows. Native
+Windows and WSL keep separate path settings.
+
 ## Settings
 
 | Setting | Description |
 | --- | --- |
-| `cursorAcp.agentPath` | Executable or wrapper script. Empty = auto-detect. |
+| `cursorAcp.agentPath` | Executable or wrapper script. Empty = auto-detect. Used by macOS, Linux, WSL and Remote SSH hosts. |
+| `cursorAcp.agentPathWindows` | Same, but read only when VS Code itself runs on Windows. Empty = auto-detect. |
 | `cursorAcp.agentArgs` | Extra args inserted before `acp`. |
 | `cursorAcp.environment` | Extra env vars for the agent process. |
 | `cursorAcp.configDir` | Cursor config dir, used by the usage panel. Empty = auto-detect. |

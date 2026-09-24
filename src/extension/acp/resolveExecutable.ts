@@ -73,15 +73,26 @@ function expandHome(path: string): string {
   return path;
 }
 
+/**
+ * Extensions tried for a bare name. On Windows a real `.exe` beats the
+ * `.cmd`/`.ps1` shims the Cursor installer ships (see windowsLaunch.ts).
+ */
+const CANDIDATE_EXTS = process.platform === "win32" ? ["", ".exe", ".cmd", ".bat", ".ps1"] : [""];
+
+async function findWithExts(base: string): Promise<string | undefined> {
+  for (const ext of CANDIDATE_EXTS) {
+    const candidate = base + ext;
+    if (await isExecutable(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 async function findInPath(name: string, pathValue: string | undefined): Promise<string | undefined> {
   if (!pathValue) return undefined;
-  const exts = process.platform === "win32" ? ["", ".cmd", ".exe", ".bat"] : [""];
   for (const dir of pathValue.split(delimiter)) {
     if (!dir) continue;
-    for (const ext of exts) {
-      const candidate = join(dir, name + ext);
-      if (await isExecutable(candidate)) return candidate;
-    }
+    const found = await findWithExts(join(dir, name));
+    if (found) return found;
   }
   return undefined;
 }
@@ -138,21 +149,26 @@ export async function resolveExecutable(command: string, env: NodeJS.ProcessEnv)
   const trimmed = expandHome(command.trim());
   if (!trimmed) return undefined;
   if (isAbsolute(trimmed) || trimmed.includes("/") || trimmed.includes("\\")) {
-    return (await isExecutable(trimmed)) ? trimmed : undefined;
+    // An explicit path may omit the extension on Windows (C:\...\cursor-agent\agent).
+    return findWithExts(trimmed);
   }
   const fromPath = await findInPath(trimmed, env.PATH);
   if (fromPath) return fromPath;
   const fromLoginShell = await findInPath(trimmed, await loginShellPath(env));
   if (fromLoginShell) return fromLoginShell;
-  const home = env.HOME || homedir();
-  const wellKnown = [
-    join(home, ".local", "bin", trimmed),
-    join(home, ".cursor", "bin", trimmed),
-    "/usr/local/bin/" + trimmed,
-    "/opt/homebrew/bin/" + trimmed,
-  ];
+  const home = env.HOME || env.USERPROFILE || homedir();
+  const wellKnown =
+    process.platform === "win32"
+      ? [
+          // Cursor's PowerShell installer puts the shims here and adds the dir to the *user* PATH,
+          // which an already-running VS Code does not see until it is restarted.
+          ...(env.LOCALAPPDATA ? [join(env.LOCALAPPDATA, "cursor-agent", trimmed)] : []),
+          join(home, ".local", "bin", trimmed),
+        ]
+      : [join(home, ".local", "bin", trimmed), join(home, ".cursor", "bin", trimmed), "/usr/local/bin/" + trimmed, "/opt/homebrew/bin/" + trimmed];
   for (const candidate of wellKnown) {
-    if (await isExecutable(candidate)) return candidate;
+    const found = await findWithExts(candidate);
+    if (found) return found;
   }
   return undefined;
 }

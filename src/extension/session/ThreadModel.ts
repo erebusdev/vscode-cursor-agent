@@ -255,9 +255,13 @@ export class ThreadModel {
     if (/^`[^`]+`$/.test(title)) return title; // a bare command title: keep as-is (rendered monospace)
     const withoutBackticks = title.replace(/`([^`]+)`/g, (match, inner: string) => (isAbsolute(inner) ? this.toDisplayPath(inner) : match));
     // Also shorten bare absolute paths inside the workspace ("Read /abs/ws/file.ts" → "Read file.ts").
+    // The agent may report paths with either separator on Windows, so both forms are stripped.
     if (this.cwd) {
-      const prefix = this.cwd.endsWith(sep) ? this.cwd : this.cwd + sep;
-      return withoutBackticks.split(prefix).join("");
+      const base = this.cwd.replace(/[\\/]+$/, "");
+      const alt = base.includes("\\") ? base.split("\\").join("/") : base.split("/").join("\\");
+      let out = withoutBackticks;
+      for (const prefix of new Set([base + "/", base + "\\", alt + "/", alt + "\\"])) out = out.split(prefix).join("");
+      return out;
     }
     return withoutBackticks;
   }

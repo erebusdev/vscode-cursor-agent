@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ChatHost } from "./ChatHost";
+import { AGENT_PATH_KEY } from "./platform";
 import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
 import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
@@ -25,7 +26,8 @@ let runtime: SessionRuntime | undefined;
 function launchConfig(): AgentLaunchConfig {
   const config = vscode.workspace.getConfiguration("cursorAcp");
   // Empty means auto-detect (see DEFAULT_AGENT_COMMANDS); anything else is used as-is.
-  const command = config.get<string>("agentPath", "").trim();
+  // Windows hosts read their own key so a Windows path never leaks into WSL/SSH windows.
+  const command = config.get<string>(AGENT_PATH_KEY, "").trim();
   const args = config.get<string[]>("agentArgs", []).filter((a) => typeof a === "string");
   const extraEnv = config.get<Record<string, string>>("environment", {});
   const env: NodeJS.ProcessEnv = { ...process.env };

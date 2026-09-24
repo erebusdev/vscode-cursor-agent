@@ -193,16 +193,16 @@ export function ProbeStatus({ probe }: { probe: AgentProbe | undefined }) {
 }
 
 /** Agent path input with Browse / Test, shared by the settings panel and the setup card. */
-export function AgentPathControl({ id, value, onSaved }: { id: string; value: string; onSaved?: () => void }) {
+export function AgentPathControl({ id, settingKey, value, onSaved }: { id: string; settingKey: "agentPath" | "agentPathWindows"; value: string; onSaved?: () => void }) {
   const probe = useSelector((s) => s.probe);
   const commit = (next: string) => {
-    updateSetting("agentPath", next);
+    updateSetting(settingKey, next);
     onSaved?.();
   };
   return (
     <div class="agent-path">
       <div class="agent-path-row">
-        <CommitInput id={id} value={value} placeholder="Auto-detect: cursor-agent or agent" mono ariaLabel="Agent executable path" onCommit={commit} />
+        <CommitInput id={id} value={value} placeholder={settingKey === "agentPathWindows" ? "Auto-detect: agent.exe or agent.cmd" : "Auto-detect: cursor-agent or agent"} mono ariaLabel="Agent executable path" onCommit={commit} />
         <button type="button" class="button secondary small" onClick={() => post({ type: "settings.browseAgent" })}>
           Browse…
         </button>
@@ -365,22 +365,26 @@ function BoolRow({ settings, k, label, description }: { settings: ExtensionSetti
 
 function AgentPathRow({ settings, onSaved }: { settings: ExtensionSettings; onSaved: () => void }) {
   const [saved, flash] = useSavedFlash();
+  const key = settings.agentPathKey;
+  const windows = key === "agentPathWindows";
   return (
     <SettingRow
       id="setting-agentPath"
-      settingKey="agentPath"
-      label="Agent path"
+      settingKey={key}
+      label={windows ? "Agent path (Windows)" : "Agent path"}
       description={
         <>
-          Path to the Cursor Agent CLI (or a wrapper script). The extension runs <code>&lt;path&gt; [args…] acp</code>. Resolved on the machine that hosts the workspace.
+          Path to the Cursor Agent CLI (or a wrapper script). The extension runs <code>&lt;path&gt; [args…] acp</code>. Resolved on the machine that hosts the workspace
+          {windows ? "; this Windows-only key is ignored by WSL and remote windows, which use their own." : "."}
         </>
       }
-      source={settings.sources.agentPath}
+      source={settings.sources[key]}
       saved={saved}
     >
       <AgentPathControl
         id="setting-agentPath"
-        value={settings.agentPath}
+        settingKey={key}
+        value={settings[key]}
         onSaved={() => {
           flash();
           onSaved();

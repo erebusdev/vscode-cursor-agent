@@ -46,7 +46,7 @@ export function SetupCard() {
       <label class="setting-label" for="setup-agentPath">
         Agent path
       </label>
-      <AgentPathControl id="setup-agentPath" value={settings?.agentPath ?? ""} />
+      <AgentPathControl id="setup-agentPath" settingKey={settings?.agentPathKey ?? "agentPath"} value={settings ? settings[settings.agentPathKey] : ""} />
       <div class="card-actions">
         <button type="button" class="button primary" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name="plug" /> Connect

@@ -388,7 +388,12 @@ export interface UiSettings {
 
 /** Full extension configuration, mirrored from VS Code settings for the in-app settings panel. */
 export interface ExtensionSettings {
+  /** Agent path used by macOS, Linux, WSL and Remote SSH hosts. */
   readonly agentPath: string;
+  /** Agent path used only when the extension host itself runs on Windows. */
+  readonly agentPathWindows: string;
+  /** Which of the two path keys this extension host actually reads. */
+  readonly agentPathKey: "agentPath" | "agentPathWindows";
   readonly agentArgs: ReadonlyArray<string>;
   readonly environment: Readonly<Record<string, string>>;
   readonly configDir: string;
@@ -401,7 +406,7 @@ export interface ExtensionSettings {
   readonly sources: Readonly<Record<string, "default" | "user" | "workspace" | "remote">>;
 }
 
-export type SettingsKey = keyof Omit<ExtensionSettings, "sources">;
+export type SettingsKey = keyof Omit<ExtensionSettings, "sources" | "agentPathKey">;
 
 /** Result of probing the configured executable (resolve on disk + `--version`). */
 export interface AgentProbe {
