@@ -3,8 +3,8 @@
 A VS Code extension that runs the [Cursor Agent CLI](https://cursor.com/docs/cli)
 in the sidebar. It talks to the CLI over its Agent Client Protocol mode
 (`agent acp`) and gives you streaming chat, tool calls, diffs, permission
-prompts, mode and model selection, and session resume. Works with local
-folders and over Remote SSH.
+prompts, mode and model selection, and session resume. Works on macOS, Linux
+and Windows, and inside WSL and Remote SSH windows.
 
 ## Install
 
@@ -16,23 +16,16 @@ code --install-extension cursor-agent-<version>.vsix
 
 ## Setup
 
-1. Install the CLI and log in:
+Open the Cursor view with `Cmd+Alt+C` (`Ctrl+Alt+C` on Windows and Linux).
+If the CLI is missing or not logged in, the view offers to install it and
+sign you in; both run Cursor's own commands in a visible terminal on the
+machine that hosts your workspace, so WSL and remote windows set up the
+remote side.
 
-   ```
-   curl https://cursor.com/install -fsS | bash
-   agent login
-   ```
-
-2. Open the Cursor view with `Cmd+Alt+C`.
-
-The extension looks for `cursor-agent` or `agent` on your PATH. If it can't
-find the CLI, or you launch it through a wrapper script, set the path in the
-view's settings (gear icon) or in `cursorAcp.agentPath`. The extension runs
+The extension finds `cursor-agent` or `agent` on your PATH, or in Cursor's
+default install location. If you use a wrapper script or a non-standard
+path, set it in the view's settings (gear icon). The extension runs
 `<agentPath> [agentArgs...] acp`.
-
-On Windows, install the CLI with `irm 'https://cursor.com/install?win32=true' | iex`
-for native use, or inside WSL with the command above for WSL windows. Native
-Windows and WSL keep separate path settings.
 
 ## Settings
 
