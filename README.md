@@ -27,6 +27,20 @@ default install location. If you use a wrapper script or a non-standard
 path, set it on the Agent page of the settings tab (gear icon in the chat
 header). The extension runs `<agentPath> [agentArgs...] acp`.
 
+## Session history
+
+Hover the history button in the chat header for this folder's recent
+sessions; click one to resume it. Clicking the button (or *All history…*, or
+*Cursor Agent: Session History*) opens the *Cursor Agent History* editor tab:
+sessions grouped by date, with search (title, session id, folder), sort
+(newest, oldest, title), inline rename (double-click a title), copy id,
+hide and unhide (one at a time or several with the checkboxes; *Show hidden*
+lists the ones you hid) and resume, which brings the chat forward. Renames
+and hidden sessions are kept by the extension; the sessions themselves are
+never changed. The new-chat screen offers *Resume* for the last session and a
+*History* link. For the keyboard, *Cursor Agent: Resume Session…* is a quick
+pick of the same list.
+
 ## Settings
 
 Settings open in their own editor tab, *Cursor Agent Settings*: click the
@@ -83,6 +97,10 @@ The agent is started with your login shell's PATH, so servers launched with `npx
 | `Cmd+Alt+N` | New session (while the view is focused) |
 | `Cmd+Alt+Y` | Cycle approvals: Ask → Safe list → Auto (while the view is focused) |
 | Palette: *Cursor Agent: Copy Session Id* | Copies the current Cursor session id (also on each history row) |
+| Palette: *Cursor Agent: Session History* | Opens the history tab (also a click on the history button) |
+| Palette: *Cursor Agent: Resume Session…* | Quick pick of this folder's sessions |
+| `↓` on the history button | Opens the recent sessions as a menu |
+| `/` or `Cmd+F` in the history tab | Search; `Enter` resumes the first match, `Esc` clears |
 | Palette: *Cursor Agent: Open Settings* | Opens the settings tab (also the gear in the chat header) |
 | `↑` `↓` `Home` `End` | Move between settings pages when the page list has focus |
 | `Enter` / `Shift+Enter` | Send / insert newline (swap to `Cmd+Enter` under *General → Send shortcut*) |
