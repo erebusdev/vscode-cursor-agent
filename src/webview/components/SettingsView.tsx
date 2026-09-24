@@ -577,6 +577,8 @@ function EnvRow({ settings, onSaved }: { settings: ExtensionSettings; onSaved: (
 // Panel
 // ---------------------------------------------------------------------------
 
+type SettingsTab = "agent" | "approvals" | "models" | "behaviour" | "advanced";
+
 export function SettingsView() {
   const settings = useSelector((s) => s.extSettings);
   const [connectionChanged, setConnectionChanged] = useState(false);
@@ -600,19 +602,56 @@ export function SettingsView() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  const [tab, setTab] = useState<SettingsTab>("agent");
+  const tabs: ReadonlyArray<{ id: SettingsTab; label: string; hint: string }> = [
+    { id: "agent", label: "Agent", hint: "Where the Cursor CLI is and how it is launched" },
+    { id: "approvals", label: "Approvals", hint: "What runs without asking" },
+    { id: "models", label: "Models", hint: "Defaults for new sessions and which models are shown" },
+    { id: "behaviour", label: "Behaviour", hint: "Resume, send key, thinking blocks, notifications" },
+    { id: "advanced", label: "Advanced", hint: "Logging and raw settings" },
+  ];
+  const onTabKey = (e: KeyboardEvent) => {
+    const i = tabs.findIndex((t) => t.id === tab);
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length]!;
+      setTab(next.id);
+      requestAnimationFrame(() => document.getElementById(`settings-tab-${next.id}`)?.focus());
+    }
+  };
+
   return (
     <div class="settings-view" role="region" aria-label="Settings">
       <div class="settings-top">
         <IconButton ref={backRef} icon="arrow-left" label="Back to chat" onClick={() => setSettingsOpen(false)} />
         <h2 class="settings-title">Settings</h2>
       </div>
-      <div class="settings-scroll">
+      <div class="settings-tabs" role="tablist" aria-label="Settings sections" onKeyDown={onTabKey}>
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            id={`settings-tab-${t.id}`}
+            type="button"
+            role="tab"
+            class={`settings-tab${tab === t.id ? " active" : ""}`}
+            aria-selected={tab === t.id}
+            aria-controls={`settings-panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
+            title={t.hint}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div class="settings-scroll" id={`settings-panel-${tab}`} role="tabpanel" aria-labelledby={`settings-tab-${tab}`}>
         {!settings ? (
           <div class="settings-loading">
             <Spinner /> Loading settings…
           </div>
         ) : (
           <>
+            {tab === "agent" && (
             <section class="settings-section" aria-labelledby="settings-agent">
               <h3 id="settings-agent" class="settings-heading">
                 Agent
@@ -622,7 +661,9 @@ export function SettingsView() {
               <EnvRow settings={settings} onSaved={markConnectionChange} />
               <TextRow settings={settings} k="configDir" label="Config directory" description="Cursor's config directory. Only used by the usage panel to read local usage data; leave empty to use the default location." placeholder="~/.cursor" mono />
             </section>
+            )}
 
+            {tab === "approvals" && (
             <section class="settings-section" aria-labelledby="settings-approvals">
               <h3 id="settings-approvals" class="settings-heading">
                 Approvals
@@ -630,7 +671,9 @@ export function SettingsView() {
               <ApprovalPolicyRow settings={settings} />
               <SafeListRow settings={settings} />
             </section>
+            )}
 
+            {tab === "models" && (
             <section class="settings-section" aria-labelledby="settings-models">
               <h3 id="settings-models" class="settings-heading">
                 Models
@@ -642,7 +685,9 @@ export function SettingsView() {
                 </button>
               </div>
             </section>
+            )}
 
+            {tab === "behaviour" && (
             <section class="settings-section" aria-labelledby="settings-behaviour">
               <h3 id="settings-behaviour" class="settings-heading">
                 Behaviour
@@ -652,7 +697,9 @@ export function SettingsView() {
               <BoolRow settings={settings} k="showThoughts" label="Show thinking" description="Show the agent's reasoning blocks in the transcript." />
               <BoolRow settings={settings} k="notifyWhenHidden" label="Notify when hidden" description="Show a VS Code notification when the agent needs permission or finishes while the chat is not visible." />
             </section>
+            )}
 
+            {tab === "advanced" && (
             <section class="settings-section" aria-labelledby="settings-advanced">
               <h3 id="settings-advanced" class="settings-heading">
                 Advanced
@@ -667,8 +714,9 @@ export function SettingsView() {
                 </button>
               </div>
             </section>
+            )}
 
-            {connectionChanged && (
+            {connectionChanged && tab === "agent" && (
               <div class="settings-footer" role="status">
                 <Icon name="info" />
                 <span>Changes to the agent path, arguments or environment take effect on the next connection.</span>

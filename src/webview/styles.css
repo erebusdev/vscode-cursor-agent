@@ -2571,6 +2571,30 @@ button.chip:disabled {
   min-width: 22px;
   justify-content: center;
 }
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex: none;
+}
+.settings-tab {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.settings-tab:hover {
+  color: var(--vscode-foreground);
+  background: var(--hover-bg);
+}
+.settings-tab.active {
+  color: var(--vscode-foreground);
+  background: var(--vscode-toolbar-activeBackground, var(--hover-bg));
+  font-weight: 600;
+}
 .settings-title,
 .pane-title {
   margin: 0;
