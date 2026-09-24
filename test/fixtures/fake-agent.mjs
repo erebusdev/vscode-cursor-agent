@@ -21,17 +21,30 @@
  *   FAKE_AGENT_STORE=<file.json>  keeps sessions in this file, so they survive a restart (like Cursor's own store)
  */
 import readline from "node:readline";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
 const STORE = process.env.FAKE_AGENT_STORE;
-const stored = STORE && existsSync(STORE) ? JSON.parse(readFileSync(STORE, "utf8")) : undefined;
+function readStore() {
+  if (!STORE || !existsSync(STORE)) return undefined;
+  // A previous agent process may still be writing it; a partial file counts as empty.
+  try {
+    return JSON.parse(readFileSync(STORE, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+const stored = readStore();
 const sessions = new Map(stored?.sessions ?? []);
 let nextId = stored?.nextId ?? 1000;
 // Session ids are unique per agent process (a restarted agent never reuses one), like Cursor's UUIDs.
 const idPrefix = randomBytes(3).toString("hex");
 function persist() {
-  if (STORE) writeFileSync(STORE, JSON.stringify({ nextId, sessions: [...sessions] }));
+  if (!STORE) return;
+  // Write then rename, so another agent process never reads a half-written file.
+  const tmp = `${STORE}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ nextId, sessions: [...sessions] }));
+  renameSync(tmp, STORE);
 }
 const pending = new Map();
 let cancelled = false;
