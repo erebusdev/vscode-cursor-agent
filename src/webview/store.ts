@@ -104,6 +104,11 @@ const state: StoreState = {
   resetSeq: 0,
 };
 
+/** Older hosts (or test harnesses) may omit newer optional fields; keep the shape stable for the UI. */
+function normalizeSettings(settings: UiSettings): UiSettings {
+  return { ...settings, hiddenModels: settings.hiddenModels ?? [], hiddenModelGroups: settings.hiddenModelGroups ?? [] };
+}
+
 export function getState(): StoreState {
   return state;
 }
@@ -287,7 +292,7 @@ export function handleMessage(msg: ExtensionToWebview): void {
   switch (msg.type) {
     case "snapshot": {
       state.session = msg.session;
-      state.settings = msg.settings;
+      state.settings = normalizeSettings(msg.settings);
       state.hostDraft = msg.draft;
       state.ready = true;
       replaceItems(msg.items);
@@ -298,7 +303,7 @@ export function handleMessage(msg: ExtensionToWebview): void {
       break;
     }
     case "settings": {
-      state.settings = msg.settings;
+      state.settings = normalizeSettings(msg.settings);
       break;
     }
     case "item.upsert": {

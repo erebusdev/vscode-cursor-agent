@@ -24,12 +24,12 @@ export function modelGroup(modelId: string, cursorModelIds?: ReadonlyArray<strin
   return CURSOR_MODEL_ID.test(base) ? "cursor" : "api";
 }
 
-export function isModelHidden(modelId: string, visibility: ModelVisibility, cursorModelIds?: ReadonlyArray<string>): boolean {
-  if (visibility.hiddenModels.includes(modelId)) return true;
-  return visibility.hiddenModelGroups.includes(modelGroup(modelId, cursorModelIds));
+export function isModelHidden(modelId: string, visibility: Partial<ModelVisibility>, cursorModelIds?: ReadonlyArray<string>): boolean {
+  if ((visibility.hiddenModels ?? []).includes(modelId)) return true;
+  return (visibility.hiddenModelGroups ?? []).includes(modelGroup(modelId, cursorModelIds));
 }
 
 /** Models to offer in the picker: everything not hidden, plus the current one even if hidden. */
-export function visibleModels<T extends { modelId: string }>(models: ReadonlyArray<T>, currentModelId: string | undefined, visibility: ModelVisibility, cursorModelIds?: ReadonlyArray<string>): T[] {
+export function visibleModels<T extends { modelId: string }>(models: ReadonlyArray<T>, currentModelId: string | undefined, visibility: Partial<ModelVisibility>, cursorModelIds?: ReadonlyArray<string>): T[] {
   return models.filter((m) => m.modelId === currentModelId || !isModelHidden(m.modelId, visibility, cursorModelIds));
 }
