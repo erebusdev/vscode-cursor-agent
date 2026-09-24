@@ -846,7 +846,7 @@ export class SessionRuntime {
     this.options.storage.setSessionMeta({ ...meta, hidden: [...meta.hidden, sessionId] });
   }
 
-  /** Shows or hides several sessions at once (the history tab's bulk actions and Unhide). */
+  /** Shows or hides several sessions at once (the history pane's bulk actions and Unhide). */
   setSessionsHidden(sessionIds: ReadonlyArray<string>, hide: boolean): void {
     const meta = this.options.storage.getSessionMeta();
     const hidden = new Set(meta.hidden);

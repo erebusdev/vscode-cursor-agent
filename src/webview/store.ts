@@ -59,8 +59,10 @@ export interface StoreState {
   extSettings: ExtensionSettings | undefined;
   /** Last agent executable probe. */
   probe: AgentProbe | undefined;
-  /** Whether the detailed usage view is shown in place of the transcript. */
-  usageOpen: boolean;
+  /** Which detail pane (usage or session history) is shown in place of the transcript, if any. */
+  pane: Pane | undefined;
+  /** Search text the history pane opens with (typed in the header's recent-sessions card). */
+  historyQuery: string;
   /** Settings tab only: the section on screen. */
   settingsSection: SettingsSection;
   /** Settings tab only: last MCP status check. */
@@ -98,7 +100,8 @@ const state: StoreState = {
   usage: { summary: undefined, loading: false },
   extSettings: undefined,
   probe: undefined,
-  usageOpen: false,
+  pane: undefined,
+  historyQuery: "",
   // The host writes the requested (or, after a reload, the persisted) section into the page.
   settingsSection: parseSettingsSection(document.body?.dataset.section) ?? parseSettingsSection(getPersisted().settingsSection) ?? DEFAULT_SETTINGS_SECTION,
   mcp: { status: undefined, loading: false },
@@ -124,6 +127,9 @@ export function getState(): StoreState {
 // ---------------------------------------------------------------------------
 
 type Listener = () => void;
+
+/** Detail panes shown inside the chat view in place of the transcript. */
+export type Pane = "usage" | "history";
 const listeners = new Set<Listener>();
 let scheduled = false;
 
@@ -261,20 +267,33 @@ export function setSettingsSection(section: SettingsSection): void {
   notify();
 }
 
-/** Opens (or reveals) the session history editor tab. */
-export function openHistory(): void {
-  post({ type: "history.open" });
-}
-
 /** Resumes a session in the chat (no-op for the one already open). */
 export function resumeSession(sessionId: string): void {
   if (sessionId !== state.session.sessionId) post({ type: "session.load", sessionId });
 }
 
-export function setUsageOpen(open: boolean): void {
-  if (state.usageOpen === open) return;
-  state.usageOpen = open;
+/** Shows a detail pane in place of the transcript (one at a time), or closes it. */
+export function setPane(pane: Pane | undefined): void {
+  if (state.pane === pane) return;
+  state.pane = pane;
   notify();
+}
+
+export function setUsageOpen(open: boolean): void {
+  if (open) setPane("usage");
+  else if (state.pane === "usage") setPane(undefined);
+}
+
+/** Opens the session history pane, optionally with a search already typed. */
+export function openHistory(query = ""): void {
+  state.historyQuery = query;
+  if (state.pane === "history") notify();
+  else setPane("history");
+}
+
+export function setHistoryOpen(open: boolean): void {
+  if (open) openHistory();
+  else if (state.pane === "history") setPane(undefined);
 }
 
 
@@ -363,6 +382,10 @@ export function handleMessage(msg: ExtensionToWebview): void {
       // Only the settings tab acts on this; the chat ignores it.
       if (!msg.section) return;
       setSettingsSection(msg.section);
+      return;
+    }
+    case "showHistory": {
+      openHistory();
       return;
     }
     case "mcpStatus": {

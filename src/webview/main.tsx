@@ -19,5 +19,5 @@ if (root) {
 }
 
 post({ type: "ready" });
-// The session history is shown by the chat and the history tab.
+// The chat shows the session history (header card, new-chat screen, history pane).
 if (!isSettingsView()) post({ type: "session.list" });

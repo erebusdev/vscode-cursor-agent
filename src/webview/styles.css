@@ -2351,7 +2351,7 @@ button.chip:disabled {
 .model-popover .popover-list {
   max-height: 260px;
 }
-/* Header history hover card: recent sessions and a link to the history tab. */
+/* Header history hover card: recent sessions and a link to the history pane. */
 .history-hover-popover {
   width: 300px;
 }
@@ -3763,154 +3763,142 @@ body[data-view="settings"] {
   color: var(--yellow);
 }
 
-/* --- History tab (editor panel) -----------------------------------------------
-   Same language as the settings tab: a page title, a toolbar of 28px controls,
-   then date groups as cards. Rows: session icon (a checkbox on hover), title and
-   meta, then the time, which gives way to the row actions on hover or focus. */
+/* --- History pane (inside the chat view, like the usage pane) ------------------
+   Pane top as the usage pane, a toolbar (search, Select, sort/filter menu), then
+   date groups of rows. Rows: session icon (a checkbox in select mode), title
+   and chips over "time · model"; row actions overlay the right end on hover or
+   focus. In select mode a bulk bar sits at the bottom. */
 
-body[data-view="history"] {
-  background: var(--vscode-editor-background);
+.pane-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
-.history-app .icon-button {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-}
-.history-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
-  margin: 8px 0 20px;
-}
-.history-head .settings-page-title {
-  margin: 0;
-}
-.history-count {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, var(--muted));
-  padding-top: 6px;
-}
-.history-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-.history-head-actions .section-spinner {
-  width: 26px;
-  text-align: center;
+.popover-sep {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--border);
 }
 
 .history-toolbar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px 20px;
-  margin-bottom: 14px;
+  gap: 4px;
+  padding: 2px 8px 8px 12px;
+  flex: none;
 }
 .history-search {
   position: relative;
   display: flex;
-  flex: 1 1 280px;
-  min-width: 200px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .history-search .text-input {
-  width: 100%;
-  padding-left: 28px;
+  height: 28px;
+  padding-left: 27px;
+  padding-right: 28px;
 }
 .history-search-icon {
   position: absolute;
-  left: 9px;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 14px;
   color: var(--vscode-input-placeholderForeground, var(--muted));
   pointer-events: none;
 }
-.history-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.history-search .history-search-clear {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
 }
-.history-option-label {
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground, var(--muted));
-  cursor: default;
+.history-search .history-search-clear .codicon {
+  font-size: 14px;
 }
-.history-option .sselect {
-  min-width: 112px;
+.icon-button.history-tool {
+  position: relative;
+  width: 28px;
+  height: 28px;
 }
-
-.history-bulk {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  min-height: 28px;
-  margin: 0 0 14px;
-  /* Lines the checkbox up with the rows' checkboxes (card border + row padding). */
-  padding: 0 17px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, var(--muted));
+.icon-button.history-tool:disabled {
+  opacity: 0.4;
 }
-.history-bulk.active {
-  color: var(--vscode-foreground);
+.history-view .icon-button:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
 }
-.history-bulk-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 6px;
+/* A dot on the sort/filter button when the view is not the default one. */
+.icon-button.history-tool.changed::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vscode-activityBarBadge-background, var(--focus));
 }
 
-.sgroup.history-group + .sgroup.history-group {
-  margin-top: 24px;
+.history-scroll {
+  padding: 0 6px 12px;
 }
-.history-group .sgroup-head {
-  margin-bottom: 6px;
+.history-group + .history-group {
+  margin-top: 10px;
 }
-.history-group .sgroup-title {
-  flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--vscode-descriptionForeground, var(--muted));
+.history-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 6px 3px;
+  margin: 0;
 }
-.history-group .sgroup-note {
+.history-group-count {
+  font-weight: normal;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
-.scard.history-card {
+.history-list {
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
 
 .hrow {
+  --row-bg: transparent;
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: 5px 8px 5px 12px;
-  border-radius: 7px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--row-bg);
 }
-.hrow:hover {
-  background: var(--vscode-list-hoverBackground, var(--hover-bg));
+.hrow:hover,
+.hrow:focus-within {
+  --row-bg: var(--hover-bg);
 }
 .hrow.selected {
-  background: var(--vscode-list-inactiveSelectionBackground, var(--active-bg));
+  --row-bg: var(--vscode-list-inactiveSelectionBackground, var(--active-bg));
+}
+.hrow:has(.hrow-main:focus-visible) {
+  outline: 1px solid var(--focus);
+  outline-offset: -1px;
 }
 .hrow.is-hidden .hrow-title,
 .hrow.is-hidden .hrow-icon {
   opacity: 0.6;
 }
 .hrow-lead {
-  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -3925,21 +3913,6 @@ body[data-view="history"] {
 .hrow.current .hrow-icon {
   color: var(--vscode-textLink-foreground, var(--focus));
 }
-.hrow-check {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-}
-.hrow:hover .hrow-check,
-.hrow:focus-within .hrow-check,
-.hrow.selecting .hrow-check {
-  opacity: 1;
-}
-.hrow:hover .hrow-icon,
-.hrow:focus-within .hrow-icon,
-.hrow.selecting .hrow-icon {
-  visibility: hidden;
-}
 .hrow-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -3949,18 +3922,16 @@ body[data-view="history"] {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  width: calc(100% + 12px);
-  /* Room for the focus ring around the text without shifting it. */
-  margin: 0 -6px;
-  padding: 3px 6px;
-  border-radius: 5px;
+  width: 100%;
+  padding: 3px 0;
   text-align: left;
   color: var(--vscode-foreground);
+  outline: none;
 }
 .hrow-title-line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   max-width: 100%;
   min-width: 0;
 }
@@ -3969,18 +3940,19 @@ body[data-view="history"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 500;
   line-height: 18px;
+}
+.hrow.current .hrow-title {
+  font-weight: 500;
 }
 .hrow-chip {
   flex: none;
-  font-size: 11px;
-  line-height: 16px;
-  padding: 0 6px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-widget-border, var(--border));
-  color: var(--vscode-descriptionForeground, var(--muted));
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 5px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
 .hrow-chip.current {
   border-color: transparent;
@@ -3992,38 +3964,29 @@ body[data-view="history"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 16px;
-  color: var(--vscode-descriptionForeground, var(--muted));
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .hrow-rename {
-  width: 100%;
-  max-width: 520px;
+  height: 26px;
 }
-/* Time and actions share a fixed slot so hovering never reflows the title. */
-.hrow-end {
-  position: relative;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 112px;
-  height: 28px;
-}
-.hrow-time {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, var(--muted));
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
+/* Actions overlay the row's right end on hover or focus, over a fade of the
+   row background (itself over the view background), so they never reflow the title. */
 .hrow-actions {
   position: absolute;
+  top: 0;
   right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 0;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  padding: 0 4px 0 20px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background:
+    linear-gradient(to right, transparent, var(--row-bg) 18px),
+    linear-gradient(to right, transparent 18px, var(--vscode-sideBar-background, var(--vscode-editor-background)) 18px);
   opacity: 0;
   pointer-events: none;
 }
@@ -4032,78 +3995,68 @@ body[data-view="history"] {
   opacity: 1;
   pointer-events: auto;
 }
-.hrow:hover .hrow-time,
-.hrow:focus-within .hrow-time {
-  visibility: hidden;
-}
-.history-app .hrow-main:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--focus));
-  outline-offset: 0;
-}
-.history-app .hrow-check:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, var(--focus));
-  outline-offset: 2px;
+.hrow-check:focus-visible {
+  outline: 1px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .history-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
-  margin-bottom: 16px;
-  border: 1px solid var(--vscode-widget-border, var(--border));
-  border-radius: 10px;
-  background: var(--vscode-editorWidget-background, var(--card-bg));
-  font-size: 13px;
-  color: var(--vscode-descriptionForeground, var(--muted));
-}
-.history-state.empty {
-  padding: 28px 22px;
-}
-.history-state.error {
-  border-color: color-mix(in srgb, var(--red) 55%, transparent);
-}
-.history-state > .codicon-error {
-  flex: none;
-  font-size: 18px;
-  color: var(--red);
+  gap: 4px;
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--muted);
 }
 .history-state-icon {
-  flex: none;
   font-size: 22px;
-  color: var(--vscode-descriptionForeground, var(--muted));
+  margin-bottom: 4px;
+  color: var(--muted);
 }
-.history-state-text {
-  flex: 1 1 auto;
-  min-width: 0;
+.history-state.error .history-state-icon {
+  color: var(--red);
 }
 .history-state-title {
   font-weight: 600;
   color: var(--vscode-foreground);
+  overflow-wrap: anywhere;
 }
 .history-state-detail {
-  margin-top: 2px;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-.history-state-detail .link-button {
-  padding: 0;
-  font-size: 12px;
+.history-state .button,
+.history-state .link-button {
+  margin-top: 6px;
 }
 
-/* While renaming, the field gets the row; the time and actions step aside. */
-.hrow.renaming .hrow-end {
-  display: none;
+.history-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  flex: none;
+  min-height: 40px;
+  padding: 6px 8px 6px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
 }
-@container settings (max-width: 520px) {
-  .history-option-label {
-    font-size: 12px;
-  }
-  .hrow {
-    gap: 10px;
-    padding-left: 10px;
-  }
-  .history-bulk {
-    padding: 0 15px;
-  }
+.history-bulk-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.history-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.history-bulk .button:disabled {
+  opacity: 0.5;
 }

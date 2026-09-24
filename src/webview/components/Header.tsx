@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../../shared/protocol";
 import { parseTime, recentSessions, sessionLabel } from "../../shared/sessionHistory";
 import { pluralize, relativeTime } from "../format";
-import { openHistory, openSettings, resumeSession, useSelector } from "../store";
+import { getState, openHistory, openSettings, resumeSession, setHistoryOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Popover } from "./Popover";
 import { UsageButton } from "./Usage";
@@ -125,12 +125,13 @@ const HISTORY_REFRESH_MS = 10_000;
 
 /**
  * Header history button. Hovering shows the recent sessions in a card that
- * never takes focus; clicking (or Enter/Space) opens the history editor tab.
- * ArrowDown opens the same list as a keyboard menu.
+ * never takes focus; clicking (or Enter/Space) toggles the history pane in the
+ * chat view, like the usage button. ArrowDown opens the recent list as a menu.
  */
 function HistoryButton() {
   const sessions = useSelector((s) => s.sessions);
   const currentId = useSelector((s) => s.session.sessionId);
+  const paneOpen = useSelector((s) => s.pane === "history");
   const [open, setOpen] = useState<false | "hover" | "menu">(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -157,6 +158,8 @@ function HistoryButton() {
     hold();
     if (open) return;
     timer.current = window.setTimeout(() => {
+      // The pane already lists everything.
+      if (getState().pane === "history") return;
       refresh();
       setOpen("hover");
     }, HISTORY_HOVER_OPEN_MS);
@@ -170,7 +173,11 @@ function HistoryButton() {
     hold();
     setOpen(false);
   };
-  const openTab = () => {
+  const togglePane = () => {
+    close();
+    setHistoryOpen(!paneOpen);
+  };
+  const openPane = () => {
     close();
     openHistory();
   };
@@ -190,11 +197,12 @@ function HistoryButton() {
         ref={anchor}
         icon="history"
         label="Session history"
-        class={open ? "active" : undefined}
+        class={open || paneOpen ? "active" : undefined}
+        aria-pressed={paneOpen}
         aria-haspopup="menu"
         aria-expanded={menu}
         data-hover-card=""
-        onClick={openTab}
+        onClick={togglePane}
         onMouseEnter={show}
         onMouseLeave={hide}
         onKeyDown={(e) => {
@@ -252,7 +260,7 @@ function HistoryButton() {
           )}
           <div class="history-hover-footer">
             <span class="history-hover-more">{more > 0 ? `${more} more` : ""}</span>
-            <button type="button" role={menu ? "menuitem" : undefined} class="link-button" title="Open the history tab: search, rename, hide and resume sessions" onClick={openTab}>
+            <button type="button" role={menu ? "menuitem" : undefined} class="link-button" title="Open the history pane: search, rename, hide and resume sessions" onClick={openPane}>
               All history…
             </button>
           </div>

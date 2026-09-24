@@ -1,5 +1,5 @@
 /**
- * Pure helpers for the session history (header overlay, history tab and the
+ * Pure helpers for the session history (header overlay, history pane and the
  * new-chat screen): date groups, search, sort and multi-select.
  */
 import type { SessionSummary } from "./protocol";
