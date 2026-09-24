@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "preact/hooks";
+import type { JSX } from "preact";
+import { useEffect } from "preact/hooks";
 import type { SessionModel } from "../../shared/protocol";
 import { modelFamily, modelGroup, sortModelsByFamily, type ModelGroup } from "../../shared/modelVisibility";
 import { getState, useSelector } from "../store";
@@ -110,25 +111,25 @@ export function ManageModels() {
             </div>
             <p class="pane-note">{g.blurb}</p>
             {(() => {
+              // Flat, fully keyed list: a family label (when the family has several models) followed by its rows.
               const sorted = sortModelsByFamily(members);
               const counts = new Map<string, number>();
               for (const x of sorted) counts.set(modelFamily(x.modelId), (counts.get(modelFamily(x.modelId)) ?? 0) + 1);
+              const items: JSX.Element[] = [];
               let lastFamily = "";
-              return sorted.map((x) => {
+              for (const x of sorted) {
                 const family = modelFamily(x.modelId);
-                const showLabel = family !== lastFamily && (counts.get(family) ?? 0) > 1;
+                if (family !== lastFamily && (counts.get(family) ?? 0) > 1) {
+                  items.push(
+                    <div key={`fam-${family}`} class="models-family">
+                      {family.replace(/-/g, " ")}
+                    </div>,
+                  );
+                }
                 lastFamily = family;
-                return (
-                  <>
-                    {showLabel && (
-                      <div key={`fam-${family}`} class="models-family">
-                        {family.replace(/-/g, " ")}
-                      </div>
-                    )}
-                    <ModelRow key={x.modelId} model={x} current={x.modelId === models?.currentModelId} hidden={hidden.includes(x.modelId)} />
-                  </>
-                );
-              });
+                items.push(<ModelRow key={x.modelId} model={x} current={x.modelId === models?.currentModelId} hidden={hidden.includes(x.modelId)} />);
+              }
+              return items;
             })()}
           </section>
         );
