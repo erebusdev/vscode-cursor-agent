@@ -406,18 +406,6 @@ button.chip:disabled {
   border-radius: var(--radius-sm);
   padding: 2px 4px;
 }
-.header-copy-id {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  opacity: 0.7;
-}
-.header-copy-id .codicon {
-  font-size: 13px;
-}
-.header-copy-id:hover {
-  opacity: 1;
-}
 .header-title-button {
   background: none;
   border: 0;
@@ -425,6 +413,7 @@ button.chip:disabled {
   margin: 0 -2px;
   color: inherit;
   font: inherit;
+  font-weight: 600;
   cursor: pointer;
   border-radius: var(--radius-sm);
 }
@@ -462,6 +451,12 @@ button.chip:disabled {
   display: flex;
   align-items: center;
 }
+.header-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: var(--border);
+}
 .status {
   display: inline-flex;
   align-items: center;
@@ -483,13 +478,19 @@ button.chip:disabled {
 .status-error .status-dot {
   background: var(--red);
 }
-.status-error .status-label {
+.status-label {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.status-label.status-error {
   color: var(--red);
 }
 .status-disconnected .status-dot {
   background: var(--orange);
 }
-.status-disconnected .status-label {
+.status-label.status-disconnected {
   color: var(--orange);
 }
 .status .status-spinner {

@@ -62,8 +62,11 @@ export function Header() {
   return (
     <header class="header">
       <div class="header-main">
+        <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]} role="status" aria-label={STATUS_LABEL[c]}>
+          {busy ? <Spinner class="status-spinner" /> : <span class="status-dot" />}
+        </span>
         {session.sessionId ? (
-          <button type="button" class="header-title header-title-button" title={`Rename session\nSession id: ${session.sessionId}`} onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })}>
+          <button type="button" class="header-title header-title-button" title={`${title}\nClick to rename · Session id: ${session.sessionId}`} onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })}>
             {title}
           </button>
         ) : (
@@ -71,21 +74,12 @@ export function Header() {
             {title}
           </span>
         )}
-        {session.sessionId && (
-          <>
-            <IconButton icon="edit" class="header-copy-id" label="Rename session" onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })} />
-            <IconButton icon="copy" class="header-copy-id" label="Copy session id" onClick={() => post({ type: "copy", text: session.sessionId! })} />
-          </>
-        )}
+        {c !== "ready" && c !== "running" && <span class={`status-label status-${c}`}>{STATUS_LABEL[c]}</span>}
         {session.approvalPolicy === "auto" && (
           <span class="auto-badge" title="Approvals: Auto. Every command and tool call runs without asking for this session.">
             <Icon name="unlock" /> Auto
           </span>
         )}
-        <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]} role="status" aria-label={STATUS_LABEL[c]}>
-          {busy ? <Spinner class="status-spinner" /> : <span class="status-dot" />}
-          {c !== "ready" && c !== "running" && <span class="status-label">{STATUS_LABEL[c]}</span>}
-        </span>
       </div>
       <div class="header-side">
         {session.workspaceName && (
@@ -103,9 +97,10 @@ export function Header() {
         <ChangesChip />
         <span class="header-actions">
           {canReconnect && <IconButton icon="refresh" label="Reconnect agent" onClick={() => post({ type: "session.reconnect" })} />}
-          <IconButton icon="add" label="New session" onClick={() => post({ type: "session.new" })} />
-          <UsageButton />
+          <IconButton icon="add" label="New chat" onClick={() => post({ type: "session.new" })} />
           <HistoryButton />
+          <span class="header-divider" aria-hidden="true" />
+          <UsageButton />
           <SettingsGear />
         </span>
       </div>
@@ -114,7 +109,7 @@ export function Header() {
 }
 
 function SettingsGear() {
-  return <IconButton icon="settings-gear" label="Settings (opens in an editor tab)" onClick={() => openSettings()} />;
+  return <IconButton icon="settings-gear" label="Settings" onClick={() => openSettings()} />;
 }
 
 const HISTORY_HOVER_OPEN_MS = 250;
