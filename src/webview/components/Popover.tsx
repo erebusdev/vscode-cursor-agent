@@ -179,7 +179,7 @@ export function PopoverList({ options, onSelect, emptyText = "No results", role 
     <div class="popover-list" role={role}>
       {options.length === 0 && <div class="popover-empty">{emptyText}</div>}
       {options.map((o) => (
-        <button
+        <button title={o.description ?? o.label}
           key={o.id}
           type="button"
           role={itemRole}

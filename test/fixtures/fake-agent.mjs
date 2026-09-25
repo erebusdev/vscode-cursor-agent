@@ -18,15 +18,39 @@
  *   FAKE_AGENT_CRASH_ON_INIT=1    prints to stderr and exits with code 2 on initialize
  *   FAKE_AGENT_LOAD_DELAY_MS=n    delay before the session/load response (default 20)
  *   FAKE_AGENT_NEW_DELAY_MS=n     delay before the session/new response (default 0)
+ *   FAKE_AGENT_STORE=<file.json>  keeps sessions in this file, so they survive a restart (like Cursor's own store)
  */
 import readline from "node:readline";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 
-const sessions = new Map();
-let nextId = 1000;
+const STORE = process.env.FAKE_AGENT_STORE;
+function readStore() {
+  if (!STORE || !existsSync(STORE)) return undefined;
+  // A previous agent process may still be writing it; a partial file counts as empty.
+  try {
+    return JSON.parse(readFileSync(STORE, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+const stored = readStore();
+const sessions = new Map(stored?.sessions ?? []);
+let nextId = stored?.nextId ?? 1000;
+// Session ids are unique per agent process (a restarted agent never reuses one), like Cursor's UUIDs.
+const idPrefix = randomBytes(3).toString("hex");
+function persist() {
+  if (!STORE) return;
+  // Write then rename, so another agent process never reads a half-written file.
+  const tmp = `${STORE}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ nextId, sessions: [...sessions] }));
+  renameSync(tmp, STORE);
+}
 const pending = new Map();
 let cancelled = false;
 
 function send(msg) {
+  persist();
   process.stdout.write(JSON.stringify(msg) + "\n");
 }
 function notify(sessionId, update) {
@@ -111,6 +135,38 @@ async function handlePrompt(id, params) {
     notify(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "sleeping…" } });
     await sleep(ms);
     finish(cancelled ? "cancelled" : "end_turn");
+    return;
+  }
+  if (text.startsWith("mcp list")) {
+    const names = (session.mcpServers ?? []).map((m) => `${m.name}${m.command ? ` (${m.command} ${(m.args ?? []).join(" ")})` : m.url ? ` (${m.url})` : ""}`);
+    notify(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: names.length ? `MCP: ${names.join("; ")}` : "MCP: none" } });
+    finish("end_turn");
+    return;
+  }
+  if (text.startsWith("mcp call ")) {
+    // Mirrors Cursor's MCP tool flow: a generic tool_call, an update with the provider/tool in rawInput,
+    // then a permission request whose content is the arguments (no "Not in allowlist" reason).
+    const [server, tool] = text.slice(9).trim().split(/\s+/);
+    const toolCallId = `call-${nextId++}\nfc_m`;
+    notify(sessionId, { sessionUpdate: "tool_call", toolCallId, title: "MCP: tool", kind: "other", status: "pending" });
+    notify(sessionId, { sessionUpdate: "tool_call_update", toolCallId, title: `${server}: ${tool}`, rawInput: { providerIdentifier: server, toolName: tool, args: { text: "hi" } } });
+    const permission = await request("session/request_permission", {
+      sessionId,
+      toolCall: { toolCallId, title: `${server}-${tool}: ${tool}`, kind: "other", status: "pending", content: [{ type: "content", content: { type: "text", text: "```json\n{\n  \"text\": \"hi\"\n}\n```" } }] },
+      options: [
+        { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+        { optionId: "allow-always", name: "Allow always", kind: "allow_always" },
+        { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+      ],
+    });
+    if (permission.outcome.outcome !== "selected" || permission.outcome.optionId.startsWith("reject")) {
+      notify(sessionId, { sessionUpdate: "tool_call_update", toolCallId, status: "failed" });
+      finish("end_turn");
+      return;
+    }
+    notify(sessionId, { sessionUpdate: "tool_call_update", toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: "ECHO:hi" } }] });
+    notify(sessionId, { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Tool said ECHO:hi" } });
+    finish("end_turn");
     return;
   }
   if (text.startsWith("run ")) {
@@ -221,8 +277,8 @@ rl.on("line", (line) => {
       else reply({});
       return;
     case "session/new": {
-      const sessionId = `s-${nextId++}`;
-      sessions.set(sessionId, { cwd: params.cwd, history: [], mode: "agent", model: "model-a", title: undefined });
+      const sessionId = `s-${idPrefix}-${nextId++}`;
+      sessions.set(sessionId, { cwd: params.cwd, history: [], mode: "agent", model: "model-a", title: undefined, mcpServers: params.mcpServers ?? [] });
       const newDelay = Number(process.env.FAKE_AGENT_NEW_DELAY_MS ?? "0");
       setTimeout(() => {
         reply({ sessionId, modes, models, configOptions: configOptions(sessionId) });
@@ -239,6 +295,7 @@ rl.on("line", (line) => {
         send({ jsonrpc: "2.0", id, error: { code: -32002, message: "Session not found" } });
         return;
       }
+      s.mcpServers = params.mcpServers ?? [];
       // Replay history *before* answering, exactly like Cursor does.
       for (const entry of s.history) {
         notify(params.sessionId, { sessionUpdate: entry.role === "user" ? "user_message_chunk" : "agent_message_chunk", content: { type: "text", text: entry.text } });

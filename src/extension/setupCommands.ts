@@ -21,17 +21,21 @@ function quotePowerShell(arg: string): string {
   return `'${arg.replace(/'/g, "''")}'`;
 }
 
-/** Shell line that runs the agent with the given args, using the same launch rules as the session. */
+/** Shell line that runs `agent login`, using the same launch rules as the session. */
 export function loginCommandLine(resolvedPath: string, env: NodeJS.ProcessEnv, windows = IS_WINDOWS): string {
-  const plan = planLaunch(resolvedPath, ["login"], env, windows ? "win32" : "linux");
+  return agentCommandLine(resolvedPath, ["login"], env, windows);
+}
+
+/** Shell line that runs the agent with the given args, using the same launch rules as the session. */
+export function agentCommandLine(resolvedPath: string, args: ReadonlyArray<string>, env: NodeJS.ProcessEnv, windows = IS_WINDOWS): string {
+  const plan = planLaunch(resolvedPath, [...args], env, windows ? "win32" : "linux");
   if (!windows) return [plan.file, ...plan.args].map(quotePosix).join(" ");
   if (plan.mode === "cmd") {
     // planLaunch produced `cmd.exe /d /s /c "..."`; in PowerShell just run the .cmd itself.
-    return `& ${quotePowerShell(resolvedPath)} login`;
+    return `& ${quotePowerShell(resolvedPath)}${args.map((a) => ` ${/^[A-Za-z0-9_.-]+$/.test(a) ? a : quotePowerShell(a)}`).join("")}`;
   }
   const extra = Object.entries(plan.env ?? {})
     .map(([k, v]) => `$env:${k} = ${quotePowerShell(v)}; `)
     .join("");
   return `${extra}& ${quotePowerShell(plan.file)} ${plan.args.map(quotePowerShell).join(" ")}`;
 }
-

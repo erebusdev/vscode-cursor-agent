@@ -1,0 +1,249 @@
+/**
+ * The settings editor tab: a section list down the left, the section's
+ * cards on the right. Loaded from the same bundle as the chat, in the
+ * webview the host marks with `data-view="settings"`.
+ */
+import type { ComponentChildren } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
+import type { ExtensionSettings } from "../../../shared/protocol";
+import { SETTINGS_SECTIONS, type SettingsSection } from "../../../shared/settingsUi";
+import { setSettingsSection, useSelector } from "../../store";
+import { post } from "../../vscode";
+import { Toasts } from "../Toasts";
+import { Icon, Spinner } from "../ui";
+import { SettingRow, SettingsGroup } from "./controls";
+import { AutoRow, ManageModels } from "./ManageModels";
+import { McpSection } from "./McpSection";
+import { AgentArgsRow, AgentPathRow, ApprovalPolicyRow, BoolRow, EnvRow, ModelDefaultsRow, SafeListEditor, SendShortcutRow, TextRow } from "./rows";
+
+const SECTION_INFO: Record<SettingsSection, { label: string; icon: string; hint: string }> = {
+  general: { label: "General", icon: "settings", hint: "Sessions, chat and notifications" },
+  agent: { label: "Agent", icon: "terminal", hint: "Agent path, arguments and environment" },
+  approvals: { label: "Approvals", icon: "shield", hint: "What runs without asking" },
+  models: { label: "Models", icon: "sparkle", hint: "Default model and visible models" },
+  mcp: { label: "MCP servers", icon: "plug", hint: "MCP servers and plugin skills" },
+  advanced: { label: "Advanced", icon: "tools", hint: "Logging" },
+};
+
+/** Tracks a media query (the nav turns into a row of icons on narrow tabs). */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => matchMedia(query).matches);
+  useEffect(() => {
+    const list = matchMedia(query);
+    const onChange = () => setMatches(list.matches);
+    list.addEventListener("change", onChange);
+    onChange();
+    return () => list.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+function Nav({ current }: { current: SettingsSection }) {
+  const horizontal = useMediaQuery("(max-width: 480px)");
+  const refs = useRef<Partial<Record<SettingsSection, HTMLButtonElement | null>>>({});
+  const go = (section: SettingsSection, focus: boolean) => {
+    setSettingsSection(section);
+    if (focus) refs.current[section]?.focus();
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    const i = SETTINGS_SECTIONS.indexOf(current);
+    const n = SETTINGS_SECTIONS.length;
+    let next: number | undefined;
+    // Vertical list at normal widths, a row of icons when narrow: accept both axes.
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (i + 1) % n;
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (i + n - 1) % n;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = n - 1;
+    if (next === undefined) return;
+    e.preventDefault();
+    go(SETTINGS_SECTIONS[next]!, true);
+  };
+  return (
+    <nav class="settings-nav" aria-label="Settings sections">
+      <div class="settings-nav-list" role="tablist" aria-orientation={horizontal ? "horizontal" : "vertical"} aria-label="Settings sections" onKeyDown={onKeyDown}>
+        {SETTINGS_SECTIONS.map((id) => {
+          const info = SECTION_INFO[id];
+          const selected = id === current;
+          return (
+            <button
+              key={id}
+              ref={(el) => {
+                refs.current[id] = el;
+              }}
+              id={`settings-nav-${id}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls="settings-page"
+              tabIndex={selected ? 0 : -1}
+              class={`settings-nav-item${selected ? " selected" : ""}`}
+              title={`${info.label}: ${info.hint}`}
+              onClick={() => go(id, false)}
+            >
+              <Icon name={info.icon} />
+              <span class="settings-nav-label">{info.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div class="settings-nav-footer">
+        {VERSION && <span class="settings-nav-version">Version {VERSION}</span>}
+        <button type="button" class="link-button" title="Open VS Code settings" aria-label="Open VS Code settings" onClick={() => post({ type: "openSettings" })}>
+          <span>VS Code settings</span>
+          <Icon name="link-external" />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+const VERSION = document.body.dataset.version;
+
+function GeneralPage({ settings }: { settings: ExtensionSettings }) {
+  return (
+    <>
+      <SettingsGroup>
+        <BoolRow settings={settings} k="resumeLastSession" label="Resume last session" />
+        <BoolRow settings={settings} k="notifyWhenHidden" label="Notify when hidden" description="Notify when the agent needs you and the chat is hidden." />
+        <BoolRow settings={settings} k="editorTitleButton" label="Editor title button" description="Show a Cursor Agent button in the editor title bar." />
+      </SettingsGroup>
+      <SettingsGroup title="Chat">
+        <SendShortcutRow settings={settings} />
+        <BoolRow settings={settings} k="showThoughts" label="Show thinking" />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function AgentPage({ settings }: { settings: ExtensionSettings }) {
+  const [changed, setChanged] = useState(false);
+  const mark = () => setChanged(true);
+  return (
+    <>
+      <SettingsGroup>
+        <AgentPathRow settings={settings} onSaved={mark} />
+        <AgentArgsRow settings={settings} onSaved={mark} />
+      </SettingsGroup>
+      <SettingsGroup title="Process">
+        <EnvRow settings={settings} onSaved={mark} />
+      </SettingsGroup>
+      <SettingsGroup title="Usage">
+        <TextRow settings={settings} k="configDir" label="Config folder" description="Cursor's config folder, used by the usage panel." placeholder="~/.cursor" mono />
+      </SettingsGroup>
+      {changed && (
+        <div class="settings-footer" role="status">
+          <Icon name="info" />
+          <span>Changes apply on the next connection.</span>
+          <button title="Restart the agent" type="button" class="button secondary small" onClick={() => post({ type: "session.reconnect" })}>
+            <Icon name="refresh" /> Reconnect now
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ApprovalsPage({ settings }: { settings: ExtensionSettings }) {
+  return (
+    <>
+      <SettingsGroup>
+        <ApprovalPolicyRow settings={settings} />
+      </SettingsGroup>
+      <SettingsGroup title="Safe list">
+        <SafeListEditor settings={settings} />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function ModelsPage({ settings }: { settings: ExtensionSettings }) {
+  return (
+    <>
+      <SettingsGroup title="Defaults for new sessions">
+        <ModelDefaultsRow settings={settings} />
+      </SettingsGroup>
+      <AutoRow />
+      <SettingsGroup title="Visible models">
+        <ManageModels />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function AdvancedPage({ settings }: { settings: ExtensionSettings }) {
+  // Version and the VS Code settings editor link live in the nav footer.
+  return (
+    <>
+      <SettingsGroup>
+        <BoolRow settings={settings} k="protocolLogging" label="Protocol logging" description="Log agent messages for troubleshooting." />
+        <SettingRow
+          id="advanced-logs"
+          labelFor={false}
+          label="Logs"
+          control={
+            <button id="advanced-logs" type="button" class="button secondary small" title="Open the output channel" onClick={() => post({ type: "openLogs" })}>
+              <Icon name="output" /> Show logs
+            </button>
+          }
+        />
+      </SettingsGroup>
+    </>
+  );
+}
+
+function Page({ section, settings }: { section: SettingsSection; settings: ExtensionSettings }) {
+  switch (section) {
+    case "general":
+      return <GeneralPage settings={settings} />;
+    case "agent":
+      return <AgentPage settings={settings} />;
+    case "approvals":
+      return <ApprovalsPage settings={settings} />;
+    case "models":
+      return <ModelsPage settings={settings} />;
+    case "mcp":
+      return <McpSection settings={settings} />;
+    case "advanced":
+      return <AdvancedPage settings={settings} />;
+  }
+}
+
+function Scroll({ section, children }: { section: SettingsSection; children: ComponentChildren }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // A new section starts at the top.
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = 0;
+  }, [section]);
+  return (
+    <main ref={ref} class="settings-main" id="settings-page" role="tabpanel" aria-labelledby={`settings-nav-${section}`} tabIndex={-1}>
+      {children}
+    </main>
+  );
+}
+
+export function SettingsApp() {
+  const settings = useSelector((s) => s.extSettings);
+  const section = useSelector((s) => s.settingsSection);
+  useEffect(() => {
+    post({ type: "settings.get" });
+    post({ type: "settings.probe" });
+  }, []);
+  return (
+    <div class="settings-app">
+      <Nav current={section} />
+      <Scroll section={section}>
+        <div class="settings-content">
+          <h1 class="settings-page-title">{SECTION_INFO[section].label}</h1>
+          {!settings ? (
+            <div class="list-empty" role="status">
+              <Spinner /> Loading settings…
+            </div>
+          ) : (
+            <Page key={section} section={section} settings={settings} />
+          )}
+        </div>
+      </Scroll>
+      <Toasts />
+    </div>
+  );
+}

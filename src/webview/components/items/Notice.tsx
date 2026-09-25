@@ -1,13 +1,14 @@
 import { memo } from "preact/compat";
 import type { NoticeAction, NoticeItem } from "../../../shared/protocol";
 import { post } from "../../vscode";
+import { openSettings } from "../../store";
 import { Disclosure, Icon } from "../ui";
 
 const ACTIONS: Record<NoticeAction, { label: string; icon: string; send: () => void }> = {
   reconnect: { label: "Reconnect", icon: "refresh", send: () => post({ type: "session.reconnect" }) },
   retry: { label: "Retry", icon: "debug-restart", send: () => post({ type: "session.reconnect" }) },
   newSession: { label: "New session", icon: "add", send: () => post({ type: "session.new" }) },
-  openSettings: { label: "Settings", icon: "settings-gear", send: () => post({ type: "openSettings" }) },
+  openSettings: { label: "Settings", icon: "settings-gear", send: () => openSettings("agent") },
   openLogs: { label: "Logs", icon: "output", send: () => post({ type: "openLogs" }) },
 };
 
@@ -32,7 +33,7 @@ export const Notice = memo(function Notice({ item }: { item: NoticeItem }) {
               const def = ACTIONS[a];
               if (!def) return null;
               return (
-                <button key={a} type="button" class="button secondary small" onClick={def.send}>
+                <button title={def.label} key={a} type="button" class="button secondary small" onClick={def.send}>
                   <Icon name={def.icon} /> {def.label}
                 </button>
               );
