@@ -24,11 +24,16 @@ if [[ $check -eq 1 ]]; then
   npm run typecheck
   npm test
 fi
-npm run package
-
+# Local builds get their own version (next patch, pre-release, timestamped), so VS Code
+# treats each one as an update. package.json keeps the release version.
 name=$(node -p "require('./package.json').name")
-version=$(node -p "require('./package.json').version")
+base=$(node -p "require('./package.json').version")
+version=$(node -e "const [a,b,c]=process.argv[1].split('.').map(Number); console.log(a+'.'+b+'.'+(c+1)+'-dev.'+process.argv[2])" "$base" "$(date -u +%Y%m%d%H%M%S)")
 vsix="build/${name}-${version}.vsix"
+npm run build
+mkdir -p build
+rm -f build/*.vsix
+npx vsce package "$version" --no-git-tag-version --no-update-package-json --no-dependencies --out "$vsix"
 echo
 echo "VSIX: $PWD/$vsix"
 
