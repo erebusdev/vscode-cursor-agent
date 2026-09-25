@@ -289,7 +289,7 @@ export function activate(context: vscode.ExtensionContext): void {
       ensureStarted();
       await runtime?.newSession();
     }),
-    // The history pane in the sidebar chat: search, rename, hide/unhide and resume.
+    // The history pane in the sidebar chat: search, rename, archive/unarchive and resume.
     vscode.commands.registerCommand("cursorAcp.showHistory", async () => {
       await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       ensureStarted();

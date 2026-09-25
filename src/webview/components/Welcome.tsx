@@ -61,7 +61,7 @@ export function Welcome() {
                 </span>
               </>
             )}
-            <button type="button" class="welcome-action" title="Open the session history: search, rename, hide and resume sessions" onClick={() => openHistory()}>
+            <button type="button" class="welcome-action" title="Open the session history" onClick={() => openHistory()}>
               <Icon name="history" />
               <span>History</span>
             </button>

@@ -2,7 +2,7 @@
  * The session history pane: shown inside the chat view in place of the
  * transcript (like the usage pane), from the header's history button, the
  * new-chat screen's History link or the Session History command. Search,
- * sort, date groups, inline rename, hide/unhide (one or many) and resume.
+ * sort, date groups, inline rename, archive/unarchive (one or many) and resume.
  */
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ComponentChildren } from "preact";
@@ -161,7 +161,7 @@ function HistoryRow({ session: s, current, selected, selecting, renaming, modelN
             <span class="hrow-title-line">
               <span class="hrow-title">{label}</span>
               {current && <span class="hrow-chip current">Current</span>}
-              {s.hidden && <span class="hrow-chip">Hidden</span>}
+              {s.hidden && <span class="hrow-chip">Archived</span>}
             </span>
             {meta && <span class="hrow-meta">{meta}</span>}
           </button>
@@ -173,9 +173,9 @@ function HistoryRow({ session: s, current, selected, selecting, renaming, modelN
           <IconButton icon="edit" label="Rename" onClick={() => onRename(true)} />
           <IconButton icon="copy" label="Copy session id" onClick={() => post({ type: "copy", text: s.sessionId })} />
           {s.hidden ? (
-            <IconButton icon="eye" label="Unhide (show in history again)" onClick={() => setHidden([s.sessionId], false)} />
+            <IconButton icon="inbox" label="Unarchive" onClick={() => setHidden([s.sessionId], false)} />
           ) : (
-            <IconButton icon="eye-closed" label="Hide from history" onClick={() => setHidden([s.sessionId], true)} />
+            <IconButton icon="archive" label="Archive" onClick={() => setHidden([s.sessionId], true)} />
           )}
         </span>
       )}
@@ -183,7 +183,7 @@ function HistoryRow({ session: s, current, selected, selecting, renaming, modelN
   );
 }
 
-/** Sort and "Show hidden" behind one toolbar button, so the toolbar fits a narrow sidebar. */
+/** Sort and "Show archived" behind one toolbar button, so the toolbar fits a narrow sidebar. */
 function ViewMenu({ sort, showHidden, onSort, onShowHidden }: { sort: HistorySort; showHidden: boolean; onSort: (s: HistorySort) => void; onShowHidden: (on: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -194,7 +194,7 @@ function ViewMenu({ sort, showHidden, onSort, onShowHidden }: { sort: HistorySor
       <IconButton
         ref={anchor}
         icon="filter"
-        label={`Sort and filter (${sortLabel}${showHidden ? ", hidden shown" : ""})`}
+        label={`Sort and filter (${sortLabel}${showHidden ? ", archived shown" : ""})`}
         class={`history-tool${open ? " active" : ""}${changed ? " changed" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -222,9 +222,9 @@ function ViewMenu({ sort, showHidden, onSort, onShowHidden }: { sort: HistorySor
         </div>
         <div class="popover-sep" role="separator" />
         <div class="popover-list">
-          <button type="button" role="menuitemcheckbox" aria-checked={showHidden} class="popover-item" title="List the sessions you hid, marked Hidden" onClick={() => onShowHidden(!showHidden)}>
+          <button type="button" role="menuitemcheckbox" aria-checked={showHidden} class="popover-item" title="Include archived sessions" onClick={() => onShowHidden(!showHidden)}>
             <span class="popover-item-check">{showHidden && <Icon name="check" />}</span>
-            <span class="popover-item-label">Show hidden sessions</span>
+            <span class="popover-item-label">Show archived</span>
           </button>
         </div>
       </Popover>
@@ -285,7 +285,7 @@ export function HistoryView() {
   const visibleCount = sessions.list.length - hiddenCount;
   const modelNames = useMemo(() => new Map((models ?? []).map((m) => [m.modelId, m.name])), [models]);
 
-  // Selected rows that a search, hide or refresh removed are no longer selected.
+  // Selected rows that a search, archive or refresh removed are no longer selected.
   useEffect(() => {
     setSelected((prev) => {
       const next = pruneSelection(prev, shownIds);
@@ -323,7 +323,7 @@ export function HistoryView() {
   const refresh = () => post({ type: "session.list" });
 
   const firstLoad = sessions.loading && sessions.list.length === 0;
-  const countLine = sessions.list.length === 0 ? "" : `${pluralize(visibleCount, "session")}${hiddenCount ? ` · ${hiddenCount} hidden` : ""}`;
+  const countLine = sessions.list.length === 0 ? "" : `${pluralize(visibleCount, "session")}${hiddenCount ? ` · ${hiddenCount} archived` : ""}`;
   const q = query.trim();
 
   return (
@@ -373,7 +373,7 @@ export function HistoryView() {
         </span>
         <IconButton
           icon="checklist"
-          label={selecting ? "Done selecting (Escape)" : "Select sessions to hide or unhide"}
+          label={selecting ? "Done selecting (Escape)" : "Select sessions to archive"}
           class={`history-tool${selecting ? " active" : ""}`}
           aria-pressed={selecting}
           disabled={!selecting && shown.length === 0}
@@ -421,15 +421,15 @@ export function HistoryView() {
         {!firstLoad && sessions.list.length > 0 && shown.length === 0 && (
           <HistoryState
             icon="search"
-            title={q ? `No sessions match “${q}”` : "All sessions are hidden"}
+            title={q ? `No sessions match “${q}”` : "All sessions are archived"}
             action={
               q ? (
                 <button type="button" class="link-button" title="Clear the search" onClick={() => setQuery("")}>
                   Clear search
                 </button>
               ) : (
-                <button type="button" class="link-button" title="List hidden sessions" onClick={() => setShowHidden(true)}>
-                  Show hidden sessions
+                <button type="button" class="link-button" title="Show archived sessions" onClick={() => setShowHidden(true)}>
+                  Show archived
                 </button>
               )
             }
@@ -469,12 +469,12 @@ export function HistoryView() {
             {selected.size > 0 ? `${selected.size} selected` : "Select sessions"}
           </span>
           <span class="history-bulk-actions">
-            <button type="button" class="button secondary small" disabled={toHide.length === 0} title={toHide.length ? `Hide ${pluralize(toHide.length, "session")} from history` : "Select visible sessions to hide"} onClick={() => bulk(toHide, true)}>
-              <Icon name="eye-closed" /> Hide
+            <button type="button" class="button secondary small" disabled={toHide.length === 0} title={toHide.length ? `Archive ${pluralize(toHide.length, "session")}` : "Select sessions to archive"} onClick={() => bulk(toHide, true)}>
+              <Icon name="archive" /> Archive
             </button>
             {(showHidden || toUnhide.length > 0) && (
-              <button type="button" class="button secondary small" disabled={toUnhide.length === 0} title={toUnhide.length ? `Show ${pluralize(toUnhide.length, "session")} in history again` : "Select hidden sessions to unhide"} onClick={() => bulk(toUnhide, false)}>
-                <Icon name="eye" /> Unhide
+              <button type="button" class="button secondary small" disabled={toUnhide.length === 0} title={toUnhide.length ? `Unarchive ${pluralize(toUnhide.length, "session")}` : "Select archived sessions to unarchive"} onClick={() => bulk(toUnhide, false)}>
+                <Icon name="inbox" /> Unarchive
               </button>
             )}
             <button type="button" class="button tertiary small" title="Leave select mode (Escape)" onClick={stopSelecting}>

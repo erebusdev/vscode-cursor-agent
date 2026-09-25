@@ -304,7 +304,7 @@ function HistoryButton() {
           )}
           <div class="history-hover-footer">
             <span class="history-hover-more">{more > 0 ? `${more} more${q ? " matching" : ""}` : ""}</span>
-            <button type="button" class="link-button" title={q ? `Open the history pane searching for “${q}”` : "Open the history pane: search, rename, hide and resume sessions"} onClick={openPane}>
+            <button type="button" class="link-button" title={q ? `Open the history pane searching for “${q}”` : "Open the history pane"} onClick={openPane}>
               All history…
             </button>
           </div>
