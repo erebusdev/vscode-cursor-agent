@@ -1,8 +1,10 @@
+import { isAutoModel } from "../shared/modelVisibility";
 import { useEffect, useReducer, useRef } from "preact/hooks";
 import type {
   AgentProbe,
   ExtensionSettings,
   ExtensionToWebview,
+  McpStatus,
   PromptAttachmentInput,
   SessionState,
   SessionSummary,
@@ -10,7 +12,8 @@ import type {
   UiSettings,
   UsageSummary,
 } from "../shared/protocol";
-import { getPersisted, persist } from "./vscode";
+import { DEFAULT_SETTINGS_SECTION, parseSettingsSection, type SettingsSection } from "../shared/settingsUi";
+import { getPersisted, persist, post } from "./vscode";
 
 // ---------------------------------------------------------------------------
 // State
@@ -43,6 +46,8 @@ export interface StoreState {
   /** True once the first snapshot arrived. */
   ready: boolean;
   session: SessionState;
+  /** Last specific (non-Auto) model the session used; turning the Auto switch off returns to it. */
+  lastManualModelId?: string;
   settings: UiSettings;
   /** Ordered item ids. New array reference only when membership/order changes. */
   ids: ReadonlyArray<string>;
@@ -50,14 +55,18 @@ export interface StoreState {
   items: Map<string, ThreadItem>;
   sessions: SessionsState;
   usage: UsageState;
-  /** Full extension settings (for the in-app settings panel). */
+  /** Full extension settings (for the settings tab and the setup card). */
   extSettings: ExtensionSettings | undefined;
   /** Last agent executable probe. */
   probe: AgentProbe | undefined;
-  /** Whether the settings view is shown in place of the transcript. */
-  settingsOpen: boolean;
-  /** Whether the detailed usage view is shown in place of the transcript. */
-  usageOpen: boolean;
+  /** Which detail pane (usage or session history) is shown in place of the transcript, if any. */
+  pane: Pane | undefined;
+  /** Search text the history pane opens with (typed in the header's recent-sessions card). */
+  historyQuery: string;
+  /** Settings tab only: the section on screen. */
+  settingsSection: SettingsSection;
+  /** Settings tab only: last MCP status check. */
+  mcp: { readonly status: McpStatus | undefined; readonly loading: boolean };
   /** Progress of a guided setup step (installer / login running in a terminal). */
   setupStatus: { phase: "idle" | "installing" | "loggingIn"; text?: string };
   /** Latest @-mention file search results. */
@@ -84,15 +93,18 @@ const EMPTY_SESSION: SessionState = {
 const state: StoreState = {
   ready: false,
   session: EMPTY_SESSION,
-  settings: { sendWithCtrlEnter: false, showThoughts: true },
+  settings: { sendWithCtrlEnter: false, showThoughts: true, hiddenModels: [] },
   ids: [],
   items: new Map(),
   sessions: { list: [], loading: false },
   usage: { summary: undefined, loading: false },
   extSettings: undefined,
   probe: undefined,
-  settingsOpen: false,
-  usageOpen: false,
+  pane: undefined,
+  historyQuery: "",
+  // The host writes the requested (or, after a reload, the persisted) section into the page.
+  settingsSection: parseSettingsSection(document.body?.dataset.section) ?? parseSettingsSection(getPersisted().settingsSection) ?? DEFAULT_SETTINGS_SECTION,
+  mcp: { status: undefined, loading: false },
   setupStatus: { phase: "idle" },
   fileResults: undefined,
   toasts: [],
@@ -100,6 +112,11 @@ const state: StoreState = {
   hostDraft: undefined,
   resetSeq: 0,
 };
+
+/** Older hosts (or test harnesses) may omit newer optional fields; keep the shape stable for the UI. */
+function normalizeSettings(settings: UiSettings): UiSettings {
+  return { ...settings, hiddenModels: settings.hiddenModels ?? [] };
+}
 
 export function getState(): StoreState {
   return state;
@@ -110,6 +127,9 @@ export function getState(): StoreState {
 // ---------------------------------------------------------------------------
 
 type Listener = () => void;
+
+/** Detail panes shown inside the chat view in place of the transcript. */
+export type Pane = "usage" | "history";
 const listeners = new Set<Listener>();
 let scheduled = false;
 
@@ -193,6 +213,11 @@ function emitComposer(e: ComposerEvent): void {
 
 let toastSeq = 0;
 
+/** Ask the composer to take focus (same path the host's composer.focus message uses). */
+export function focusComposer(): void {
+  emitComposer({ type: "focus" });
+}
+
 export function addToast(level: Toast["level"], text: string, ttl = 4000): void {
   const id = ++toastSeq;
   state.toasts = [...state.toasts, { id, level, text }];
@@ -229,19 +254,48 @@ export function clearAttachments(): void {
   setAttachments([]);
 }
 
-export function setSettingsOpen(open: boolean): void {
-  if (state.settingsOpen === open) return;
-  state.settingsOpen = open;
-  if (open) state.usageOpen = false;
+/** Opens the settings editor tab (from the chat), optionally on a section. */
+export function openSettings(section?: SettingsSection): void {
+  post(section ? { type: "settings.open", section } : { type: "settings.open" });
+}
+
+/** Settings tab: switch section (remembered so a reload restores it). */
+export function setSettingsSection(section: SettingsSection): void {
+  if (state.settingsSection === section) return;
+  state.settingsSection = section;
+  persist({ settingsSection: section });
+  notify();
+}
+
+/** Resumes a session in the chat (no-op for the one already open). */
+export function resumeSession(sessionId: string): void {
+  if (sessionId !== state.session.sessionId) post({ type: "session.load", sessionId });
+}
+
+/** Shows a detail pane in place of the transcript (one at a time), or closes it. */
+export function setPane(pane: Pane | undefined): void {
+  if (state.pane === pane) return;
+  state.pane = pane;
   notify();
 }
 
 export function setUsageOpen(open: boolean): void {
-  if (state.usageOpen === open) return;
-  state.usageOpen = open;
-  if (open) state.settingsOpen = false;
-  notify();
+  if (open) setPane("usage");
+  else if (state.pane === "usage") setPane(undefined);
 }
+
+/** Opens the session history pane, optionally with a search already typed. */
+export function openHistory(query = ""): void {
+  state.historyQuery = query;
+  if (state.pane === "history") notify();
+  else setPane("history");
+}
+
+export function setHistoryOpen(open: boolean): void {
+  if (open) openHistory();
+  else if (state.pane === "history") setPane(undefined);
+}
+
 
 // ---------------------------------------------------------------------------
 // Reducer for host messages
@@ -263,7 +317,7 @@ export function handleMessage(msg: ExtensionToWebview): void {
   switch (msg.type) {
     case "snapshot": {
       state.session = msg.session;
-      state.settings = msg.settings;
+      state.settings = normalizeSettings(msg.settings);
       state.hostDraft = msg.draft;
       state.ready = true;
       replaceItems(msg.items);
@@ -271,10 +325,12 @@ export function handleMessage(msg: ExtensionToWebview): void {
     }
     case "session": {
       state.session = msg.session;
+      const current = msg.session.models?.availableModels.find((m) => m.modelId === msg.session.models?.currentModelId);
+      if (current && !isAutoModel(current.modelId, current.name)) state.lastManualModelId = current.modelId;
       break;
     }
     case "settings": {
-      state.settings = msg.settings;
+      state.settings = normalizeSettings(msg.settings);
       break;
     }
     case "item.upsert": {
@@ -301,7 +357,9 @@ export function handleMessage(msg: ExtensionToWebview): void {
       break;
     }
     case "sessions": {
-      state.sessions = { list: msg.sessions, loading: msg.loading, error: msg.error };
+      // A refresh starts with an empty "loading" message; keep showing the last list until the new one arrives.
+      const list = msg.loading && msg.sessions.length === 0 ? state.sessions.list : msg.sessions;
+      state.sessions = { list, loading: msg.loading, error: msg.error };
       break;
     }
     case "extensionSettings": {
@@ -321,8 +379,18 @@ export function handleMessage(msg: ExtensionToWebview): void {
       break;
     }
     case "showSettings": {
-      state.settingsOpen = true;
-      state.usageOpen = false;
+      // Only the settings tab acts on this; the chat ignores it.
+      if (!msg.section) return;
+      setSettingsSection(msg.section);
+      return;
+    }
+    case "showHistory": {
+      openHistory();
+      return;
+    }
+    case "mcpStatus": {
+      // Keep the last result on screen while a refresh runs.
+      state.mcp = { status: msg.status ?? (msg.loading ? state.mcp.status : undefined), loading: msg.loading };
       break;
     }
     case "usage": {

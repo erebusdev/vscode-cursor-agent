@@ -42,7 +42,7 @@ function QuestionBlock({ q, draft, onChange, disabled }: { q: Question; draft: D
         {q.options.map((o) => {
           const checked = draft.selected.includes(o.id);
           return (
-            <button key={o.id} type="button" role={role} aria-checked={checked} class={`option-button${checked ? " checked" : ""}`} disabled={disabled} onClick={() => toggle(o.id)}>
+            <button title={o.label} key={o.id} type="button" role={role} aria-checked={checked} class={`option-button${checked ? " checked" : ""}`} disabled={disabled} onClick={() => toggle(o.id)}>
               <Icon name={checked ? (q.allowMultiple ? "pass-filled" : "circle-filled") : q.allowMultiple ? "circle-large-outline" : "circle-large-outline"} />
               <span>{o.label}</span>
             </button>
@@ -89,10 +89,10 @@ export const QuestionCard = memo(function QuestionCard({ item }: { item: Questio
             <QuestionBlock key={q.id} q={q} draft={get(q.id)} disabled={!pending} onChange={(d) => setDrafts({ ...drafts, [q.id]: d })} />
           ))}
           <div class="card-actions">
-            <button type="button" class="button primary" disabled={!canSubmit} onClick={submit}>
+            <button title="Send your answer" type="button" class="button primary" disabled={!canSubmit} onClick={submit}>
               Submit
             </button>
-            <button type="button" class="button secondary" onClick={() => post({ type: "question.skip", requestId: item.requestId })}>
+            <button title="Skip this question" type="button" class="button secondary" onClick={() => post({ type: "question.skip", requestId: item.requestId })}>
               Skip
             </button>
           </div>

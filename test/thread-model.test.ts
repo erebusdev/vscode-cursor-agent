@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type * as acp from "@agentclientprotocol/sdk";
 import type { ExtensionToWebview, ThreadItem, ToolItem } from "../src/shared/protocol";
-import { ThreadModel } from "../src/extension/session/ThreadModel";
+import { ThreadModel, mcpServerDisplayName, mcpToolDisplayName } from "../src/extension/session/ThreadModel";
 import { buildFileDiff, normalizeCursorDiff } from "../src/extension/session/diff";
 import { parseCursorModelId } from "../src/extension/session/SessionRuntime";
 
@@ -236,5 +236,91 @@ describe("parseCursorModelId", () => {
   it("splits Cursor's parameterised model ids", () => {
     expect(parseCursorModelId("grok-4.7[context=256k,reasoning_effort=high,fast=true]")).toEqual({ modelId: "grok-4.7", params: { context: "256k", reasoning_effort: "high", fast: "true" } });
     expect(parseCursorModelId("auto-smart")).toEqual({ modelId: "auto-smart", params: {} });
+  });
+});
+
+describe("MCP tool titles", () => {
+  const allow = [{ optionId: "allow-once", name: "Allow", kind: "allow_once" as const }];
+
+  it("names plugin and custom servers readably", () => {
+    expect(mcpServerDisplayName("plugin-atlassian-atlassian")).toBe("Atlassian");
+    expect(mcpServerDisplayName("plugin-sentry-sentry")).toBe("Sentry");
+    expect(mcpServerDisplayName("plugin-cloudflare-cloudflare-docs")).toBe("Cloudflare docs");
+    expect(mcpServerDisplayName("plugin-cloudflare-cloudflare-observability")).toBe("Cloudflare observability");
+    // Multi-part plugin names: the split where the server repeats the plugin name wins.
+    expect(mcpServerDisplayName("plugin-foo-bar-foo-bar")).toBe("Foo bar");
+    expect(mcpServerDisplayName("plugin-linear-server")).toBe("Linear server");
+    expect(mcpServerDisplayName("github")).toBe("GitHub");
+    expect(mcpServerDisplayName("gitlab")).toBe("GitLab");
+    expect(mcpServerDisplayName("my-docs_server")).toBe("My docs server");
+  });
+
+  it("shows tool names as-is, with snake_case read as words", () => {
+    expect(mcpToolDisplayName("atlassianUserInfo")).toBe("atlassianUserInfo");
+    expect(mcpToolDisplayName("execute_sentry_tool")).toBe("execute sentry tool");
+  });
+
+  it("replaces 'MCP: tool' with server and tool once the update names them (joined title shape)", () => {
+    const { model } = make();
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "m1", title: "MCP: tool", kind: "other", status: "pending" });
+    expect((model.getItems()[0] as ToolItem).title).toBe("MCP: tool");
+    model.applyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "m1",
+      title: "plugin-atlassian-atlassian-atlassianUserInfo: atlassianUserInfo",
+      rawInput: { providerIdentifier: "plugin-atlassian-atlassian", toolName: "atlassianUserInfo", args: {} },
+    });
+    let tool = model.getItems()[0] as ToolItem;
+    expect(tool.title).toBe("Atlassian · atlassianUserInfo");
+    expect(tool.tooltip).toBe("MCP server plugin-atlassian-atlassian, tool atlassianUserInfo");
+    expect(tool.mcpPattern).toBe("Mcp(plugin-atlassian-atlassian:atlassianUserInfo)");
+    // A later update carrying the generic title again does not bring it back.
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "m1", title: "MCP: tool", status: "completed" });
+    tool = model.getItems()[0] as ToolItem;
+    expect(tool.title).toBe("Atlassian · atlassianUserInfo");
+    expect(tool.status).toBe("completed");
+  });
+
+  it("parses the title when rawInput lacks the fields (plain title shape)", () => {
+    const { model } = make();
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "m2", title: "MCP: tool", kind: "other", status: "pending" });
+    model.applyUpdate({ sessionUpdate: "tool_call_update", toolCallId: "m2", title: "plugin-sentry-sentry: execute_sentry_tool", rawInput: { args: { q: 1 } } });
+    const tool = model.getItems()[0] as ToolItem;
+    expect(tool.title).toBe("Sentry · execute sentry tool");
+    expect(tool.tooltip).toBe("MCP server plugin-sentry-sentry, tool execute_sentry_tool");
+    expect(tool.mcpPattern).toBe("Mcp(plugin-sentry-sentry:execute_sentry_tool)");
+  });
+
+  it("permission prompts show the friendly title; the approval pattern stays Cursor's", () => {
+    const { model } = make();
+    const item = model.attachPermission(
+      {
+        sessionId: "s",
+        toolCall: {
+          toolCallId: "m3",
+          title: "plugin-cloudflare-cloudflare-docs: search_cloudflare_documentation",
+          kind: "other",
+          rawInput: { providerIdentifier: "plugin-cloudflare-cloudflare-docs", toolName: "search_cloudflare_documentation", args: { query: "kv" } },
+          content: [{ type: "content", content: text('```json\n{ "query": "kv" }\n```') }],
+        },
+        options: allow,
+      },
+      "req-m",
+    );
+    expect(item.title).toBe("Cloudflare docs · search cloudflare documentation");
+    expect(item.mcpPattern).toBe("Mcp(plugin-cloudflare-cloudflare-docs:search_cloudflare_documentation)");
+    expect(item.permission?.reason).toBeUndefined();
+
+    const custom = model.attachPermission({ sessionId: "s", toolCall: { toolCallId: "m4", title: "github-create_issue: create_issue", kind: "other" }, options: allow }, "req-g");
+    expect(custom.title).toBe("GitHub · create issue");
+    expect(custom.mcpPattern).toBe("Mcp(github:create_issue)");
+  });
+
+  it("leaves non-MCP titles alone", () => {
+    const { model } = make();
+    model.applyUpdate({ sessionUpdate: "tool_call", toolCallId: "r", title: "Read /work/project/src/a.ts", kind: "read", status: "pending" });
+    const tool = model.getItems()[0] as ToolItem;
+    expect(tool.title).toBe("Read src/a.ts");
+    expect(tool.tooltip).toBeUndefined();
   });
 });

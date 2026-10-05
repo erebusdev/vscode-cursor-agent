@@ -25,10 +25,10 @@ function classFor(o: PermissionOption): string {
   return "button tertiary";
 }
 
-export function respondToPermission(perm: PermissionState, kind: PermissionOption["kind"]): boolean {
+export function respondToPermission(perm: PermissionState, kind: PermissionOption["kind"], scope?: "session"): boolean {
   const opt = perm.options.find((o) => o.kind === kind);
   if (!opt) return false;
-  post({ type: "permission.respond", requestId: perm.requestId, optionId: opt.optionId });
+  post({ type: "permission.respond", requestId: perm.requestId, optionId: opt.optionId, ...(scope ? { scope } : {}) });
   return true;
 }
 
@@ -45,14 +45,18 @@ export function PermissionPrompt({ permission }: { permission: PermissionState }
     const text =
       permission.state === "cancelled"
         ? "Cancelled"
-        : chosen?.kind === "allow_once"
-          ? "Allowed"
-          : chosen?.kind === "allow_always"
-            ? "Always allowed"
-            : chosen?.kind === "reject_once" || chosen?.kind === "reject_always"
-              ? "Rejected"
-              : chosen?.name ?? "Resolved";
-    const icon = text.startsWith("Allow") || text.startsWith("Always allow") ? "check" : text === "Cancelled" ? "circle-slash" : "close";
+        : permission.resolution === "auto"
+          ? "Auto-approved"
+          : permission.resolution === "session"
+            ? "Allowed for session"
+            : chosen?.kind === "allow_once"
+              ? "Allowed"
+              : chosen?.kind === "allow_always"
+                ? "Always allowed"
+                : chosen?.kind === "reject_once" || chosen?.kind === "reject_always"
+                  ? "Rejected"
+                  : chosen?.name ?? "Resolved";
+    const icon = text.startsWith("Allow") || text.startsWith("Always allow") || text.startsWith("Auto") ? "check" : text === "Cancelled" ? "circle-slash" : "close";
     return (
       <div class={`permission-resolved ${text.startsWith("Reject") ? "rejected" : ""}`}>
         <Icon name={icon} /> {text}
@@ -60,10 +64,11 @@ export function PermissionPrompt({ permission }: { permission: PermissionState }
     );
   }
 
-  // Order: allow_once, allow_always, reject_once, reject_always
-  const order: Record<PermissionOption["kind"], number> = { allow_once: 0, allow_always: 1, reject_once: 2, reject_always: 3 };
-  const options = [...permission.options].sort((a, b) => order[a.kind] - order[b.kind]);
-  const primary = options.find((o) => o.kind === "allow_once") ?? options[0];
+  const allowOnce = permission.options.find((o) => o.kind === "allow_once");
+  const allowAlways = permission.options.find((o) => o.kind === "allow_always");
+  const rejects = permission.options.filter((o) => o.kind === "reject_once" || o.kind === "reject_always");
+  const others = permission.options.filter((o) => !["allow_once", "allow_always", "reject_once", "reject_always"].includes(o.kind));
+  const respond = (o: PermissionOption, scope?: "session") => post({ type: "permission.respond", requestId: permission.requestId, optionId: o.optionId, ...(scope ? { scope } : {}) });
 
   return (
     <div class="permission" role="group" aria-label="Permission request">
@@ -72,21 +77,34 @@ export function PermissionPrompt({ permission }: { permission: PermissionState }
       </div>
       {permission.reason && <div class="permission-reason">{permission.reason}</div>}
       <div class="permission-actions">
-        {options.map((o) => (
-          <button
-            key={o.optionId}
-            type="button"
-            ref={o === primary ? primaryRef : undefined}
-            class={classFor(o)}
-            title={o.name}
-            onClick={() => post({ type: "permission.respond", requestId: permission.requestId, optionId: o.optionId })}
-          >
+        {allowOnce && (
+          <button type="button" ref={primaryRef} class="button primary" title="Allow this once" onClick={() => respond(allowOnce)}>
+            Allow
+          </button>
+        )}
+        {allowOnce && (
+          <button type="button" class="button secondary" title="Allow this command or tool for the rest of this session (nothing is saved)" onClick={() => respond(allowOnce, "session")}>
+            Allow for session
+          </button>
+        )}
+        {others.map((o) => (
+          <button key={o.optionId} type="button" class="button secondary" title={o.name} onClick={() => respond(o)}>
+            {o.name}
+          </button>
+        ))}
+        {rejects.map((o) => (
+          <button key={o.optionId} type="button" class="button tertiary" title={o.name} onClick={() => respond(o)}>
             {labelFor(o)}
           </button>
         ))}
+        {allowAlways && (
+          <button type="button" class="button tertiary permission-always" title="Saves this command permanently to Cursor's own permission config for your account" onClick={() => respond(allowAlways)}>
+            Always allow
+          </button>
+        )}
       </div>
       <div class="permission-hint">
-        <kbd>Y</kbd> allow · <kbd>A</kbd> always · <kbd>N</kbd> reject
+        <kbd>Y</kbd> allow · <kbd>S</kbd> for session · <kbd>N</kbd> reject
       </div>
     </div>
   );

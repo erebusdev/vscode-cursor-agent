@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
-import { getState, setSettingsOpen, useSelector } from "../store";
+import { getState, openSettings, useSelector } from "../store";
 import { post } from "../vscode";
-import { AgentPathControl } from "./SettingsView";
+import { AgentPathControl } from "./settings/rows";
 import { Icon, Spinner } from "./ui";
 
 const SETUP_PATTERN = /not found|no such file|enoent|not logged in|log ?in|sign ?in|authenticat|unauthori[sz]ed|cannot find|is not recognized/i;
@@ -47,18 +47,18 @@ function LoginCard() {
         <Icon name="account" />
         <span id="setup-title">Sign in to Cursor</span>
       </div>
-      <p class="setup-text">The Cursor Agent CLI is installed on this machine but not logged in. Sign in once and the extension will connect.</p>
+      <p class="setup-text">Sign in to start using Cursor Agent.</p>
       <StatusLine />
       <div class="card-actions">
-        <button type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.login" })}>
+        <button title="Sign in" type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.login" })}>
           <Icon name="sign-in" /> Log in
         </button>
         {loginUrl && (
-          <button type="button" class="button secondary" onClick={() => post({ type: "openExternal", url: loginUrl })}>
+          <button title="Open the sign-in page" type="button" class="button secondary" onClick={() => post({ type: "openExternal", url: loginUrl })}>
             <Icon name="link-external" /> Open login page
           </button>
         )}
-        <button type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
+        <button title="Connect" type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name="plug" /> Connect
         </button>
       </div>
@@ -88,20 +88,20 @@ export function SetupCard() {
       </div>
       <p class="setup-text">
         {notFound ? (
-          <>The Cursor Agent CLI was not found on this machine. Install it, or point the extension at the executable (or a wrapper script) if it lives somewhere unusual.</>
+          <>The Cursor Agent CLI was not found. Install it or set its path.</>
         ) : (
-          <>The Cursor Agent CLI could not be started. Check the path below, or reinstall it.</>
+          <>The Cursor Agent CLI could not be started. Check the path or reinstall it.</>
         )}
       </p>
       <StatusLine />
       <div class="card-actions">
-        <button type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.install" })}>
+        <button title="Install the Cursor Agent CLI" type="button" class="button primary" disabled={busy} onClick={() => post({ type: "setup.install" })}>
           <Icon name="cloud-download" /> Install Cursor Agent
         </button>
-        <button type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
+        <button title="Connect" type="button" class="button secondary" onClick={() => post({ type: "session.reconnect" })}>
           <Icon name="plug" /> Connect
         </button>
-        <button type="button" class="button secondary" onClick={() => setSettingsOpen(true)}>
+        <button title="Open settings" type="button" class="button secondary" onClick={() => openSettings("agent")}>
           All settings
         </button>
       </div>

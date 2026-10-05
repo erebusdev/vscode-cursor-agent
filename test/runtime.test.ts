@@ -1,27 +1,36 @@
+import { DEFAULT_SAFE_LIST } from "../src/extension/session/approvals";
 import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import type { ExtensionToWebview, ThreadItem, ToolItem } from "../src/shared/protocol";
-import { SessionRuntime, type ModelPreferences } from "../src/extension/session/SessionRuntime";
+import { SessionRuntime, type AgentLaunchHooks, type ModelPreferences, type SessionMeta } from "../src/extension/session/SessionRuntime";
+import { detectProcessHome } from "../src/extension/pluginSync";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import type * as acp from "@agentclientprotocol/sdk";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_AGENT = join(here, "fixtures", "fake-agent.mjs");
 
-function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
+function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}, approvalPolicy: "ask" | "safe" | "auto" = "ask", modelDefaults: ModelPreferences = {}, mcpServers?: () => Promise<acp.McpServer[]>, launchHooks?: AgentLaunchHooks, store: { lastSession?: string } = {}, beforeConnect?: () => Promise<void>) {
   const messages: ExtensionToWebview[] = [];
   const events: string[] = [];
   const logs: string[] = [];
-  let lastSession: string | undefined;
-  let prefs: ModelPreferences = {};
+  let meta: SessionMeta = { titles: {}, hidden: [] };
   const runtime = new SessionRuntime({
     cwd: here,
     workspaceName: "test",
     getLaunchConfig: () => ({ command: process.execPath, args: [FAKE_AGENT], env: { ...process.env, ...extraEnv }, protocolLogging: false }),
+    getApprovalConfig: () => ({ policy: approvalPolicy, safeList: DEFAULT_SAFE_LIST }),
+    getModelDefaults: () => modelDefaults,
+    ...(mcpServers ? { getMcpServers: mcpServers } : {}),
+    ...(launchHooks ? { launchHooks } : {}),
+    ...(beforeConnect ? { beforeConnect } : {}),
     storage: {
-      getLastSessionId: () => lastSession,
-      setLastSessionId: (id) => (lastSession = id),
-      getModelPreferences: () => prefs,
-      setModelPreferences: (p) => (prefs = p),
+      getLastSessionId: () => store.lastSession,
+      setLastSessionId: (id) => (store.lastSession = id),
+      getSessionMeta: () => meta,
+      setSessionMeta: (m) => (meta = m),
     },
     log: { info: (m) => logs.push(m), warn: (m) => logs.push(m), error: (m) => logs.push(m), protocol: () => {}, stderr: () => {} },
     events: {
@@ -33,7 +42,7 @@ function makeRuntime(extraEnv: NodeJS.ProcessEnv = {}) {
     },
   });
   const launches = () => logs.filter((l) => l.startsWith("Launching Cursor agent")).length;
-  return { runtime, messages, events, logs, launches, getLastSession: () => lastSession, getPrefs: () => prefs };
+  return { runtime, messages, events, logs, launches, getLastSession: () => store.lastSession, getMeta: () => meta };
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 10_000): Promise<void> {
@@ -54,6 +63,45 @@ afterEach(async () => {
 });
 
 describe("SessionRuntime against a fake ACP agent", () => {
+  it("restarts the agent at most once when the post-initialize step changed its config", async () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "fake-agent-home-")));
+    const seen: Array<{ phase: string; home?: string }> = [];
+    const hooks: AgentLaunchHooks = {
+      beforeSpawn: async () => void seen.push({ phase: "before" }),
+      afterInitialize: async (_launch, pid) => {
+        const detected = await detectProcessHome(pid);
+        seen.push({ phase: "after", ...(detected ? { home: detected } : {}) });
+        return true; // Always "changed": must still restart only once.
+      },
+    };
+    const { runtime, launches, logs } = makeRuntime({ HOME: home }, "ask", {}, undefined, hooks);
+    active.push(runtime);
+    try {
+      await runtime.start();
+      expect(runtime.state.connection).toBe("ready");
+      expect(launches()).toBe(2);
+      expect(seen.map((s) => s.phase)).toEqual(["before", "after"]);
+      if (process.platform === "darwin" || process.platform === "linux") expect(seen[1]!.home).toBe(home);
+      expect(logs.filter((l) => l.startsWith("Restarting the agent"))).toHaveLength(1);
+      expect(runtime.model.getItems().filter((i) => i.type === "notice")).toEqual([]);
+
+      // A reconnect is a new connect: one more hook round, again at most one restart.
+      await runtime.reconnect();
+      expect(runtime.state.connection).toBe("ready");
+      expect(launches()).toBe(4);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("does not restart when the post-initialize step changed nothing", async () => {
+    const { runtime, launches } = makeRuntime({}, "ask", {}, undefined, { afterInitialize: async () => false });
+    active.push(runtime);
+    await runtime.start();
+    expect(runtime.state.connection).toBe("ready");
+    expect(launches()).toBe(1);
+  });
+
   it("starts a session, streams a turn, and records session metadata", async () => {
     const { runtime, events, getLastSession } = makeRuntime();
     active.push(runtime);
@@ -134,6 +182,188 @@ describe("SessionRuntime against a fake ACP agent", () => {
     await turn;
     expect(Date.now() - started).toBeLessThan(5000);
     expect(runtime.state.connection).toBe("ready");
+  });
+
+  it("queues a prompt sent while a turn runs and sends it when the turn ends", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 300", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.prompt("hello after", []);
+    await runtime.prompt("and then this", []);
+    expect(runtime.state.queued).toEqual([
+      { text: "hello after", attachmentCount: 0 },
+      { text: "and then this", attachmentCount: 0 },
+    ]);
+    runtime.moveQueued(1, 0);
+    expect(runtime.state.queued?.map((q) => q.text)).toEqual(["and then this", "hello after"]);
+    runtime.moveQueued(0, 1);
+    await turn;
+    await waitFor(() => runtime.state.queued === undefined && runtime.state.connection === "ready");
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 300", "hello after", "and then this"]);
+  });
+
+  it("keeps a queued prompt when the user stops the turn, and sends it on demand", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.prompt("later", []);
+    await runtime.cancel();
+    await turn;
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.queued?.[0]?.text).toBe("later");
+    await runtime.sendQueuedNow(0);
+    await waitFor(() => runtime.state.connection === "ready" && runtime.state.queued === undefined);
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 20000", "later"]);
+  });
+
+  it("send-now picks the chosen queued message and the rest follow in order", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    await runtime.prompt("first queued", []);
+    await runtime.prompt("second queued", []);
+    await runtime.prompt("third queued", []);
+    await runtime.sendQueuedNow(1);
+    await turn.catch(() => undefined);
+    await waitFor(() => runtime.state.queued === undefined && runtime.state.connection === "ready", 20_000);
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 20000", "second queued", "first queued", "third queued"]);
+  });
+
+  it("interrupt mode cancels the running turn and sends immediately", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("sleep 20000", []);
+    await waitFor(() => runtime.state.connection === "running");
+    const started = Date.now();
+    await runtime.prompt("now please", [], "interrupt");
+    await turn.catch(() => undefined);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(runtime.state.queued).toBeUndefined();
+    const users = items(runtime).filter((i) => i.type === "user") as Array<Extract<ThreadItem, { type: "user" }>>;
+    expect(users.map((u) => u.text)).toEqual(["sleep 20000", "now please"]);
+    expect(runtime.state.connection).toBe("ready");
+  });
+
+  it("applies local renames and hides sessions in the history list", async () => {
+    const { runtime } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("hello", []);
+    const id = runtime.state.sessionId!;
+    runtime.renameSession(id, "My rename");
+    expect(runtime.state.title).toBe("My rename");
+    const listed = await runtime.listSessions();
+    expect(listed.find((s) => s.sessionId === id)?.title).toBe("My rename");
+    runtime.renameSession(id, "");
+    expect(runtime.state.title).not.toBe("My rename");
+    runtime.hideSession(id);
+    expect((await runtime.listSessions()).some((s) => s.sessionId === id)).toBe(false);
+    // The history tab lists hidden sessions flagged, and can unhide them.
+    expect((await runtime.listSessions({ includeHidden: true })).find((s) => s.sessionId === id)?.hidden).toBe(true);
+    runtime.setSessionsHidden([id], false);
+    const shown = (await runtime.listSessions()).find((s) => s.sessionId === id);
+    expect(shown).toBeDefined();
+    expect(shown?.hidden).toBeUndefined();
+    runtime.setSessionsHidden([id], true);
+    expect((await runtime.listSessions()).some((s) => s.sessionId === id)).toBe(false);
+  });
+
+  it("safe-list policy approves read-only commands silently and asks for the rest", async () => {
+    const { runtime } = makeRuntime({}, "safe");
+    active.push(runtime);
+    await runtime.start();
+    await runtime.prompt("run ls -la", []);
+    let tool = items(runtime).find((i) => i.type === "tool") as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.state).toBe("resolved");
+    expect(tool.permission?.resolution).toBe("auto");
+    const risky = runtime.prompt("run rm -rf build", []);
+    await waitFor(() => runtime.state.pendingPermissions === 1);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.state).toBe("pending");
+    // "Allow for session" remembers the command name.
+    runtime.respondToPermission(tool.permission!.requestId, tool.permission!.options[0]!.optionId, "session");
+    await risky;
+    expect(runtime.state.sessionAllowed).toEqual(["rm"]);
+    await runtime.prompt("run rm -rf dist", []);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.resolution).toBe("session");
+  });
+
+  it("forwards MCP servers with session/new and session/load, and survives a failing provider", async () => {
+    let calls = 0;
+    const provider = async (): Promise<acp.McpServer[]> => {
+      calls++;
+      if (calls === 3) throw new Error("boom");
+      return [{ name: "echoprobe", command: "node", args: ["server.mjs"], env: [] }, { type: "http", name: "jira", url: "https://mcp.example/", headers: [] }];
+    };
+    const { runtime, logs } = makeRuntime({}, "ask", {}, provider);
+    active.push(runtime);
+    await runtime.start();
+    expect(runtime.forwardedMcpServers).toEqual(["echoprobe", "jira"]);
+    await runtime.prompt("mcp list", []);
+    expect(lastAssistant(runtime)?.text).toBe("MCP: echoprobe (node server.mjs); jira (https://mcp.example/)");
+    expect(logs.some((l) => l.includes("Forwarding MCP servers: echoprobe, jira"))).toBe(true);
+    // Resume re-sends them (the CLI takes mcpServers on session/load too).
+    const id = runtime.state.sessionId!;
+    await runtime.loadSession(id);
+    expect(calls).toBe(2);
+    await runtime.prompt("mcp list", []);
+    expect(lastAssistant(runtime)?.text).toContain("echoprobe");
+    // A broken config must not stop sessions from being created.
+    await runtime.newSession();
+    expect(calls).toBe(3);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.forwardedMcpServers).toEqual([]);
+    expect(logs.some((l) => l.includes("Could not read MCP config: boom"))).toBe(true);
+  });
+
+  it("matches MCP tool calls against the safe list and remembers them for the session", async () => {
+    const { runtime } = makeRuntime({}, "safe");
+    active.push(runtime);
+    await runtime.start();
+    // A read-only tool name matches the default Mcp(...) safe-list entry even though Cursor sends no reason text.
+    await runtime.prompt("mcp call plugin-atlassian-atlassian searchJiraIssuesUsingJql", []);
+    let tool = items(runtime).filter((i) => i.type === "tool").at(-1) as ToolItem;
+    expect(tool.mcpPattern).toBe("Mcp(plugin-atlassian-atlassian:searchJiraIssuesUsingJql)");
+    expect(tool.permission?.state).toBe("resolved");
+    expect(tool.permission?.resolution).toBe("auto");
+    expect(tool.permission?.reason).toBeUndefined();
+    expect(tool.inputText).toContain('"text": "hi"');
+    expect(tool.output).toBe("ECHO:hi");
+    // A writing tool asks; "Allow for session" keys on Cursor's Mcp(server:tool) pattern.
+    const write = runtime.prompt("mcp call plugin-atlassian-atlassian createJiraIssue", []);
+    await waitFor(() => runtime.state.pendingPermissions === 1);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as ToolItem;
+    expect(tool.permission?.state).toBe("pending");
+    runtime.respondToPermission(tool.permission!.requestId, tool.permission!.options[0]!.optionId, "session");
+    await write;
+    expect(runtime.state.sessionAllowed).toEqual(["Mcp(plugin-atlassian-atlassian:createJiraIssue)"]);
+    await runtime.prompt("mcp call plugin-atlassian-atlassian createJiraIssue", []);
+    tool = items(runtime).filter((i) => i.type === "tool").at(-1) as ToolItem;
+    expect(tool.permission?.resolution).toBe("session");
+  });
+
+  it("auto policy approves everything and switching policy resolves a waiting request", async () => {
+    const { runtime } = makeRuntime({}, "ask");
+    active.push(runtime);
+    await runtime.start();
+    const turn = runtime.prompt("run npm test", []);
+    await waitFor(() => runtime.state.pendingPermissions === 1);
+    runtime.setApprovalPolicy("auto");
+    await turn;
+    const tool = items(runtime).find((i) => i.type === "tool") as Extract<ThreadItem, { type: "tool" }>;
+    expect(tool.permission?.resolution).toBe("auto");
+    expect(runtime.state.approvalPolicy).toBe("auto");
   });
 
   it("renders edits as diffs and tracks changed files", async () => {
@@ -256,20 +486,36 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(notice?.text ?? runtime.state.lastError).toContain("not logged in");
   });
 
-  it("switches mode and model, persisting model preferences", async () => {
-    const { runtime, getPrefs } = makeRuntime();
+  it("switches mode and model, remembering the choice per session", async () => {
+    const { runtime, getMeta } = makeRuntime();
     active.push(runtime);
     await runtime.start();
     await runtime.setMode("ask");
     expect(runtime.state.modes?.currentModeId).toBe("ask");
     await runtime.setModel("model-b");
     expect(runtime.state.models?.currentModelId).toBe("model-b");
-    expect(getPrefs().modelId).toBe("model-b");
+    const id = runtime.state.sessionId!;
+    expect(getMeta().models?.[id]?.modelId).toBe("model-b");
     expect(runtime.state.modelOptions).toEqual([]);
     await runtime.setModel("model-a");
     await runtime.setConfigOption("effort", "low");
     expect(runtime.state.modelOptions[0]?.currentValue).toBe("low");
-    expect(getPrefs()).toEqual({ modelId: "model-a", options: { effort: "low" } });
+    expect(getMeta().models?.[id]).toEqual({ modelId: "model-a", options: { effort: "low" } });
+  });
+
+  it("applies the settings defaults to new sessions and a session's own choice on resume", async () => {
+    const { runtime } = makeRuntime({}, "ask", { modelId: "model-a", options: { effort: "low" } });
+    active.push(runtime);
+    await runtime.start();
+    expect(runtime.state.models?.currentModelId).toBe("model-a");
+    expect(runtime.state.modelOptions[0]?.currentValue).toBe("low");
+    await runtime.prompt("hello", []);
+    const first = runtime.state.sessionId!;
+    await runtime.setModel("model-b");
+    await runtime.newSession();
+    expect(runtime.state.models?.currentModelId).toBe("model-a");
+    await runtime.loadSession(first);
+    expect(runtime.state.models?.currentModelId).toBe("model-b");
   });
 
   it("publishes the changed-files summary once per finished edit, not per update", async () => {
@@ -293,6 +539,180 @@ describe("SessionRuntime against a fake ACP agent", () => {
     expect(runtime.state.connection).toBe("ready");
     const notice = items(runtime).find((i) => i.type === "notice") as Extract<ThreadItem, { type: "notice" }>;
     expect(notice.text).toContain("Something went wrong");
+  });
+});
+
+describe("Resuming the last session in a new window", () => {
+  let dir: string | undefined;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  /** One window's session: prompts once in a new session and closes, leaving the id in `store`. */
+  async function previousWindow(env: NodeJS.ProcessEnv, store: { lastSession?: string }): Promise<string> {
+    const { runtime } = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    await runtime.start(store.lastSession);
+    await runtime.prompt("first", []);
+    const id = runtime.state.sessionId!;
+    await runtime.dispose();
+    return id;
+  }
+
+  function storeEnv(): NodeJS.ProcessEnv {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), "fake-agent-store-")));
+    return { FAKE_AGENT_STORE: join(dir, "sessions.json") };
+  }
+
+  it("resumes the session from the previous window in a fresh agent process", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+    expect(store.lastSession).toBe(s1);
+
+    const { runtime, logs } = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(runtime);
+    await runtime.start(store.lastSession);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider"]);
+    expect(logs).toContain(`Resumed session ${s1}`);
+  });
+
+  it("still resumes when the agent is restarted once after initialize", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime, launches, logs } = makeRuntime(env, "ask", {}, undefined, { afterInitialize: async () => true }, store);
+    active.push(runtime);
+    await runtime.start(store.lastSession);
+    expect(launches()).toBe(2);
+    expect(logs.some((l) => l.startsWith("Restarting the agent"))).toBe(true);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider"]);
+    expect(logs.some((l) => l.startsWith("New session"))).toBe(false);
+    expect(store.lastSession).toBe(s1);
+  });
+
+  it("resumes when the history list connects the agent first (restart included)", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime, launches, logs } = makeRuntime(env, "ask", {}, undefined, { afterInitialize: async () => true }, store);
+    active.push(runtime);
+    // The chat's history list asks for sessions as soon as the webview is up, before the start.
+    const list = runtime.listSessions();
+    const start = runtime.start(store.lastSession);
+    const [sessions] = await Promise.all([list, start]);
+    expect(sessions.map((s) => s.sessionId)).toContain(s1);
+    expect(launches()).toBe(2);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(logs.some((l) => l.startsWith("New session"))).toBe(false);
+  });
+
+  it("a resume requested while another start is in flight wins over it", async () => {
+    const env = { ...storeEnv(), FAKE_AGENT_NEW_DELAY_MS: "150" };
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime } = makeRuntime(env, "ask", {}, undefined, { afterInitialize: async () => true }, store);
+    active.push(runtime);
+    const fresh = runtime.start();
+    await waitFor(() => runtime.state.connection === "starting");
+    await Promise.all([fresh, runtime.start(store.lastSession)]);
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(items(runtime).map((i) => i.type)).toEqual(["user", "assistant", "divider"]);
+  });
+
+  it("a resume that fails keeps the stored session, so a later window can still open it", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    // Evidence from the logs: one window ran a differently configured agent that did not know the
+    // session ("Could not resume … Invalid params"); every later window then started a new session.
+    const other = makeRuntime({ FAKE_AGENT_STORE: join(dir!, "other-profile.json") }, "ask", {}, undefined, undefined, store);
+    await other.runtime.start(store.lastSession);
+    expect(other.runtime.state.sessionId).not.toBe(s1);
+    expect(items(other.runtime).some((i) => i.type === "notice")).toBe(true);
+    await other.runtime.dispose();
+    expect(store.lastSession).toBe(s1);
+
+    const next = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(next.runtime);
+    await next.runtime.start(store.lastSession);
+    expect(next.runtime.state.sessionId).toBe(s1);
+  });
+
+  it("the startup resume is queued at once and later requests line up behind it", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    // The login-shell PATH lookup gates every launch; requests made meanwhile must keep their order.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    const { runtime, launches } = makeRuntime(env, "ask", {}, undefined, undefined, store, () => gate);
+    active.push(runtime);
+    const start = runtime.start(store.lastSession);
+    const list = runtime.listSessions();
+    const turn = runtime.prompt("again", []);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(launches()).toBe(0);
+    open();
+    await Promise.all([start, list, turn]);
+    expect(launches()).toBe(1);
+    expect(runtime.state.sessionId).toBe(s1);
+    expect(lastAssistant(runtime)?.text).toBe("Echo: again!");
+
+    // A new session asked for while the startup resume is still waiting wins over it.
+    await runtime.dispose();
+    let open2!: () => void;
+    const gate2 = new Promise<void>((resolve) => (open2 = resolve));
+    const second = makeRuntime(env, "ask", {}, undefined, undefined, store, () => gate2);
+    active.push(second.runtime);
+    const resume = second.runtime.start(store.lastSession);
+    const fresh = second.runtime.newSession();
+    open2();
+    await Promise.all([resume, fresh]);
+    expect(second.runtime.state.sessionId).not.toBe(s1);
+    expect(items(second.runtime)).toEqual([]);
+  });
+
+  it("reconnecting a session that never got a prompt starts a new one instead of failing to load it", async () => {
+    const { runtime, logs } = makeRuntime();
+    active.push(runtime);
+    await runtime.start();
+    const empty = runtime.state.sessionId;
+    await runtime.reconnect();
+    expect(runtime.state.connection).toBe("ready");
+    expect(runtime.state.sessionId).not.toBe(empty);
+    expect(items(runtime).some((i) => i.type === "notice")).toBe(false);
+    expect(logs.some((l) => l.startsWith("Could not resume"))).toBe(false);
+  });
+
+  it("remembers a session resumed from history, so the next window reopens it", async () => {
+    const env = storeEnv();
+    const store: { lastSession?: string } = {};
+    const s1 = await previousWindow(env, store);
+
+    const { runtime } = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(runtime);
+    await runtime.start(store.lastSession);
+    await runtime.newSession();
+    await runtime.prompt("second", []);
+    const s2 = runtime.state.sessionId!;
+    expect(store.lastSession).toBe(s2);
+    await runtime.loadSession(s1);
+    expect(store.lastSession).toBe(s1);
+    await runtime.dispose();
+
+    const next = makeRuntime(env, "ask", {}, undefined, undefined, store);
+    active.push(next.runtime);
+    await next.runtime.start(store.lastSession);
+    expect(next.runtime.state.sessionId).toBe(s1);
   });
 });
 

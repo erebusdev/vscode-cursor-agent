@@ -3,7 +3,8 @@
  */
 import * as vscode from "vscode";
 import { execFile, type ExecFileException } from "node:child_process";
-import type { AgentProbe, ExtensionSettings, SettingsKey } from "../shared/protocol";
+import type { AgentProbe, ApprovalPolicy, ExtensionSettings, SettingsKey } from "../shared/protocol";
+import { DEFAULT_SAFE_LIST } from "./session/approvals";
 import { describeDefaultAgentCommands, resolveAgentExecutable } from "./acp/resolveExecutable";
 import { AGENT_PATH_KEY } from "./platform";
 import { planLaunch } from "./acp/windowsLaunch";
@@ -22,7 +23,7 @@ function sourceOf(inspect: ReturnType<vscode.WorkspaceConfiguration["inspect"]>)
 
 export function readExtensionSettings(): ExtensionSettings {
   const config = vscode.workspace.getConfiguration(SECTION);
-  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "protocolLogging"];
+  const keys: SettingsKey[] = ["agentPath", "agentPathWindows", "agentArgs", "environment", "configDir", "mcpForwardProjectServers", "mcpUserConfig", "mcpPluginServers", "mcpPluginExclude", "pluginSkills", "pluginSkillsExclude", "resumeLastSession", "sendWithCtrlEnter", "showThoughts", "notifyWhenHidden", "editorTitleButton", "protocolLogging", "approvalPolicy", "safeList", "hiddenModels", "defaultModel", "defaultModelOptions"];
   const sources: Record<string, Source> = {};
   for (const key of keys) sources[key] = sourceOf(config.inspect(key));
   return {
@@ -32,11 +33,23 @@ export function readExtensionSettings(): ExtensionSettings {
     agentArgs: config.get<string[]>("agentArgs", []),
     environment: config.get<Record<string, string>>("environment", {}),
     configDir: config.get<string>("configDir", ""),
+    mcpForwardProjectServers: config.get<boolean>("mcpForwardProjectServers", true),
+    mcpUserConfig: config.get<string>("mcpUserConfig", ""),
+    mcpPluginServers: config.get<"auto" | "manual" | "off">("mcpPluginServers", "auto"),
+    mcpPluginExclude: config.get<string[]>("mcpPluginExclude", []),
+    pluginSkills: config.get<boolean>("pluginSkills", true),
+    pluginSkillsExclude: config.get<string[]>("pluginSkillsExclude", []),
     resumeLastSession: config.get<boolean>("resumeLastSession", true),
     sendWithCtrlEnter: config.get<boolean>("sendWithCtrlEnter", false),
     showThoughts: config.get<boolean>("showThoughts", true),
     notifyWhenHidden: config.get<boolean>("notifyWhenHidden", true),
+    editorTitleButton: config.get<boolean>("editorTitleButton", true),
     protocolLogging: config.get<boolean>("protocolLogging", false),
+    approvalPolicy: config.get<ApprovalPolicy>("approvalPolicy", "safe"),
+    safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]),
+    hiddenModels: config.get<string[]>("hiddenModels", []),
+    defaultModel: config.get<string>("defaultModel", ""),
+    defaultModelOptions: config.get<Record<string, string | boolean>>("defaultModelOptions", {}),
     sources,
   };
 }
@@ -75,7 +88,7 @@ export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv)
       state: "notFound",
       configuredPath,
       error: configuredPath.trim() ? `"${configuredPath.trim()}" was not found.` : `Neither ${describeDefaultAgentCommands()} was found on PATH.`,
-      hint: "Install the Cursor Agent CLI (curl https://cursor.com/install -fsS | bash) or point this at the executable / wrapper script.",
+      hint: "Install the Cursor Agent CLI or set its path.",
       checkedAt,
     };
   }
@@ -90,7 +103,7 @@ export async function probeAgent(configuredPath: string, env: NodeJS.ProcessEnv)
           configuredPath,
           resolvedPath: resolved,
           error: `Could not run "${resolved} --version": ${describeExecError(error)}`,
-          hint: (stderr || "").trim().slice(0, 300) || "Check that the file is executable and that the wrapper forwards arguments.",
+          hint: (stderr || "").trim().slice(0, 300) || "Check that the file is executable.",
           checkedAt,
         });
         return;

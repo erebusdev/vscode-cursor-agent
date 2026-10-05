@@ -11,7 +11,7 @@ export function Icon({ name, class: cls, title }: { name: string; class?: string
   return <i class={`codicon codicon-${name}${cls ? ` ${cls}` : ""}`} aria-hidden={title ? undefined : "true"} title={title} />;
 }
 
-type ButtonProps = Omit<JSX.HTMLAttributes<HTMLButtonElement>, "icon" | "label" | "ref"> & { icon: string; label: string; class?: string };
+type ButtonProps = Omit<JSX.HTMLAttributes<HTMLButtonElement>, "icon" | "label" | "ref"> & { icon: string; label: string; class?: string; disabled?: boolean };
 
 /** Icon-only button with an accessible label and tooltip. */
 export const IconButton = forwardRef<HTMLButtonElement, ButtonProps>(function IconButton({ icon, label, class: cls, children, ...rest }, ref) {
@@ -64,7 +64,7 @@ export function Disclosure({ label, children, defaultOpen = false, class: cls, i
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div class={`disclosure${open ? " open" : ""}${cls ? ` ${cls}` : ""}`}>
-      <button type="button" class="disclosure-summary" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button title={open ? "Collapse" : "Expand"} type="button" class="disclosure-summary" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name={open ? "chevron-down" : "chevron-right"} class="disclosure-chevron" />
         {icon && <Icon name={icon} />}
         <span class="disclosure-label">{label}</span>

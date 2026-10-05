@@ -1,10 +1,18 @@
 import * as vscode from "vscode";
-import { ChatHost } from "./ChatHost";
+import { ChatHost, SETTINGS_PANEL_TYPE } from "./ChatHost";
 import { AGENT_PATH_KEY } from "./platform";
+import { DEFAULT_SAFE_LIST } from "./session/approvals";
+import type { ApprovalPolicy, McpStatus } from "../shared/protocol";
 import { DIFF_SCHEME, DiffContentProvider } from "./DiffContentProvider";
-import { SessionRuntime, type AgentLaunchConfig, type ModelPreferences } from "./session/SessionRuntime";
+import { SessionRuntime, type AgentLaunchConfig, type SessionMeta } from "./session/SessionRuntime";
 import { ThreadModel } from "./session/ThreadModel";
 import type { WebviewToExtension } from "../shared/protocol";
+import { hostEnv, prepareHostEnv } from "./hostEnv";
+import { loadMcpServers, type McpServerSpec } from "./session/mcpConfig";
+import { collectMcpStatus, formatMcpStatus } from "./mcpStatus";
+import { parseSettingsSection } from "../shared/settingsUi";
+import { PluginMcpSync, type PluginMode } from "./pluginSync";
+import { updateExtensionSetting } from "./settings";
 
 const PANEL_TYPE = "cursorAcp.panel";
 
@@ -22,6 +30,7 @@ const ALL_VIEW_IDS = ["cursorAcp.chat", "cursorAcp.chatLeft"] as const;
 
 let host: ChatHost | undefined;
 let runtime: SessionRuntime | undefined;
+let pluginSync: PluginMcpSync | undefined;
 
 function launchConfig(): AgentLaunchConfig {
   const config = vscode.workspace.getConfiguration("cursorAcp");
@@ -29,12 +38,73 @@ function launchConfig(): AgentLaunchConfig {
   // Windows hosts read their own key so a Windows path never leaks into WSL/SSH windows.
   const command = config.get<string>(AGENT_PATH_KEY, "").trim();
   const args = config.get<string[]>("agentArgs", []).filter((a) => typeof a === "string");
-  const extraEnv = config.get<Record<string, string>>("environment", {});
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const [key, value] of Object.entries(extraEnv)) {
-    if (typeof value === "string") env[key] = value;
-  }
+  const env = hostEnv(config.get<Record<string, string>>("environment", {}));
   return { command, args, env, protocolLogging: config.get<boolean>("protocolLogging", false) };
+}
+
+/** The MCP servers to hand to the agent with each session; see mcpConfig.ts. */
+async function mcpServers(cwd: string | undefined, log: { warn(m: string): void }): Promise<ReturnType<typeof loadMcpServers> extends Promise<infer R> ? R : never> {
+  const config = vscode.workspace.getConfiguration("cursorAcp");
+  const forwardProject = config.get<boolean>("mcpForwardProjectServers", true);
+  const trusted = vscode.workspace.isTrusted;
+  if (forwardProject && cwd && !trusted) log.warn("Workspace is not trusted; its .cursor/mcp.json servers are not forwarded to the agent.");
+  const result = await loadMcpServers({
+    ...(forwardProject && cwd && trusted ? { projectDir: cwd } : {}),
+    // The user-level file is not forwarded: the CLI loads it itself, with the sign-ins it saved for those
+    // servers. A forwarded copy would replace the CLI's own client and lose that sign-in.
+    env: launchConfig().env,
+  });
+  for (const source of result.sources) if (source.error) log.warn(`MCP config ${source.path}: ${source.error}`);
+  return result;
+}
+
+/** Why the workspace's `.cursor/mcp.json` is not forwarded, if it is not. */
+function projectMcpSkipped(cwd: string | undefined): string | undefined {
+  if (!cwd) return "no folder is open";
+  if (!vscode.workspace.getConfiguration("cursorAcp").get<boolean>("mcpForwardProjectServers", true)) return "forwarding project servers is turned off";
+  if (!vscode.workspace.isTrusted) return "the workspace is not trusted";
+  return undefined;
+}
+
+/** Forwarded servers plus what `agent mcp list` reports, for the settings tab and the Show MCP Servers command. */
+async function mcpStatus(cwd: string | undefined, log: { warn(m: string): void }): Promise<McpStatus> {
+  const launch = launchConfig();
+  const skipped = projectMcpSkipped(cwd);
+  const sync = pluginSync;
+  return collectMcpStatus({
+    loadServers: () => mcpServers(cwd, log),
+    launch,
+    cwd: cwd ?? process.cwd(),
+    ...(skipped ? { projectSkipped: skipped } : {}),
+    ...(sync
+      ? {
+          plugins: () => {
+            const settings = pluginSettings();
+            return { mode: settings.mode, exclude: settings.exclude, config: sync.resolve(launch), reconnectNeeded: sync.reconnectNeeded, skills: settings.skills, skillsExclude: settings.skillsExclude, skillTarget: sync.skillTarget(launch) };
+          },
+        }
+      : {}),
+  });
+}
+
+function pluginSettings() {
+  const config = vscode.workspace.getConfiguration("cursorAcp");
+  const mode = config.get<string>("mcpPluginServers", "auto");
+  return {
+    mode: (mode === "manual" || mode === "off" ? mode : "auto") as PluginMode,
+    exclude: config.get<string[]>("mcpPluginExclude", []).filter((id) => typeof id === "string"),
+    userConfig: config.get<string>("mcpUserConfig", ""),
+    environment: config.get<Record<string, string>>("environment", {}),
+    skills: config.get<boolean>("pluginSkills", true),
+    skillsExclude: config.get<string[]>("pluginSkillsExclude", []).filter((entry) => typeof entry === "string"),
+  };
+}
+
+/** ACP wire form of a server spec (stdio keeps Cursor's optional cwd). */
+function toAcpServer(spec: McpServerSpec): import("@agentclientprotocol/sdk").McpServer {
+  if ("url" in spec) return { type: spec.type, name: spec.name, url: spec.url, headers: [...spec.headers] };
+  const stdio = { name: spec.name, command: spec.command, args: [...spec.args], env: [...spec.env], ...(spec.cwd ? { cwd: spec.cwd } : {}) };
+  return stdio as import("@agentclientprotocol/sdk").McpServer;
 }
 
 function workspaceInfo(): { cwd: string; name: string } | undefined {
@@ -52,11 +122,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const workspace = workspaceInfo();
   const cwd = workspace?.cwd ?? process.cwd();
+  const sync = new PluginMcpSync({
+    settings: pluginSettings,
+    setExclude: (ids) => updateExtensionSetting("mcpPluginExclude", [...ids]),
+    setSkillsExclude: (entries) => updateExtensionSetting("pluginSkillsExclude", [...entries]),
+    store: context.globalState,
+    log: { info: (m) => log.info(m), warn: (m) => log.warn(m) },
+  });
+  pluginSync = sync;
   const storage = {
     getLastSessionId: () => context.workspaceState.get<string>(`cursorAcp.lastSession:${cwd}`),
     setLastSessionId: (id: string | undefined) => void context.workspaceState.update(`cursorAcp.lastSession:${cwd}`, id),
-    getModelPreferences: () => context.globalState.get<ModelPreferences>("cursorAcp.modelPreferences", {}),
-    setModelPreferences: (prefs: ModelPreferences) => void context.globalState.update("cursorAcp.modelPreferences", prefs),
+    getSessionMeta: () => context.globalState.get<SessionMeta>("cursorAcp.sessionMeta", { titles: {}, hidden: [] }),
+    setSessionMeta: (meta: SessionMeta) => void context.globalState.update("cursorAcp.sessionMeta", meta),
   };
 
   const runtimeLogger = {
@@ -69,11 +147,33 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   };
 
+  // The login-shell PATH lookup is bounded (5 s); the agent and its MCP servers need it.
+  const envReady = prepareHostEnv(log);
   runtime = new SessionRuntime({
     cwd,
     workspaceName: workspace?.name ?? "(no folder)",
     ...(vscode.env.remoteName ? { remoteName: vscode.env.remoteName } : {}),
     getLaunchConfig: launchConfig,
+    getModelDefaults: () => {
+      const config = vscode.workspace.getConfiguration("cursorAcp");
+      const modelId = config.get<string>("defaultModel", "").trim();
+      return { ...(modelId ? { modelId } : {}), options: config.get<Record<string, string | boolean>>("defaultModelOptions", {}) };
+    },
+    getApprovalConfig: () => {
+      const config = vscode.workspace.getConfiguration("cursorAcp");
+      return { policy: config.get<ApprovalPolicy>("approvalPolicy", "safe"), safeList: config.get<string[]>("safeList", [...DEFAULT_SAFE_LIST]) };
+    },
+    getMcpServers: async () => (await mcpServers(workspace?.cwd, log)).servers.map(toAcpServer),
+    // Cursor plugin MCP servers go into the agent's own user-level mcp.json (see pluginSync.ts).
+    launchHooks: {
+      beforeSpawn: (launch) => sync.beforeSpawn(launch),
+      afterInitialize: (launch, pid) => sync.afterInitialize(launch, pid),
+    },
+    // Plugin skills linked by the sync get a plugin label in the slash menu.
+    describeCommand: (name) => sync.commandInfo(name),
+    // Every launch (startup resume, history list, reconnect) waits for the PATH lookup inside the runtime,
+    // so the startup resume below can be queued at once, ahead of anything a view asks for.
+    beforeConnect: () => envReady,
     storage,
     log: runtimeLogger,
     events: {
@@ -88,10 +188,43 @@ export function activate(context: vscode.ExtensionContext): void {
   // Capture full before/after texts for the native diff editor.
   attachDiffCapture(runtime.model, diffs);
 
-  host = new ChatHost(context, runtime, diffs, log);
+  host = new ChatHost(context, runtime, diffs, log, {
+    mcpStatus: async () => {
+      // `mcp list` and stdio commands need the login-shell PATH.
+      await envReady;
+      return mcpStatus(workspace?.cwd, log);
+    },
+    setPluginServers: async (ids, enabled) => {
+      const outcome = await sync.setEnabled(ids, enabled, launchConfig());
+      if (outcome.added.length) log.info(`Added Cursor plugin MCP servers: ${outcome.added.join(", ")}`);
+      if (outcome.removed.length) log.info(`Removed Cursor plugin MCP servers: ${outcome.removed.join(", ")}`);
+    },
+    setPluginSkills: async (plugins, enabled) => {
+      const outcome = await sync.setSkillsEnabled(plugins, enabled, launchConfig());
+      if (outcome.error) throw new Error(outcome.error);
+    },
+    syncPluginSkills: async () => {
+      const launch = launchConfig();
+      const outcome = sync.syncSkills(sync.resolve(launch), sync.skillTarget(launch));
+      if (outcome.changed) sync.reconnectNeeded = true;
+      if (outcome.error) throw new Error(outcome.error);
+    },
+    syncPluginServers: async () => {
+      const outcome = await sync.sync(sync.resolve(launchConfig()));
+      if (outcome.error) throw new Error(outcome.error);
+      if (outcome.changed) sync.reconnectNeeded = true;
+    },
+    userMcpConfigPath: () => sync.resolve(launchConfig()).path,
+    workspaceCwd: workspace?.cwd,
+  });
   context.subscriptions.push(host);
 
   let started = false;
+  /**
+   * Opens the startup session once: the last session when resuming is on. Synchronous on purpose:
+   * the resume must be queued before whatever the caller does next (New Session, a prompt, the
+   * history list), or it would run after it and replace it. The runtime waits for the PATH lookup.
+   */
   const ensureStarted = () => {
     if (started || !runtime) return;
     started = true;
@@ -134,12 +267,36 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       host?.focusComposer();
     }),
+    vscode.commands.registerCommand("cursorAcp.cycleApprovals", () => {
+      if (!runtime) return;
+      const order = ["ask", "safe", "auto"] as const;
+      const current = runtime.state.approvalPolicy ?? "safe";
+      const next = order[(order.indexOf(current) + 1) % order.length]!;
+      runtime.setApprovalPolicy(next);
+      void vscode.window.setStatusBarMessage(`Cursor approvals: ${next === "safe" ? "Safe list" : next === "auto" ? "Auto" : "Ask"}`, 2000);
+    }),
+    vscode.commands.registerCommand("cursorAcp.copySessionId", async () => {
+      const id = runtime?.state.sessionId;
+      if (!id) {
+        void vscode.window.showInformationMessage("No Cursor session is open in this window yet.");
+        return;
+      }
+      await vscode.env.clipboard.writeText(id);
+      void vscode.window.setStatusBarMessage(`Copied Cursor session id ${id}`, 3000);
+    }),
     vscode.commands.registerCommand("cursorAcp.newSession", async () => {
       await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
       ensureStarted();
       await runtime?.newSession();
     }),
+    // The history pane in the sidebar chat: search, rename, archive/unarchive and resume.
     vscode.commands.registerCommand("cursorAcp.showHistory", async () => {
+      await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+      ensureStarted();
+      host?.showHistory();
+    }),
+    // Keyboard-first alternative: a quick pick of this folder's sessions.
+    vscode.commands.registerCommand("cursorAcp.quickHistory", async () => {
       ensureStarted();
       if (!runtime) return;
       try {
@@ -188,13 +345,33 @@ export function activate(context: vscode.ExtensionContext): void {
       return runtime?.reconnect();
     }),
     vscode.commands.registerCommand("cursorAcp.showLogs", () => log.show(true)),
-    vscode.commands.registerCommand("cursorAcp.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "cursorAcp")),
+    vscode.commands.registerCommand("cursorAcp.showMcpServers", async () => {
+      await envReady;
+      const status = await mcpStatus(workspace?.cwd, log);
+      // An open settings tab shows the same result.
+      host?.send({ type: "mcpStatus", status, loading: false });
+      log.info(formatMcpStatus(status).join("\n"));
+      log.show(true);
+    }),
+    // Optional argument: a section id ("general", "agent", "approvals", "models", "mcp", "advanced").
+    vscode.commands.registerCommand("cursorAcp.openSettings", (section?: unknown) => {
+      // The Models section lists the session's models, so make sure the agent is up.
+      ensureStarted();
+      host?.openSettings(section);
+    }),
   );
 
   context.subscriptions.push(
     vscode.window.registerWebviewPanelSerializer(PANEL_TYPE, {
       deserializeWebviewPanel(panel) {
         host?.attachPanel(panel);
+        ensureStarted();
+        return Promise.resolve();
+      },
+    }),
+    vscode.window.registerWebviewPanelSerializer(SETTINGS_PANEL_TYPE, {
+      deserializeWebviewPanel(panel, state: unknown) {
+        host?.attachSettingsPanel(panel, parseSettingsSection(state && typeof state === "object" ? (state as { settingsSection?: unknown }).settingsSection : undefined));
         ensureStarted();
         return Promise.resolve();
       },

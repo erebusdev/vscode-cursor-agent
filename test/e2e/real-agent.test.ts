@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "no
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import type { ThreadItem, ToolItem } from "../../src/shared/protocol";
-import { SessionRuntime, type ModelPreferences } from "../../src/extension/session/SessionRuntime";
+import { SessionRuntime } from "../../src/extension/session/SessionRuntime";
 
 const enabled = process.env.CURSOR_ACP_E2E === "1";
 const agent = process.env.CURSOR_ACP_AGENT ?? join(homedir(), ".local", "bin", "cursor-flexnet");
@@ -25,18 +25,19 @@ describe.skipIf(!enabled)("real Cursor agent", () => {
   const cwd = mkdtempSync(join(tmpdir(), "cursor-acp-e2e-"));
   writeFileSync(join(cwd, "README.md"), "# e2e\n");
   let lastSession: string | undefined;
-  let prefs: ModelPreferences = {};
   const logs: string[] = [];
   const make = () =>
     new SessionRuntime({
       cwd,
       workspaceName: "e2e",
       getLaunchConfig: () => ({ command: agent, args: [], env: process.env, protocolLogging: true }),
+      getApprovalConfig: () => ({ policy: "ask", safeList: [] }),
+      getModelDefaults: () => ({}),
       storage: {
         getLastSessionId: () => lastSession,
         setLastSessionId: (id) => (lastSession = id),
-        getModelPreferences: () => prefs,
-        setModelPreferences: (p) => (prefs = p),
+        getSessionMeta: () => ({ titles: {}, hidden: [] }),
+        setSessionMeta: () => undefined,
       },
       log: { info: (m) => logs.push(m), warn: (m) => logs.push(m), error: (m) => logs.push(`ERROR ${m}`), protocol: (d, l) => logs.push(`${d} ${l.slice(0, 300)}`), stderr: (t) => logs.push(`stderr ${t}`) },
       events: { message: () => {}, permissionRequested: () => {}, turnFinished: () => {}, questionAsked: () => {} },

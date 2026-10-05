@@ -22,13 +22,16 @@
   },
   "categories": [
     "AI",
-    "Chat",
-    "Programming Languages"
+    "Chat"
   ],
   "keywords": [
     "cursor",
+    "cursor-agent",
+    "cursor cli",
     "agent",
     "acp",
+    "agent client protocol",
+    "agent-client-protocol",
     "chat",
     "ai"
   ],
@@ -38,7 +41,9 @@
     "workspace"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onWebviewPanel:cursorAcp.panel",
+    "onWebviewPanel:cursorAcp.settings"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -109,7 +114,13 @@
       },
       {
         "command": "cursorAcp.showHistory",
-        "title": "Session History…",
+        "title": "Session History",
+        "category": "Cursor Agent",
+        "icon": "$(history)"
+      },
+      {
+        "command": "cursorAcp.quickHistory",
+        "title": "Resume Session…",
         "category": "Cursor Agent",
         "icon": "$(history)"
       },
@@ -143,6 +154,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "cursorAcp.showMcpServers",
+        "title": "Show MCP Servers",
+        "category": "Cursor Agent",
+        "icon": "$(plug)"
+      },
+      {
         "command": "cursorAcp.showLogs",
         "title": "Show Logs",
         "category": "Cursor Agent",
@@ -153,6 +170,18 @@
         "title": "Open Settings",
         "category": "Cursor Agent",
         "icon": "$(gear)"
+      },
+      {
+        "command": "cursorAcp.copySessionId",
+        "title": "Copy Session Id",
+        "category": "Cursor Agent",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "cursorAcp.cycleApprovals",
+        "title": "Cycle Approval Policy",
+        "category": "Cursor Agent",
+        "icon": "$(shield)"
       }
     ],
     "menus": {
@@ -238,6 +267,12 @@
         "key": "ctrl+alt+n",
         "mac": "cmd+alt+n",
         "when": "cursorAcp.viewFocused"
+      },
+      {
+        "command": "cursorAcp.cycleApprovals",
+        "key": "ctrl+alt+y",
+        "mac": "cmd+alt+y",
+        "when": "cursorAcp.viewFocused"
       }
     ],
     "walkthroughs": [
@@ -257,7 +292,7 @@
           {
             "id": "configure",
             "title": "Point the extension at the CLI",
-            "description": "By default the extension looks for `agent` on your PATH. If you use a wrapper script (for example to select an account), set the path in Settings.\n[Open Settings](command:cursorAcp.openSettings)",
+            "description": "By default the extension looks for `agent` on your PATH. If you use a wrapper script (for example to select an account), set the path in Settings.\n[Open Settings](command:cursorAcp.openSettings?%5B%22agent%22%5D)",
             "media": {
               "markdown": "media/walkthrough/configure.md"
             },
@@ -286,13 +321,13 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "Path to the Cursor Agent CLI executable (or a wrapper script) that supports `acp`. Leave empty to auto-detect `cursor-agent` (then `agent`) from PATH, your login shell and common install directories; a configured value is always used instead. The extension runs `<agentPath> [agentArgs...] acp`. Example: `/Users/me/.local/bin/cursor-flexnet`. Resolved on the machine that hosts the workspace (the remote host when using Remote SSH)."
+          "markdownDescription": "Path to the Cursor Agent CLI; leave empty to find it automatically."
         },
         "cursorAcp.agentPathWindows": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "Agent path used only when VS Code's extension host runs on Windows itself. WSL and remote windows ignore this and use `cursorAcp.agentPath`. Leave empty to auto-detect `agent.exe` / `agent.cmd` from PATH and `%LOCALAPPDATA%\\cursor-agent`."
+          "markdownDescription": "Path to the Cursor Agent CLI on Windows; leave empty to find it automatically."
         },
         "cursorAcp.agentArgs": {
           "type": "array",
@@ -301,7 +336,7 @@
           },
           "default": [],
           "scope": "machine-overridable",
-          "markdownDescription": "Extra arguments passed to the executable **before** `acp` (for example `[\"-e\", \"https://api2.cursor.sh\"]`)."
+          "markdownDescription": "Extra command-line arguments for the Cursor Agent CLI."
         },
         "cursorAcp.environment": {
           "type": "object",
@@ -310,43 +345,158 @@
           },
           "default": {},
           "scope": "machine-overridable",
-          "markdownDescription": "Extra environment variables for the agent process. Values override the extension host environment."
+          "markdownDescription": "Extra environment variables for the agent."
         },
         "cursorAcp.configDir": {
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "Cursor CLI config directory containing `auth.json` (used only for the usage panel). Leave empty to auto-detect from `CURSOR_CONFIG_DIR`, a wrapper script that exports it, or `~/.cursor`."
+          "markdownDescription": "Cursor's config folder, used by the usage panel; leave empty to find it automatically."
+        },
+        "cursorAcp.mcpForwardProjectServers": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Use this workspace's MCP servers in chat."
+        },
+        "cursorAcp.mcpUserConfig": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Your MCP config file; leave empty for the default."
+        },
+        "cursorAcp.mcpPluginServers": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "manual",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Add all plugin servers except those switched off.",
+            "Add only the servers switched on.",
+            "Don't add plugin servers."
+          ],
+          "default": "auto",
+          "scope": "machine-overridable",
+          "markdownDescription": "Add the MCP servers from your Cursor plugins to chat."
+        },
+        "cursorAcp.mcpPluginExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Plugin MCP servers left out in automatic mode."
+        },
+        "cursorAcp.pluginSkills": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine-overridable",
+          "markdownDescription": "Make the skills from your Cursor plugins available in chat."
+        },
+        "cursorAcp.pluginSkillsExclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Plugins whose skills are left out (a plugin name, or `plugin/skill`)."
         },
         "cursorAcp.editorTitleButton": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show a Cursor Agent button in the editor title bar for quick access to the chat."
+          "markdownDescription": "Show a Cursor Agent button in the editor title bar."
         },
         "cursorAcp.resumeLastSession": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Automatically resume the last session for this workspace when the chat opens."
+          "markdownDescription": "Reopen this workspace's last session when the chat opens."
         },
         "cursorAcp.sendWithCtrlEnter": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use Ctrl/Cmd+Enter to send instead of Enter (Enter then inserts a newline)."
+          "markdownDescription": "Send with Ctrl/Cmd+Enter instead of Enter."
         },
         "cursorAcp.showThoughts": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show the agent's thinking/reasoning blocks in the transcript."
+          "markdownDescription": "Show the agent's thinking in the transcript."
         },
         "cursorAcp.notifyWhenHidden": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show a VS Code notification when the agent needs permission or finishes a turn while the chat view is not visible."
+          "markdownDescription": "Notify when the agent needs you and the chat is hidden."
         },
         "cursorAcp.protocolLogging": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Log every ACP JSON-RPC message to the *Cursor Agent* output channel (useful for debugging)."
+          "markdownDescription": "Log agent messages to the *Cursor Agent* output channel for troubleshooting."
+        },
+        "cursorAcp.approvalPolicy": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "safe",
+            "auto"
+          ],
+          "default": "safe",
+          "scope": "resource",
+          "enumDescriptions": [
+            "Ask before every command and tool.",
+            "Run safe-list matches without asking.",
+            "Run everything without asking."
+          ],
+          "markdownDescription": "What new sessions ask before running commands and tools."
+        },
+        "cursorAcp.safeList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "^(cd|ls|pwd|whoami|id|date|uname|hostname|which|type|command -v|echo|printf|cat|head|tail|less|more|wc|file|stat|du|df|tree|realpath|dirname|basename|true|false)\\b",
+            "^(grep|egrep|fgrep|rg|ag|find|fd|locate)\\b",
+            "^(sort|uniq|cut|tr|column|jq|yq|diff|comm|nl|tac|rev|sed -n)\\b",
+            "^git (status|diff|log|show|branch|remote|rev-parse|blame|ls-files|ls-remote|describe|tag|stash list|shortlog|reflog|cat-file|config --get|worktree list)\\b",
+            "^(node|npm|npx|pnpm|yarn|bun|deno|python3?|pip3?|ruby|gem|go|cargo|rustc|java|javac|dotnet|php|composer|swift|docker|kubectl|terraform|aws|gcloud|az|gh|code|cursor|agent) (-v|--version|-V|version)$",
+            "^(npm|pnpm|yarn) (ls|list|view|info|outdated|why|audit)\\b",
+            "^gh (pr|issue|repo|run|release|workflow|search) (view|list|status|checks|diff|code|prs|issues)\\b",
+            "^docker (ps|images|logs|inspect|version|info)\\b",
+            "^kubectl (get|describe|logs|version)\\b",
+            "^acli \\S+ \\S+ (search|view|list|get)\\b",
+            "^Mcp\\([^)]*:(get|list|search|read|fetch|find|query|describe|lookup|discover|view)[A-Za-z0-9_]*\\)$"
+          ],
+          "scope": "resource",
+          "markdownDescription": "Regular expressions for commands that run without asking under the *Safe list* policy."
+        },
+        "cursorAcp.hiddenModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Models hidden from the model picker."
+        },
+        "cursorAcp.defaultModel": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Model for new sessions; leave empty for Cursor's default."
+        },
+        "cursorAcp.defaultModelOptions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "boolean"
+            ]
+          },
+          "default": {},
+          "scope": "resource",
+          "markdownDescription": "Model options for new sessions."
         }
       }
     }

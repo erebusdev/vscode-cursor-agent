@@ -68,7 +68,7 @@ export const FileDiffView = memo(function FileDiffView({ diff, itemId, defaultOp
             ),
           )}
           {tooLong && !showAll && (
-            <button type="button" class="link-button diff-show-all" onClick={() => setShowAll(true)}>
+            <button title="Show the whole diff" type="button" class="link-button diff-show-all" onClick={() => setShowAll(true)}>
               Show all {rows.length} lines
             </button>
           )}

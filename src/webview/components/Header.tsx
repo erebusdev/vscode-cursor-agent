@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ConnectionState } from "../../shared/protocol";
+import { parseTime, recentMatches, sessionLabel } from "../../shared/sessionHistory";
 import { pluralize, relativeTime } from "../format";
-import { setSettingsOpen, useSelector } from "../store";
+import { getState, openHistory, openSettings, resumeSession, setHistoryOpen, useSelector } from "../store";
 import { post } from "../vscode";
 import { Popover } from "./Popover";
 import { UsageButton } from "./Usage";
-import { ChangeCounts, Icon, IconButton, Spinner } from "./ui";
+import { ChangeCounts, Icon, IconButton, Spinner, useNow } from "./ui";
 
 const STATUS_LABEL: Record<ConnectionState, string> = {
   idle: "Idle",
@@ -61,13 +62,24 @@ export function Header() {
   return (
     <header class="header">
       <div class="header-main">
-        <span class="header-title" title={title}>
-          {title}
-        </span>
         <span class={`status status-${c}`} title={session.lastError ?? STATUS_LABEL[c]} role="status" aria-label={STATUS_LABEL[c]}>
           {busy ? <Spinner class="status-spinner" /> : <span class="status-dot" />}
-          {c !== "ready" && c !== "running" && <span class="status-label">{STATUS_LABEL[c]}</span>}
         </span>
+        {session.sessionId ? (
+          <button type="button" class="header-title header-title-button" title={`${title}\nClick to rename · Session id: ${session.sessionId}`} onClick={() => post({ type: "session.rename", sessionId: session.sessionId! })}>
+            {title}
+          </button>
+        ) : (
+          <span class="header-title" title={title}>
+            {title}
+          </span>
+        )}
+        {c !== "ready" && c !== "running" && <span class={`status-label status-${c}`}>{STATUS_LABEL[c]}</span>}
+        {session.approvalPolicy === "auto" && (
+          <span class="auto-badge" title="Approvals: Auto. Every command and tool call runs without asking for this session.">
+            <Icon name="unlock" /> Auto
+          </span>
+        )}
       </div>
       <div class="header-side">
         {session.workspaceName && (
@@ -85,9 +97,10 @@ export function Header() {
         <ChangesChip />
         <span class="header-actions">
           {canReconnect && <IconButton icon="refresh" label="Reconnect agent" onClick={() => post({ type: "session.reconnect" })} />}
-          <IconButton icon="add" label="New session" onClick={() => post({ type: "session.new" })} />
-          <UsageButton />
+          <IconButton icon="add" label="New chat" onClick={() => post({ type: "session.new" })} />
           <HistoryButton />
+          <span class="header-divider" aria-hidden="true" />
+          <UsageButton />
           <SettingsGear />
         </span>
       </div>
@@ -96,63 +109,202 @@ export function Header() {
 }
 
 function SettingsGear() {
-  const open = useSelector((s) => s.settingsOpen);
-  const ref = useRef<HTMLButtonElement>(null);
-  const wasOpen = useRef(open);
-  // Return focus to the gear when the panel closes.
-  useEffect(() => {
-    if (wasOpen.current && !open) {
-      const active = document.activeElement;
-      if (!active || active === document.body) ref.current?.focus({ preventScroll: true });
-    }
-    wasOpen.current = open;
-  }, [open]);
-  return <IconButton ref={ref} icon="settings-gear" label="Settings" class={open ? "active" : ""} aria-pressed={open} onClick={() => setSettingsOpen(!open)} />;
+  return <IconButton icon="settings-gear" label="Settings" onClick={() => openSettings()} />;
 }
 
+const HISTORY_HOVER_OPEN_MS = 250;
+const HISTORY_HOVER_CLOSE_MS = 250;
+const HISTORY_RECENT = 8;
+/** Opening the overlay re-lists sessions at most this often. */
+const HISTORY_REFRESH_MS = 10_000;
+
+/**
+ * Header history button. Hovering shows the recent sessions in a card that
+ * does not take focus until the pointer moves into it (or the user clicks its
+ * filter, types on the button or presses ArrowDown); then its filter has focus.
+ * Clicking the button (or Enter/Space) toggles the history pane in the chat
+ * view, like the usage button.
+ */
 function HistoryButton() {
   const sessions = useSelector((s) => s.sessions);
-  const [open, setOpen] = useState(false);
+  const currentId = useSelector((s) => s.session.sessionId);
+  const paneOpen = useSelector((s) => s.pane === "history");
+  // "hover": a preview that never takes focus; "active": the filter (or a row) has focus.
+  const [open, setOpen] = useState<false | "hover" | "active">(false);
+  const [filter, setFilter] = useState("");
   const anchor = useRef<HTMLButtonElement>(null);
-  const openMenu = () => {
+  const card = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const listedAt = useRef(0);
+  const now = useNow(open !== false, 30_000);
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (open !== "hover") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+  // A closed card forgets its filter.
+  useEffect(() => {
+    if (!open) setFilter("");
+  }, [open]);
+
+  const refresh = () => {
+    if (Date.now() - listedAt.current < HISTORY_REFRESH_MS) return;
+    listedAt.current = Date.now();
     post({ type: "session.list" });
-    setOpen(true);
   };
+  const hold = () => window.clearTimeout(timer.current);
+  const show = () => {
+    hold();
+    if (open) return;
+    timer.current = window.setTimeout(() => {
+      // The pane already lists everything.
+      if (getState().pane === "history") return;
+      refresh();
+      setOpen("hover");
+    }, HISTORY_HOVER_OPEN_MS);
+  };
+  const hide = () => {
+    hold();
+    timer.current = window.setTimeout(() => {
+      // A typed filter keeps the card open while focus is in it.
+      if (input.current?.value.trim() && card.current?.contains(document.activeElement)) return;
+      setOpen(false);
+    }, HISTORY_HOVER_CLOSE_MS);
+  };
+  /** Keeps the card open and moves focus to its filter (Popover focuses `data-autofocus` once active). */
+  const activate = (seed?: string) => {
+    hold();
+    if (seed !== undefined) setFilter((f) => f + seed);
+    if (open === "active") input.current?.focus();
+    else {
+      refresh();
+      setOpen("active");
+    }
+  };
+  const close = () => {
+    hold();
+    setOpen(false);
+  };
+  const togglePane = () => {
+    close();
+    setHistoryOpen(!paneOpen);
+  };
+  const openPane = () => {
+    const query = filter.trim();
+    close();
+    openHistory(query);
+  };
+  const pick = (sessionId: string) => {
+    close();
+    resumeSession(sessionId);
+  };
+
+  const { items: recent, total } = recentMatches(sessions.list, filter, HISTORY_RECENT);
+  const more = total - recent.length;
+  const q = filter.trim();
+  const active = open === "active";
+  const anyVisible = sessions.list.some((s) => !s.hidden);
+
   return (
     <>
-      <IconButton ref={anchor} icon="history" label="Session history" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : openMenu())} />
-      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Session history" role="listbox" align="end" minWidth={260} class="history-popover">
-        <div class="popover-heading">
-          Recent sessions {sessions.loading && <Spinner class="section-spinner" />}
-        </div>
-        {sessions.error && <div class="popover-empty error">{sessions.error}</div>}
-        {!sessions.loading && !sessions.error && sessions.list.length === 0 && <div class="popover-empty">No sessions yet.</div>}
-        <div class="popover-list">
-          {sessions.list.map((s) => (
-            <button
-              key={s.sessionId}
-              type="button"
-              role="option"
-              aria-selected={false}
-              class="popover-item"
-              title={s.cwd ?? s.sessionId}
-              onClick={() => {
-                setOpen(false);
-                post({ type: "session.load", sessionId: s.sessionId });
+      <IconButton
+        ref={anchor}
+        icon="history"
+        label="Session history"
+        class={open || paneOpen ? "active" : undefined}
+        aria-pressed={paneOpen}
+        aria-haspopup="dialog"
+        aria-expanded={active}
+        data-hover-card=""
+        onClick={togglePane}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || (e.key === "ArrowUp" && open)) {
+            e.preventDefault();
+            activate();
+          } else if (e.key.length === 1 && e.key !== " " && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            // Typing on the button starts filtering the recent sessions.
+            e.preventDefault();
+            activate(e.key);
+          }
+        }}
+      />
+      <Popover anchor={anchor} open={open !== false} onClose={close} label="Recent sessions" align="end" class="history-hover-popover" manageFocus={active}>
+        <div ref={card} class="history-hover" onMouseEnter={() => (open === "hover" ? activate() : hold())} onMouseLeave={hide}>
+          <div class="popover-heading">
+            Recent sessions {sessions.loading && <Spinner class="section-spinner" />}
+          </div>
+          <span class="history-hover-filter">
+            <Icon name="search" class="history-search-icon" />
+            <input
+              ref={input}
+              type="text"
+              class="text-input"
+              placeholder="Filter sessions"
+              aria-label="Filter recent sessions"
+              title="Filter by title or session id. Enter resumes the first match, ↓ moves to the list."
+              data-autofocus=""
+              value={filter}
+              onInput={(e) => setFilter((e.currentTarget as HTMLInputElement).value)}
+              onMouseDown={() => activate()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && recent[0]) {
+                  e.preventDefault();
+                  pick(recent[0].sessionId);
+                } else if (e.key === "Escape" && filter) {
+                  // First Escape clears the filter; the next one closes the card.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFilter("");
+                }
               }}
-            >
-              <span class="popover-item-check">
-                <Icon name="comment-discussion" />
-              </span>
-              <span class="popover-item-main">
-                <span class="popover-item-label">{s.title?.trim() || s.sessionId.slice(0, 8)}</span>
-                {s.updatedAt && <span class="popover-item-desc">{relativeTime(s.updatedAt)}</span>}
-              </span>
+            />
+          </span>
+          {sessions.error && <div class="popover-empty error">{sessions.error}</div>}
+          {!sessions.loading && !sessions.error && !anyVisible && <div class="popover-empty">No sessions yet in this folder.</div>}
+          {anyVisible && recent.length === 0 && q && <div class="popover-empty">No sessions match “{q}”</div>}
+          {recent.length > 0 && (
+            <div class="popover-list history-hover-list">
+              {recent.map((s) => {
+                const current = s.sessionId === currentId;
+                const label = sessionLabel(s);
+                const t = parseTime(s.updatedAt);
+                const when = t === undefined ? undefined : new Date(t).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+                const tooltip = [current ? `${label} (current session)` : `Resume “${label}”`, when].filter(Boolean).join("\n");
+                return (
+                  <button
+                    key={s.sessionId}
+                    type="button"
+                    aria-current={current ? "true" : undefined}
+                    class={`popover-item history-hover-item${current ? " selected" : ""}`}
+                    title={tooltip}
+                    onClick={() => pick(s.sessionId)}
+                  >
+                    <span class="popover-item-check">
+                      <Icon name={current ? "check" : "comment"} />
+                    </span>
+                    <span class="popover-item-label">{label}</span>
+                    <span class="history-hover-time">{current ? "Current" : relativeTime(s.updatedAt, now)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <div class="history-hover-footer">
+            <span class="history-hover-more">{more > 0 ? `${more} more${q ? " matching" : ""}` : ""}</span>
+            <button type="button" class="link-button" title={q ? `Open the history pane searching for “${q}”` : "Open the history pane"} onClick={openPane}>
+              All history…
             </button>
-          ))}
+          </div>
         </div>
       </Popover>
     </>
   );
 }
-

@@ -35,10 +35,10 @@ export const PlanProposalCard = memo(function PlanProposalCard({ item }: { item:
       )}
       {pending && (
         <div class="card-actions">
-          <button type="button" class="button primary" data-autofocus onClick={() => post({ type: "plan.respond", requestId: item.requestId, accepted: true })}>
+          <button title="Approve the plan and let the agent continue" type="button" class="button primary" data-autofocus onClick={() => post({ type: "plan.respond", requestId: item.requestId, accepted: true })}>
             Accept
           </button>
-          <button type="button" class="button secondary" onClick={() => post({ type: "plan.respond", requestId: item.requestId, accepted: false })}>
+          <button title="Send the plan back with your feedback" type="button" class="button secondary" onClick={() => post({ type: "plan.respond", requestId: item.requestId, accepted: false })}>
             Reject
           </button>
         </div>

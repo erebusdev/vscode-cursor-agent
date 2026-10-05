@@ -23,6 +23,11 @@ export interface PersistedState {
   history?: string[];
   expanded?: Record<string, boolean>;
   attachments?: PromptAttachmentInput[];
+  /** Settings tab: the section on screen (restored after a window reload). */
+  settingsSection?: string;
+  /** History tab: sort order and whether hidden sessions are listed. */
+  historySort?: string;
+  historyShowHidden?: boolean;
 }
 
 let cached: PersistedState | undefined;

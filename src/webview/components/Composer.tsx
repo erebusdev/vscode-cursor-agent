@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ConfigOption, PromptAttachmentInput } from "../../shared/protocol";
-import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, useSelector } from "../store";
+import { clearAttachments, addAttachment, onComposerEvent, removeAttachment, openSettings, getState, useSelector } from "../store";
+import { isAutoModel, visibleModels } from "../../shared/modelVisibility";
+import { Toggle } from "./settings/controls";
 import { getPersisted, persist, post } from "../vscode";
+import { readImageFile } from "../attachments";
 import { Popover, PopoverList } from "./Popover";
 import { Icon, IconButton, Spinner } from "./ui";
 
@@ -33,7 +36,7 @@ function AttachmentChips() {
         <span key={`${a.kind}:${a.label}:${i}`} class={`chip chip-removable${a.kind === "image" ? " chip-image" : ""}`} title={a.path ?? a.label}>
           {a.kind === "image" && a.data && a.mimeType ? <img src={`data:${a.mimeType};base64,${a.data}`} alt={a.label} /> : <Icon name={a.kind === "selection" ? "selection" : a.kind === "image" ? "file-media" : "file"} />}
           <span class="chip-label">{a.label}</span>
-          <button type="button" class="chip-remove" aria-label={`Remove ${a.label}`} onClick={() => removeAttachment(i)}>
+          <button type="button" class="chip-remove" title="Remove attachment" aria-label={`Remove ${a.label}`} onClick={() => removeAttachment(i)}>
             <Icon name="close" />
           </button>
         </span>
@@ -94,19 +97,88 @@ function ModePicker() {
   );
 }
 
+const APPROVAL_OPTIONS: ReadonlyArray<{ id: "ask" | "safe" | "auto"; label: string; description: string }> = [
+  { id: "ask", label: "Ask", description: "Prompt for every command and tool call" },
+  { id: "safe", label: "Safe list", description: "Read-only commands and tools run without asking" },
+  { id: "auto", label: "Auto", description: "Run everything without asking (this session)" },
+];
+
+function ApprovalsPicker() {
+  const policy = useSelector((s) => s.session.approvalPolicy);
+  const allowed = useSelector((s) => s.session.sessionAllowed ?? []);
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  if (!policy) return null;
+  const current = APPROVAL_OPTIONS.find((o) => o.id === policy) ?? APPROVAL_OPTIONS[0]!;
+  return (
+    <>
+      <button ref={anchor} type="button" class={`picker approvals-picker policy-${policy}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title={`Approvals: ${current.description}${allowed.length ? ` · allowed this session: ${allowed.join(", ")}` : ""}`}>
+        <Icon name={policy === "auto" ? "unlock" : "shield"} class="picker-icon" />
+        <span class="picker-label">{current.label}</span>
+        <Icon name="chevron-down" class="picker-chevron" />
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label="Approvals" role="listbox" minWidth={240}>
+        <div class="popover-heading">Approvals</div>
+        <PopoverList
+          options={APPROVAL_OPTIONS.map((o) => ({ id: o.id, label: o.label, description: o.description, selected: o.id === policy }))}
+          onSelect={(id) => {
+            setOpen(false);
+            if (id !== policy) post({ type: "approvals.set", policy: id as "ask" | "safe" | "auto" });
+          }}
+        />
+        {allowed.length > 0 && <div class="popover-footnote">Allowed this session: {allowed.join(", ")}</div>}
+      </Popover>
+    </>
+  );
+}
+
 function ModelPicker() {
   const models = useSelector((s) => s.session.models);
+  const modelOptions = useSelector((s) => s.session.modelOptions);
+  const visibility = useSelector((s) => s.settings);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const anchor = useRef<HTMLButtonElement>(null);
   if (!models || models.availableModels.length === 0) return null;
   const current = models.availableModels.find((m) => m.modelId === models.currentModelId);
+  // Fast, context and other model settings live here; reasoning has its own control next to the model.
+  const modelSettings = modelOptions.filter((o) => !isReasoningOption(o));
+  const fast = modelSettings.find((o) => isSwitchOption(o) && isFastOption(o));
+  const fastOn = !!fast && isOn(fast);
+  const context = modelSettings.find((o) => !isSwitchOption(o) && (/context/i.test(o.id) || /context/i.test(o.name)));
+  // Auto is not a model in the list: it is a switch above it (Cursor picks the model per request).
+  const auto = models.availableModels.find((m) => isAutoModel(m.modelId, m.name));
+  const autoOn = !!auto && auto.modelId === models.currentModelId;
+  const specific = models.availableModels.filter((m) => m !== auto);
+  const shown = visibleModels(specific, models.currentModelId, visibility);
+  const autoOffered = !!auto && (autoOn || !visibility.hiddenModels.includes(auto.modelId));
+  const hiddenCount = specific.length - shown.length;
   const q = filter.trim().toLowerCase();
-  const filtered = q ? models.availableModels.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : models.availableModels;
+  const filtered = q ? shown.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q) || m.description?.toLowerCase().includes(q)) : shown;
+  /** Model to return to when Auto is switched off: the last one used, else the default, else the first shown. */
+  const manualModel = (): string | undefined => {
+    const available = (id: string | undefined) => (id && specific.some((m) => m.modelId === id) ? id : undefined);
+    return available(getState().lastManualModelId) ?? available(getState().extSettings?.defaultModel) ?? shown[0]?.modelId;
+  };
+  const setAuto = (on: boolean) => {
+    if (!auto) return;
+    const target = on ? auto.modelId : manualModel();
+    if (target && target !== models.currentModelId) post({ type: "model.set", modelId: target });
+  };
   return (
     <>
-      <button ref={anchor} type="button" class="picker" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Model">
+      <button
+        ref={anchor}
+        type="button"
+        class="picker"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        title={["Model", context ? `${optionValueLabel(context)} context` : "", fastOn ? "Fast mode on" : ""].filter(Boolean).join(" · ")}
+      >
+        {fastOn && <Icon name="zap" class="picker-fast" />}
         <span class="picker-label">{current?.name ?? models.currentModelId}</span>
+        {context && <span class="picker-sub">· {optionValueLabel(context)}</span>}
         <Icon name="chevron-down" class="picker-chevron" />
       </button>
       <Popover
@@ -121,6 +193,17 @@ function ModelPicker() {
         minWidth={240}
         class="model-popover"
       >
+        {autoOffered && (
+          <div class="model-auto-row">
+            <label class="model-auto-text" for="model-auto-switch">
+              <span class="model-auto-name">Auto</span>
+              <span class="model-auto-desc">Cursor picks the model for each request</span>
+            </label>
+            <span title={autoOn ? "Turn Auto off and choose a model" : "Let Cursor pick the model for each request"}>
+              <Toggle id="model-auto-switch" checked={autoOn} onChange={setAuto} />
+            </span>
+          </div>
+        )}
         <input
           type="text"
           class="text-input popover-filter"
@@ -149,6 +232,88 @@ function ModelPicker() {
           }}
           emptyText="No matching models"
         />
+        {modelSettings.length > 0 && (
+          <div class="model-options" role="group" aria-label={`Settings for ${current?.name ?? models.currentModelId}`}>
+            {modelSettings.map((o) => (
+              <OptionRow key={o.id} option={o} />
+            ))}
+          </div>
+        )}
+        <div class="popover-footer">
+          <button title="Use this model and its options for new sessions" type="button" class="link-button" onClick={() => post({ type: "model.saveDefault" })}>
+            <Icon name="pin" /> Set as default
+          </button>
+          <button title="Choose which models appear here"
+            type="button"
+            class="link-button"
+            onClick={() => {
+              setOpen(false);
+              setFilter("");
+              openSettings("models");
+            }}
+          >
+            <Icon name="settings" /> Manage models…{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}
+          </button>
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+function isSwitchOption(o: ConfigOption): boolean {
+  return o.type === "boolean" || typeof o.currentValue === "boolean" || isTrueFalse(o.options.map((x) => x.value));
+}
+
+function isOn(o: ConfigOption): boolean {
+  return o.currentValue === true || o.currentValue === "true";
+}
+
+const isFastOption = (o: ConfigOption) => /fast/i.test(o.id) || /fast/i.test(o.name);
+
+/** Reasoning options (effort, reasoning level, thinking): they get their own control next to the model. */
+function isReasoningOption(o: ConfigOption): boolean {
+  return o.category === "thought_level" || /effort|reasoning|thinking/i.test(o.id) || /effort|reasoning|thinking/i.test(o.name);
+}
+
+/** The current model's reasoning level as its own control, like T3 Code: one click to open, one to choose. */
+function ReasoningPicker() {
+  const models = useSelector((s) => s.session.models);
+  const modelOptions = useSelector((s) => s.session.modelOptions);
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const reasoning = modelOptions.filter(isReasoningOption);
+  if (reasoning.length === 0) return null;
+  const modelName = models?.availableModels.find((m) => m.modelId === models.currentModelId)?.name ?? models?.currentModelId ?? "this model";
+  const selects = reasoning.filter((o) => !isSwitchOption(o) && o.options.length > 0);
+  const switches = reasoning.filter((o) => isSwitchOption(o) || o.options.length === 0);
+  const parts = [...selects.map(optionValueLabel), ...switches.filter((o) => isSwitchOption(o) && !isOn(o) && selects.length === 0).map((o) => `No ${o.name.toLowerCase()}`), ...switches.filter((o) => isSwitchOption(o) && isOn(o) && selects.length === 0).map((o) => o.name)];
+  const label = parts.join(" · ") || "Reasoning";
+  return (
+    <>
+      <button ref={anchor} type="button" class="picker" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)} title={`Reasoning for ${modelName}: ${reasoning.map((o) => `${o.name} ${optionValueLabel(o)}`).join(", ")}`}>
+        <span class="picker-label">{label}</span>
+        <Icon name="chevron-down" class="picker-chevron" />
+      </button>
+      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label={`Reasoning for ${modelName}`} role="dialog" minWidth={180} class="reasoning-popover">
+        {selects.map((o) => (
+          <div key={o.id} class="traits-group" role="group" aria-label={o.name}>
+            <div class="popover-subheading">{o.name}</div>
+            <PopoverList
+              options={o.options.map((x) => ({ id: x.value, label: x.name, description: x.description, selected: String(o.currentValue) === x.value }))}
+              onSelect={(value) => {
+                setOpen(false);
+                if (value !== String(o.currentValue)) post({ type: "config.set", configId: o.id, value });
+              }}
+            />
+          </div>
+        ))}
+        {switches.length > 0 && (
+          <div class="model-options" role="group" aria-label="Reasoning switches">
+            {switches.map((o) => (
+              <OptionRow key={o.id} option={o} />
+            ))}
+          </div>
+        )}
       </Popover>
     </>
   );
@@ -156,90 +321,150 @@ function ModelPicker() {
 
 function optionValueLabel(o: ConfigOption): string {
   if (o.type === "boolean" || typeof o.currentValue === "boolean") return o.currentValue ? "On" : "Off";
+  if (isTrueFalse(o.options.map((x) => x.value))) return o.currentValue === "true" ? "On" : "Off";
   const match = o.options.find((x) => x.value === o.currentValue);
   return match?.name ?? String(o.currentValue);
 }
 
-/** "Fast: Fast" reads badly; when the selected value's name repeats the option name, show it alone. */
-function optionPillLabel(o: ConfigOption): { name: string; value: string } | { name: string } {
-  const value = optionValueLabel(o);
-  return value.trim().toLowerCase() === o.name.trim().toLowerCase() ? { name: o.name } : { name: o.name, value };
+
+
+function isTrueFalse(values: ReadonlyArray<string>): boolean {
+  return values.length === 2 && values.includes("true") && values.includes("false");
 }
 
-function OptionPill({ option }: { option: ConfigOption }) {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState("");
-  const anchor = useRef<HTMLButtonElement>(null);
+/** One option of the current model, edited in place inside the model popover. */
+function OptionRow({ option }: { option: ConfigOption }) {
+  const [text, setText] = useState(String(option.currentValue));
   const isBool = option.type === "boolean" || typeof option.currentValue === "boolean";
-  const isSelect = !isBool && option.options.length > 0;
-  const choices = isBool
-    ? [
-        { id: "true", label: "On", selected: option.currentValue === true },
-        { id: "false", label: "Off", selected: option.currentValue === false },
-      ]
-    : option.options.map((x) => ({ id: x.value, label: x.name, description: x.description, selected: x.value === option.currentValue }));
-
-  const select = (id: string) => {
-    setOpen(false);
-    const value: string | boolean = isBool ? id === "true" : id;
+  // Cursor sends on/off options such as Fast and Thinking as a select of "true"/"false"; those get a switch too.
+  const isTrueFalseSelect = !isBool && isTrueFalse(option.options.map((x) => x.value));
+  const isSelect = !isBool && !isTrueFalseSelect && option.options.length > 0;
+  const set = (value: string | boolean) => {
     if (value !== option.currentValue) post({ type: "config.set", configId: option.id, value });
   };
-
+  if (isBool || isTrueFalseSelect) {
+    const on = isBool ? option.currentValue === true : option.currentValue === "true";
+    const id = `model-option-${option.id}`;
+    return (
+      <div class="model-option-row" title={option.description ?? option.name}>
+        <label class="model-option-name" for={id}>
+          {option.name}
+        </label>
+        <Toggle id={id} checked={on} onChange={(next) => set(isBool ? next : String(next))} />
+      </div>
+    );
+  }
   return (
-    <>
-      <button ref={anchor} type="button" class="picker pill" aria-haspopup={isSelect || isBool ? "listbox" : "dialog"} aria-expanded={open} onClick={() => setOpen(!open)} title={option.description ?? option.name}>
-        {"value" in optionPillLabel(option) ? (
-          <>
-            <span class="pill-name">{option.name}:</span> <span class="picker-label">{optionValueLabel(option)}</span>
-          </>
-        ) : (
-          <span class="picker-label">{option.name}</span>
-        )}
-      </button>
-      <Popover anchor={anchor} open={open} onClose={() => setOpen(false)} label={option.name} role={isSelect || isBool ? "listbox" : "dialog"} minWidth={180}>
-        {isSelect || isBool ? (
-          <PopoverList options={choices} onSelect={select} />
-        ) : (
-          <form
-            class="popover-form"
-            onSubmit={(e) => {
+    <label class="model-option-row" title={option.description ?? option.name}>
+      <span class="model-option-name">{option.name}</span>
+      {isSelect ? (
+        <select class="select-input" value={String(option.currentValue)} onChange={(e) => set((e.currentTarget as HTMLSelectElement).value)}>
+          {option.options.map((x) => (
+            <option key={x.value} value={x.value} title={x.description}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          class="text-input model-option-input"
+          value={text}
+          aria-label={option.name}
+          onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)}
+          onBlur={() => set(text)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
               e.preventDefault();
-              setOpen(false);
-              post({ type: "config.set", configId: option.id, value: text });
-            }}
-          >
-            <input type="text" class="text-input" data-autofocus aria-label={option.name} placeholder={String(option.currentValue)} value={text} onInput={(e) => setText((e.currentTarget as HTMLInputElement).value)} />
-            <button type="submit" class="button primary small">
-              Set
-            </button>
-          </form>
-        )}
-      </Popover>
-    </>
+              set(text);
+            }
+          }}
+        />
+      )}
+    </label>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Composer
-// ---------------------------------------------------------------------------
+const QUEUE_DRAG_TYPE = "application/x-cursor-queue";
 
-function readImageFile(file: File): Promise<PromptAttachmentInput | null> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onerror = () => resolve(null);
-    reader.onload = () => {
-      const url = typeof reader.result === "string" ? reader.result : "";
-      const comma = url.indexOf(",");
-      if (comma < 0) return resolve(null);
-      resolve({
-        kind: "image",
-        label: file.name || `image.${(file.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`,
-        data: url.slice(comma + 1),
-        mimeType: file.type || "image/png",
-      });
-    };
-    reader.readAsDataURL(file);
-  });
+/** Messages waiting to go out after the current turn, in order. Rows can be dragged to reorder, or moved with the arrows. */
+function QueuedBar() {
+  const queued = useSelector((s) => s.session.queued);
+  const running = useSelector((s) => s.session.connection === "running" || s.session.connection === "cancelling");
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [dropAt, setDropAt] = useState<number | null>(null);
+  if (!queued || queued.length === 0) return null;
+  const many = queued.length > 1;
+  const targetFor = (e: DragEvent, i: number) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2 ? i : i + 1;
+  };
+  const finishDrag = () => {
+    setDragging(null);
+    setDropAt(null);
+  };
+  return (
+    <div class="queued-list" role="status" aria-label="Queued messages">
+      {queued.map((q, i) => {
+        const preview = q.text.trim().replace(/\s+/g, " ") || `${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}`;
+        const indicator = dropAt === i ? " drop-before" : dropAt === i + 1 && i === queued.length - 1 ? " drop-after" : "";
+        return (
+          <div
+            key={i}
+            class={`queued-bar${dragging === i ? " dragging" : ""}${indicator}`}
+            draggable={many}
+            onDragStart={(e) => {
+              if (!many || !e.dataTransfer) return;
+              e.dataTransfer.setData(QUEUE_DRAG_TYPE, String(i));
+              e.dataTransfer.effectAllowed = "move";
+              setDragging(i);
+            }}
+            onDragEnd={finishDrag}
+            onDragOver={(e) => {
+              if (!e.dataTransfer?.types.includes(QUEUE_DRAG_TYPE)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDropAt(targetFor(e, i));
+            }}
+            onDragLeave={() => setDropAt(null)}
+            onDrop={(e) => {
+              const raw = e.dataTransfer?.getData(QUEUE_DRAG_TYPE);
+              if (!raw) return;
+              e.preventDefault();
+              e.stopPropagation();
+              const from = Number(raw);
+              let to = targetFor(e, i);
+              if (to > from) to -= 1;
+              finishDrag();
+              if (Number.isFinite(from) && from !== to) post({ type: "queue.move", from, to });
+            }}
+          >
+            <Icon name={many ? "gripper" : "list-ordered"} class={many ? "queued-grip" : ""} />
+            <span class="queued-label">{i === 0 && !running ? "Queued (stopped)" : `#${i + 1}`}</span>
+            <span class="queued-text" title={q.text}>
+              {preview}
+              {q.attachmentCount > 0 && q.text.trim() ? ` · ${q.attachmentCount} attachment${q.attachmentCount === 1 ? "" : "s"}` : ""}
+            </span>
+            <span class="queued-actions">
+              {many && (
+                <>
+                  <IconButton icon="arrow-up" label="Move up" disabled={i === 0} onClick={() => post({ type: "queue.move", from: i, to: i - 1 })} />
+                  <IconButton icon="arrow-down" label="Move down" disabled={i === queued.length - 1} onClick={() => post({ type: "queue.move", from: i, to: i + 1 })} />
+                </>
+              )}
+              <button type="button" class="link-button" title="Interrupt the current turn and send this now" onClick={() => post({ type: "queue.sendNow", index: i })}>
+                Send now
+              </button>
+              <button type="button" class="link-button" title="Put it back in the composer" onClick={() => post({ type: "queue.edit", index: i })}>
+                Edit
+              </button>
+              <IconButton icon="close" label="Remove queued message" onClick={() => post({ type: "queue.clear", index: i })} />
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function Composer() {
@@ -347,6 +572,7 @@ export function Composer() {
   const c = session.connection;
   const running = c === "running" || c === "cancelling";
   const canSend = c === "ready" || c === "idle";
+  const sendKeyLabel = settings.sendWithCtrlEnter ? "Ctrl/Cmd+Enter" : "Enter";
   const placeholder =
     c === "starting"
       ? "Connecting…"
@@ -354,7 +580,9 @@ export function Composer() {
         ? "Loading history…"
         : c === "disconnected" || c === "error"
           ? "Agent disconnected — reconnect to continue"
-          : "Ask Cursor… (/ for commands)";
+          : running
+            ? `Working… ${sendKeyLabel} queues for after this turn`
+            : "Ask Cursor… (/ for commands)";
 
   // Slash command popup.
   const slashQuery = text.startsWith("/") && !/\s/.test(text) ? text.slice(1).toLowerCase() : null;
@@ -415,10 +643,10 @@ export function Composer() {
     requestAnimationFrame(() => taRef.current?.focus());
   };
 
-  const send = () => {
+  const send = (mode: "queue" | "interrupt" = "queue") => {
     const value = textRef.current.trim();
-    if (!canSend || (!value && attachments.length === 0)) return;
-    post({ type: "prompt", text: value, attachments });
+    if (!(canSend || running) || (!value && attachments.length === 0)) return;
+    post({ type: "prompt", text: value, attachments, mode });
     if (value) {
       const h = [...history.current.filter((x) => x !== value), value].slice(-HISTORY_LIMIT);
       history.current = h;
@@ -493,11 +721,16 @@ export function Composer() {
 
     if (e.key === "Enter") {
       const mod = e.metaKey || e.ctrlKey;
+      // Ctrl/Cmd+Shift+Enter always means "interrupt the running turn and send now".
+      if (mod && e.shiftKey) {
+        e.preventDefault();
+        send("interrupt");
+        return;
+      }
       const shouldSend = settings.sendWithCtrlEnter ? mod : !e.shiftKey && !mod && !e.altKey;
       if (shouldSend) {
         e.preventDefault();
-        if (running) return;
-        send();
+        send("queue");
       }
       return;
     }
@@ -560,14 +793,16 @@ export function Composer() {
     mentionRef.current?.querySelector<HTMLElement>(".selected")?.scrollIntoView({ block: "nearest" });
   }, [mentionIdx, mentionOpen]);
 
-  const sendDisabled = !canSend || (!text.trim() && attachments.length === 0);
+  const empty = !text.trim() && attachments.length === 0;
+  const sendDisabled = !canSend || empty;
 
   return (
     <div class="composer">
+      <QueuedBar />
       {slashOpen && (
         <div ref={slashRef} class="slash-popup" role="listbox" aria-label="Slash commands" id="slash-listbox">
           {slashMatches.map((cmd, i) => (
-            <button
+            <button title={cmd.description ? `/${cmd.name}: ${cmd.description}` : `Insert /${cmd.name}`}
               key={cmd.name}
               type="button"
               role="option"
@@ -581,6 +816,11 @@ export function Composer() {
               <span class="slash-name">/{cmd.name}</span>
               <span class="slash-desc">{cmd.description}</span>
               {cmd.hint && <span class="slash-hint">{cmd.hint}</span>}
+              {cmd.plugin && (
+                <span class="slash-tag" title={`From the ${cmd.plugin} plugin`}>
+                  {cmd.plugin}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -637,17 +877,21 @@ export function Composer() {
             <AddMenu />
             <ModePicker />
             <ModelPicker />
-            {session.modelOptions.map((o) => (
-              <OptionPill key={o.id} option={o} />
-            ))}
+            <ReasoningPicker />
+            <ApprovalsPicker />
           </div>
           <div class="composer-toolbar-right">
             {running ? (
-              <button type="button" class="send-button stop" title={c === "cancelling" ? "Cancelling…" : "Stop (Esc)"} aria-label="Stop" disabled={c === "cancelling"} onClick={() => post({ type: "cancel" })}>
-                {c === "cancelling" ? <Spinner /> : <Icon name="debug-stop" />}
-              </button>
+              <>
+                <button type="button" class="send-button queue" title={`Queue for after this turn (${sendKeyLabel}) · Interrupt and send now (Ctrl/Cmd+Shift+Enter)`} aria-label="Queue message" disabled={empty} onClick={() => send("queue")}>
+                  <Icon name="list-ordered" />
+                </button>
+                <button type="button" class="send-button stop" title={c === "cancelling" ? "Cancelling…" : "Stop (Esc)"} aria-label="Stop" disabled={c === "cancelling"} onClick={() => post({ type: "cancel" })}>
+                  {c === "cancelling" ? <Spinner /> : <Icon name="debug-stop" />}
+                </button>
+              </>
             ) : (
-              <button type="button" class="send-button" title={settings.sendWithCtrlEnter ? "Send (Ctrl/Cmd+Enter)" : "Send (Enter)"} aria-label="Send" disabled={sendDisabled} onClick={send}>
+              <button type="button" class="send-button" title={`Send (${sendKeyLabel})`} aria-label="Send" disabled={sendDisabled} onClick={() => send("queue")}>
                 <Icon name="send" />
               </button>
             )}

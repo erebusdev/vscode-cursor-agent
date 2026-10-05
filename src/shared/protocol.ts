@@ -4,6 +4,8 @@
  * thread model and streams snapshots + deltas to any attached webview.
  */
 
+import type { SettingsSection } from "./settingsUi";
+
 // ---------------------------------------------------------------------------
 // Thread items
 // ---------------------------------------------------------------------------
@@ -70,7 +72,11 @@ export interface PermissionState {
   readonly selectedOptionId?: string;
   /** Human-readable reason from the agent, e.g. "Not in allowlist: echo". */
   readonly reason?: string;
+  /** How a resolved request was decided: by the user, by the session allow-list, or by the policy. */
+  readonly resolution?: "user" | "session" | "auto";
 }
+
+export type ApprovalPolicy = "ask" | "safe" | "auto";
 
 export interface UserAttachment {
   readonly kind: "selection" | "file" | "image";
@@ -117,6 +123,8 @@ export interface ToolItem {
   readonly toolCallId: string;
   readonly kind: ToolKind;
   readonly title: string;
+  /** Hover text for the title when it is a friendly rewrite (MCP calls: the full server id and tool name). */
+  readonly tooltip?: string;
   readonly status: ToolStatus;
   /** Shell command for execute tools. */
   readonly command?: string;
@@ -132,6 +140,8 @@ export interface ToolItem {
   /** File contents returned by read tools. */
   readonly fileContent?: string;
   readonly permission?: PermissionState;
+  /** Cursor's `Mcp(server:tool)` pattern for MCP tool calls; what the safe list and "Allow for session" match on. */
+  readonly mcpPattern?: string;
   readonly createdAt: number;
   readonly endedAt?: number;
   readonly replay?: boolean;
@@ -311,6 +321,8 @@ export interface AvailableCommand {
   readonly name: string;
   readonly description: string;
   readonly hint?: string;
+  /** The Cursor plugin it comes from, when the extension linked it (see cursorPluginSkills.ts). */
+  readonly plugin?: string;
 }
 
 export interface SessionSummary {
@@ -318,6 +330,10 @@ export interface SessionSummary {
   readonly title?: string;
   readonly cwd?: string;
   readonly updatedAt?: string;
+  /** Hidden from the history by the user (only listed for the history pane's "Show hidden"). */
+  readonly hidden?: boolean;
+  /** The model this session last used here, when the extension remembers one. */
+  readonly modelId?: string;
 }
 
 export interface SessionState {
@@ -343,6 +359,12 @@ export interface SessionState {
   /** Files touched by edit tools in this session, for the "changes" summary. */
   readonly changedFiles: ReadonlyArray<{ readonly path: string; readonly displayPath: string; readonly additions: number; readonly deletions: number }>;
   readonly turnStartedAt?: number;
+  /** Messages waiting to be sent, in order, when the current turn ends. */
+  readonly queued?: ReadonlyArray<{ readonly text: string; readonly attachmentCount: number }>;
+  /** Client-side approval policy for this session. */
+  readonly approvalPolicy?: ApprovalPolicy;
+  /** Commands / tools allowed for the rest of this session via "Allow for session". */
+  readonly sessionAllowed?: ReadonlyArray<string>;
 }
 
 export interface UsageWindow {
@@ -388,6 +410,8 @@ export interface UsageSummary {
 export interface UiSettings {
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;
+  /** Model ids hidden from the picker. */
+  readonly hiddenModels: ReadonlyArray<string>;
 }
 
 /** Full extension configuration, mirrored from VS Code settings for the in-app settings panel. */
@@ -401,11 +425,33 @@ export interface ExtensionSettings {
   readonly agentArgs: ReadonlyArray<string>;
   readonly environment: Readonly<Record<string, string>>;
   readonly configDir: string;
+  /** Forward the workspace's `.cursor/mcp.json` servers to the agent (ACP otherwise drops unapproved project servers silently). */
+  readonly mcpForwardProjectServers: boolean;
+  /** The agent's user-level `mcp.json` when set; otherwise found from HOME (see pluginSync.ts). Not forwarded: the CLI loads it itself. */
+  readonly mcpUserConfig: string;
+  /** Cursor plugin MCP servers: kept in the user-level mcp.json automatically, switched by hand, or left alone. */
+  readonly mcpPluginServers: "auto" | "manual" | "off";
+  /** Plugin server ids (`plugin-<plugin>-<server>`) that auto mode leaves out. */
+  readonly mcpPluginExclude: ReadonlyArray<string>;
+  /** Link Cursor plugin skills and commands into the agent's Cursor folder (see cursorPluginSkills.ts). */
+  readonly pluginSkills: boolean;
+  /** Plugin names, or `plugin/skill`, whose skills are left out. */
+  readonly pluginSkillsExclude: ReadonlyArray<string>;
   readonly resumeLastSession: boolean;
   readonly sendWithCtrlEnter: boolean;
   readonly showThoughts: boolean;
   readonly notifyWhenHidden: boolean;
+  /** Show the Open Cursor button in the editor title bar. */
+  readonly editorTitleButton: boolean;
   readonly protocolLogging: boolean;
+  readonly approvalPolicy: ApprovalPolicy;
+  /** Regular expressions; see DEFAULT_SAFE_LIST. */
+  readonly safeList: ReadonlyArray<string>;
+  readonly hiddenModels: ReadonlyArray<string>;
+  /** Model used for new sessions; empty = whatever Cursor's CLI currently defaults to. */
+  readonly defaultModel: string;
+  /** Option values (effort, context, fast…) applied to new sessions. */
+  readonly defaultModelOptions: Readonly<Record<string, string | boolean>>;
   /** Where the effective values come from, per key: "default" | "user" | "workspace" | "remote". */
   readonly sources: Readonly<Record<string, "default" | "user" | "workspace" | "remote">>;
 }
@@ -421,6 +467,96 @@ export interface AgentProbe {
   readonly error?: string;
   readonly hint?: string;
   readonly checkedAt: number;
+}
+
+/** An MCP server the extension passes to the agent itself (see mcpConfig.ts). */
+export interface McpForwardedServer {
+  readonly name: string;
+  /** Which config file it came from; the project file wins on a name clash. */
+  readonly source: "project" | "user";
+  readonly transport: "stdio" | "http" | "sse";
+  /** Command (stdio) or URL (http/sse), for display. */
+  readonly target: string;
+}
+
+/** One line of `agent mcp list`. */
+export interface McpCliServer {
+  readonly name: string;
+  /** The CLI's own wording, e.g. "ready", "needs approval", "disabled". */
+  readonly status: string;
+  /** The extension forwards a server of this name, so it is available in chat whatever the CLI says. */
+  readonly forwarded: boolean;
+}
+
+export interface McpConfigFileStatus {
+  readonly path: string;
+  readonly level: "project" | "user";
+  readonly state: "ok" | "missing" | "error";
+  readonly detail?: string;
+  /** Servers read from the file. */
+  readonly count: number;
+}
+
+/** An MCP server that comes with an installed Cursor plugin. */
+export interface McpPluginServer {
+  /** `plugin-<plugin>-<server>`, the name it has in mcp.json and in `agent mcp list`. */
+  readonly id: string;
+  readonly pluginName: string;
+  readonly serverName: string;
+  readonly transport: "stdio" | "http" | "sse";
+  /** URL host or command base name only (never a query or arguments). */
+  readonly host: string;
+  /** Listed in the user-level mcp.json (under its id, or another entry with the same URL). */
+  readonly enabled: boolean;
+  /** On the exclude list (auto mode leaves it out). */
+  readonly excluded: boolean;
+  /** Its line in `agent mcp list`, e.g. "ready" or "requires_authentication". */
+  readonly cliStatus?: string;
+}
+
+/** The skills and commands that come with one Cursor plugin. */
+export interface McpPluginSkills {
+  readonly pluginName: string;
+  readonly skills: ReadonlyArray<string>;
+  readonly commands: ReadonlyArray<string>;
+  /** Linked into the agent's Cursor folder now. */
+  readonly linked: ReadonlyArray<string>;
+  /** Skipped because a skill or command of that name already exists. */
+  readonly clashes: ReadonlyArray<string>;
+  /** The whole plugin is on the exclude list. */
+  readonly excluded: boolean;
+}
+
+/** Where the user-level mcp.json path came from. */
+export type McpUserConfigSource = "settings" | "environment" | "agent" | "default";
+
+/** Result of the MCP status check shown in the settings tab (and logged by Show MCP Servers). */
+export interface McpStatus {
+  readonly checkedAt: number;
+  readonly forwarded: ReadonlyArray<McpForwardedServer>;
+  readonly files: ReadonlyArray<McpConfigFileStatus>;
+  /** What `agent mcp list` reported, or why it could not be asked. */
+  readonly cli: ReadonlyArray<McpCliServer> | { readonly error: string };
+  /** The executable used for `mcp list`, when found. */
+  readonly cliCommand?: string;
+  /** Why project servers are not forwarded (setting off, untrusted workspace, no folder), if they are not. */
+  readonly projectSkipped?: string;
+  /** Cursor plugin servers found under `<cursor dir>/plugins`. */
+  readonly plugins?: ReadonlyArray<McpPluginServer>;
+  readonly pluginMode?: "auto" | "manual" | "off";
+  readonly pluginsDir?: string;
+  /** Plugin files that could not be read, and user mcp.json problems. */
+  readonly pluginErrors?: ReadonlyArray<string>;
+  /** The resolved user-level mcp.json, and how it was found. */
+  readonly userConfigPath?: string;
+  readonly userConfigSource?: McpUserConfigSource;
+  /** The user-level mcp.json or the plugin skill links changed after the running agent read them. */
+  readonly reconnectNeeded?: boolean;
+  /** Plugins that come with skills or commands, and whether linking them is on. */
+  readonly pluginSkills?: ReadonlyArray<McpPluginSkills>;
+  readonly pluginSkillsOn?: boolean;
+  /** The agent's skills folder is shared (a link or a git repository), so nothing is linked into it. */
+  readonly pluginSkillsShared?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -442,15 +578,25 @@ export interface PromptAttachmentInput {
 
 export type WebviewToExtension =
   | { readonly type: "ready" }
-  | { readonly type: "prompt"; readonly text: string; readonly attachments: ReadonlyArray<PromptAttachmentInput> }
+  | { readonly type: "prompt"; readonly text: string; readonly attachments: ReadonlyArray<PromptAttachmentInput>; readonly mode?: "queue" | "interrupt" }
   | { readonly type: "cancel" }
-  | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string }
+  | { readonly type: "queue.sendNow"; readonly index: number }
+  | { readonly type: "queue.edit"; readonly index: number }
+  | { readonly type: "queue.clear"; readonly index?: number }
+  | { readonly type: "queue.move"; readonly from: number; readonly to: number }
+  | { readonly type: "permission.respond"; readonly requestId: string; readonly optionId: string; readonly scope?: "session" }
+  | { readonly type: "approvals.set"; readonly policy: ApprovalPolicy }
+  | { readonly type: "model.saveDefault" }
   | { readonly type: "question.respond"; readonly requestId: string; readonly answers: ReadonlyArray<QuestionAnswer> }
   | { readonly type: "question.skip"; readonly requestId: string }
   | { readonly type: "plan.respond"; readonly requestId: string; readonly accepted: boolean; readonly reason?: string }
   | { readonly type: "session.new" }
   | { readonly type: "session.load"; readonly sessionId: string }
   | { readonly type: "session.list" }
+  | { readonly type: "session.rename"; readonly sessionId: string; readonly title?: string }
+  | { readonly type: "session.hide"; readonly sessionId: string }
+  /** Hides or unhides several sessions (history pane bulk actions). */
+  | { readonly type: "sessions.setHidden"; readonly sessionIds: ReadonlyArray<string>; readonly hidden: boolean }
   | { readonly type: "session.reconnect" }
   | { readonly type: "mode.set"; readonly modeId: string }
   | { readonly type: "model.set"; readonly modelId: string }
@@ -458,10 +604,25 @@ export type WebviewToExtension =
   | { readonly type: "openFile"; readonly path: string; readonly line?: number }
   | { readonly type: "openDiff"; readonly itemId: string; readonly path: string }
   | { readonly type: "copy"; readonly text: string }
+  /** Opens VS Code's own settings editor filtered to this extension. */
   | { readonly type: "openSettings" }
+  /** Opens (or reveals) the Cursor Agent settings editor tab, optionally on a section. */
+  | { readonly type: "settings.open"; readonly section?: SettingsSection }
+  | { readonly type: "mcp.status" }
+  /** Opens the workspace's `.cursor/mcp.json`, creating it when missing. */
+  | { readonly type: "mcp.openConfig" }
+  /** Makes Cursor plugin servers available in chat or not (see pluginSync.ts). */
+  | { readonly type: "mcp.plugins.set"; readonly ids: ReadonlyArray<string>; readonly enabled: boolean }
+  /** Makes a plugin's skills available in chat or not. */
+  | { readonly type: "plugins.skills.set"; readonly plugins: ReadonlyArray<string>; readonly enabled: boolean }
+  /** Runs `agent mcp login <id>` in a terminal in the workspace folder. */
+  | { readonly type: "mcp.plugins.login"; readonly id: string }
+  /** Opens the resolved user-level mcp.json. */
+  | { readonly type: "mcp.openUserConfig" }
   | { readonly type: "openLogs" }
   | { readonly type: "openExternal"; readonly url: string }
   | { readonly type: "attachActiveFile" }
+  | { readonly type: "attachUris"; readonly uris: ReadonlyArray<string> }
   | { readonly type: "pickFiles" }
   | { readonly type: "draft"; readonly text: string }
   | { readonly type: "usage.refresh" }
@@ -492,7 +653,11 @@ export type ExtensionToWebview =
   | { readonly type: "usage"; readonly usage: UsageSummary | undefined; readonly loading: boolean }
   | { readonly type: "extensionSettings"; readonly settings: ExtensionSettings }
   | { readonly type: "agentProbe"; readonly probe: AgentProbe }
-  | { readonly type: "showSettings" }
+  /** Settings tab: switch to a section (sent when an already-open tab is revealed for a specific section). */
+  | { readonly type: "showSettings"; readonly section?: SettingsSection }
+  /** Chat: open the session history pane (the Session History command). */
+  | { readonly type: "showHistory" }
+  | { readonly type: "mcpStatus"; readonly status: McpStatus | undefined; readonly loading: boolean }
   | { readonly type: "setupStatus"; readonly status: { readonly phase: "idle" | "installing" | "loggingIn"; readonly text?: string } }
   | { readonly type: "files.results"; readonly requestId: number; readonly query: string; readonly files: ReadonlyArray<{ readonly path: string; readonly name: string }> }
   | { readonly type: "toast"; readonly level: "info" | "warning" | "error"; readonly text: string };

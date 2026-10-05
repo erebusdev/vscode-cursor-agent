@@ -1,8 +1,9 @@
 import { render } from "preact";
 import type { ExtensionToWebview } from "../shared/protocol";
-import { App } from "./components/App";
+import { App, isSettingsView } from "./components/App";
 import { handleMessage } from "./store";
 import { post } from "./vscode";
+import { installTooltips } from "./tooltip";
 import "./styles.css";
 
 window.addEventListener("message", (e: MessageEvent<ExtensionToWebview>) => {
@@ -14,7 +15,9 @@ window.addEventListener("message", (e: MessageEvent<ExtensionToWebview>) => {
 const root = document.getElementById("root");
 if (root) {
   render(<App />, root);
+  installTooltips();
 }
 
 post({ type: "ready" });
-post({ type: "session.list" });
+// The chat shows the session history (header card, new-chat screen, history pane).
+if (!isSettingsView()) post({ type: "session.list" });

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { resolveAgentExecutable } from "./acp/resolveExecutable";
 import { IS_WINDOWS } from "./platform";
 import { resolveCursorConfigDir } from "./session/usage";
-import { INSTALL_COMMAND_POSIX, INSTALL_COMMAND_WINDOWS, INSTALL_TIMEOUT_MS, LOGIN_TIMEOUT_MS, POLL_MS, loginCommandLine } from "./setupCommands";
+import { INSTALL_COMMAND_POSIX, INSTALL_COMMAND_WINDOWS, INSTALL_TIMEOUT_MS, LOGIN_TIMEOUT_MS, POLL_MS, agentCommandLine, loginCommandLine } from "./setupCommands";
 
 export type SetupPhase = "idle" | "installing" | "loggingIn";
 
@@ -81,25 +81,68 @@ class Watcher {
   }
 }
 
+export interface McpLoginOptions {
+  readonly configuredPath: string;
+  /** The configured `agentArgs`, passed before `mcp login` like before `acp`. */
+  readonly args: ReadonlyArray<string>;
+  readonly env: NodeJS.ProcessEnv;
+  /** Sign-ins are saved per project folder, so this must be the workspace folder. */
+  readonly cwd: string | undefined;
+  readonly id: string;
+  readonly onClosed: () => void;
+  readonly log: (message: string) => void;
+}
+
+function createShellTerminal(name: string, cwd?: string): vscode.Terminal {
+  return vscode.window.createTerminal({
+    name,
+    ...(cwd ? { cwd } : {}),
+    // The Windows commands are PowerShell lines; everywhere else the default shell is fine.
+    ...(IS_WINDOWS ? { shellPath: "powershell.exe", shellArgs: ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"] } : {}),
+  });
+}
+
 export class SetupController implements vscode.Disposable {
   private watcher: Watcher | undefined;
   private terminal: vscode.Terminal | undefined;
+  private readonly mcpTerminals = new Map<vscode.Terminal, vscode.Disposable>();
 
   dispose(): void {
     this.watcher?.cancel();
     this.watcher = undefined;
+    for (const sub of this.mcpTerminals.values()) sub.dispose();
+    this.mcpTerminals.clear();
   }
 
   private openTerminal(name: string): vscode.Terminal {
     this.terminal?.dispose();
-    const terminal = vscode.window.createTerminal({
-      name,
-      // The Windows installer is a PowerShell one-liner; everywhere else the default shell is fine.
-      ...(IS_WINDOWS ? { shellPath: "powershell.exe", shellArgs: ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"] } : {}),
-    });
+    const terminal = createShellTerminal(name);
     this.terminal = terminal;
     terminal.show(true);
     return terminal;
+  }
+
+  /**
+   * Runs `agent mcp login <id>` in a terminal in the workspace folder (Cursor
+   * opens the browser and waits on localhost); `onClosed` runs when the
+   * terminal is closed. Returns an error text when the CLI cannot be found.
+   */
+  async mcpLogin(options: McpLoginOptions): Promise<string | undefined> {
+    const found = await resolveAgentExecutable(options.configuredPath, options.env);
+    if (!found) return "The Cursor Agent CLI could not be found, so the sign-in cannot start.";
+    const command = agentCommandLine(found.path, [...options.args, "mcp", "login", options.id], options.env);
+    const terminal = createShellTerminal(`Sign in: ${options.id}`, options.cwd);
+    const sub = vscode.window.onDidCloseTerminal((t) => {
+      if (t !== terminal) return;
+      sub.dispose();
+      this.mcpTerminals.delete(terminal);
+      options.onClosed();
+    });
+    this.mcpTerminals.set(terminal, sub);
+    options.log(`Running MCP sign-in in terminal (cwd ${options.cwd ?? "default"}): ${command}`);
+    terminal.show(false);
+    terminal.sendText(command, true);
+    return undefined;
   }
 
   /** Runs Cursor's installer in a terminal and reconnects once the executable resolves. */
